@@ -1,0 +1,6 @@
+[submodule "contrib/curl"]
+	path = contrib/curl
+	url = https://github.com/curl/curl
+[submodule "contrib/libevent"]
+	path = contrib/libevent
+	url = https://github.com/libevent/libevent

@@ -156,29 +156,10 @@ size_t CurlHttpOperation::WriteCallback(char* ptr, size_t size, size_t nmemb,
 CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
     : request_(std::move(request)),
       http_(http),
-      handle_(),
+      handle_(curl_easy_init()),
       header_list_(),
       headers_ready_(),
-      headers_ready_event_posted_() {}
-
-CurlHttpOperation::~CurlHttpOperation() {
-  if (handle_) {
-    Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
-    curl_easy_cleanup(handle_);
-    curl_slist_free_all(header_list_);
-    event_del(&headers_ready_);
-  }
-}
-
-void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
-
-bool CurlHttpOperation::await_ready() { return false; }
-
-void CurlHttpOperation::await_suspend(
-    coroutine_handle<void> awaiting_coroutine) {
-  awaiting_coroutine_ = awaiting_coroutine;
-
-  handle_ = curl_easy_init();
+      headers_ready_event_posted_() {
   Check(curl_easy_setopt(handle_, CURLOPT_URL, request_.url.data()));
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
@@ -202,6 +183,22 @@ void CurlHttpOperation::await_suspend(
       this));
 
   Check(curl_multi_add_handle(http_->curl_handle_, handle_));
+}
+
+CurlHttpOperation::~CurlHttpOperation() {
+  Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
+  curl_easy_cleanup(handle_);
+  curl_slist_free_all(header_list_);
+  event_del(&headers_ready_);
+}
+
+void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
+
+bool CurlHttpOperation::await_ready() { return false; }
+
+void CurlHttpOperation::await_suspend(
+    coroutine_handle<void> awaiting_coroutine) {
+  awaiting_coroutine_ = awaiting_coroutine;
 }
 
 Response CurlHttpOperation::await_resume() {

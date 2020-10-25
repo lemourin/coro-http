@@ -25,8 +25,8 @@ class HttpException : public std::exception {
  public:
   HttpException(int status, std::string_view message);
 
-  const char* what() const noexcept override;
-  int status() const noexcept;
+  [[nodiscard]] const char* what() const noexcept override;
+  [[nodiscard]] int status() const noexcept;
 
  private:
   int status_;

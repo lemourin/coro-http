@@ -1,6 +1,6 @@
 #include "curl_http.h"
 
-#include <event2/event_struct.h>
+#include <sstream>
 
 namespace coro::http {
 
@@ -30,7 +30,7 @@ void Check(int code) {
 
 std::string ToLowerCase(std::string str) {
   for (char& c : str) {
-    c = std::tolower(c);
+    c = static_cast<char>(std::tolower(c));
   }
   return str;
 }
@@ -40,7 +40,7 @@ std::string TrimWhitespace(std::string_view str) {
   while (it1 < str.size() && std::isspace(str[it1])) {
     it1++;
   }
-  int it2 = str.size() - 1;
+  int it2 = static_cast<int>(str.size()) - 1;
   while (it2 > it1 && std::isspace(str[it2])) {
     it2--;
   }
@@ -49,25 +49,27 @@ std::string TrimWhitespace(std::string_view str) {
 
 }  // namespace
 
-void CurlHttp::ProcessEvents(CURLM* handle) {
+void CurlHttp::ProcessEvents(CURLM* multi_handle) {
   CURLMsg* message;
   do {
     int message_count;
-    message = curl_multi_info_read(handle, &message_count);
+    message = curl_multi_info_read(multi_handle, &message_count);
     if (message && message->msg == CURLMSG_DONE) {
       CURL* handle = message->easy_handle;
       CurlHttpOperation* operation;
       Check(curl_easy_getinfo(handle, CURLINFO_PRIVATE, &operation));
-      if (message->data.result == CURLE_OK) {
-        long response_code;
-        Check(
-            curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &response_code));
-        operation->response_.status = static_cast<int>(response_code);
-      } else {
-        operation->exception_ptr_ = std::make_exception_ptr(HttpException(
-            message->data.result, curl_easy_strerror(message->data.result)));
+      if (!operation->headers_ready_event_posted_) {
+        if (message->data.result == CURLE_OK) {
+          long response_code;
+          Check(curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE,
+                                  &response_code));
+          operation->response_.status = static_cast<int>(response_code);
+        } else {
+          operation->exception_ptr_ = std::make_exception_ptr(HttpException(
+              message->data.result, curl_easy_strerror(message->data.result)));
+        }
+        operation->resume();
       }
-      operation->resume();
     }
   } while (message != nullptr);
 }
@@ -129,7 +131,12 @@ size_t CurlHttpOperation::HeaderCallback(char* buffer, size_t size,
         ToLowerCase(std::string(view.begin(), view.begin() + index)),
         TrimWhitespace(std::string(view.begin() + index + 1, view.end()))));
   } else if (view.starts_with("HTTP")) {
+    std::istringstream stream{std::string(view)};
+    std::string http_version;
+    int code;
+    stream >> http_version >> code;
     http_operation->response_.headers.clear();
+    http_operation->response_.status = code;
   }
   return size * nitems;
 }
@@ -137,12 +144,21 @@ size_t CurlHttpOperation::HeaderCallback(char* buffer, size_t size,
 size_t CurlHttpOperation::WriteCallback(char* ptr, size_t size, size_t nmemb,
                                         void* userdata) {
   auto http_operation = reinterpret_cast<CurlHttpOperation*>(userdata);
+  if (!http_operation->headers_ready_event_posted_) {
+    http_operation->headers_ready_event_posted_ = true;
+    timeval tv = {};
+    Check(event_add(&http_operation->headers_ready_, &tv));
+  }
   http_operation->response_.body += std::string(ptr, ptr + size * nmemb);
   return size * nmemb;
 }
 
 CurlHttpOperation::CurlHttpOperation(CurlHttp* http, const Request& request)
-    : http_(http), handle_(curl_easy_init()), header_list_() {
+    : http_(http),
+      handle_(curl_easy_init()),
+      header_list_(),
+      headers_ready_(),
+      headers_ready_event_posted_() {
   Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
@@ -150,16 +166,27 @@ CurlHttpOperation::CurlHttpOperation(CurlHttp* http, const Request& request)
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
   for (const auto& [header_name, header_value] : request.headers) {
-    header_list_ = curl_slist_append(
-        header_list_, (header_name + ": " + header_value).c_str());
+    std::string header_line = header_name;
+    header_line += ": ";
+    header_line += header_value;
+    header_list_ = curl_slist_append(header_list_, header_line.c_str());
   }
   Check(curl_easy_setopt(handle_, CURLOPT_HTTPHEADER, header_list_));
+
+  Check(event_assign(
+      &headers_ready_, http_->event_loop_, -1, 0,
+      [](evutil_socket_t fd, short event, void* handle) {
+        auto http_operation = reinterpret_cast<CurlHttpOperation*>(handle);
+        http_operation->resume();
+      },
+      this));
 }
 
 CurlHttpOperation::~CurlHttpOperation() {
   Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
   curl_easy_cleanup(handle_);
   curl_slist_free_all(header_list_);
+  event_del(&headers_ready_);
 }
 
 void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
@@ -177,7 +204,8 @@ Response CurlHttpOperation::await_resume() {
   return std::move(response_);
 }
 
-CurlHttp::CurlHttp(event_base* event_loop) : event_loop_(event_loop) {
+CurlHttp::CurlHttp(event_base* event_loop)
+    : event_loop_(event_loop), timeout_event_() {
   curl_handle_ = curl_multi_init();
   event_assign(
       &timeout_event_, event_loop, -1, 0,

@@ -1,7 +1,4 @@
 #include <coro/http/curl_http.h>
-#include <coro/http/http.h>
-#include <coro/task.h>
-#include <event2/event.h>
 
 #include <iostream>
 #include <memory>
@@ -13,15 +10,13 @@ auto MakePointer(T *ptr, Deleter &&deleter) {
 
 coro::Task<int> CoMain(coro::http::Http &http) noexcept {
   try {
-    coro::http::Response response = co_await http.Fetch("http://example.com");
+    coro::http::Response response =
+        co_await http.Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv");
 
-    std::cerr << "status: " << response.status << "\n";
-    std::cerr << "headers:\n";
-    for (const auto &[key, value] : response.headers) {
-      std::cerr << key << ": " << value << "\n";
+    std::cerr << "HTTP: " << response.status << "\n";
+    for (const auto &[header_name, header_value] : response.headers) {
+      std::cerr << header_name << ": " << header_value << "\n";
     }
-
-    std::cerr << "body: " << response.body << "\n";
 
     co_return 0;
   } catch (const coro::http::HttpException &exception) {

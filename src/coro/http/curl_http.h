@@ -3,6 +3,7 @@
 
 #include <curl/curl.h>
 #include <event2/event.h>
+#include <event2/event_struct.h>
 
 #include "http.h"
 
@@ -44,6 +45,7 @@ class CurlHttp : public Http {
 
   CURLM* curl_handle_;
   event_base* event_loop_;
+  event timeout_event_;
 };
 
 }  // namespace coro::http

@@ -16,12 +16,16 @@ class CurlHttpOperation : public HttpOperationImpl {
   CurlHttpOperation(CurlHttp* http, std::string_view url);
   ~CurlHttpOperation() override;
 
-  void set_response(Response&& response);
+  void resume();
 
  private:
-  void await_suspend(coroutine_handle<void> awaiting_coroutine) override;
+  friend class CurlHttp;
 
+  void await_suspend(coroutine_handle<void> awaiting_coroutine) override;
   Response await_resume() override;
+
+  static size_t WriteCallback(char* ptr, size_t size, size_t nmemb,
+                              void* userdata);
 
   coroutine_handle<void> awaiting_coroutine_;
   Response response_;
@@ -42,6 +46,7 @@ class CurlHttp : public Http {
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,
                             void* userp, void* socketp);
   static int TimerCallback(CURLM* handle, long timeout_ms, void* userp);
+  static void SocketEvent(evutil_socket_t fd, short event, void* multi_handle);
 
   CURLM* curl_handle_;
   event_base* event_loop_;

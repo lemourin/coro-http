@@ -2,8 +2,6 @@
 
 #include <event2/event_struct.h>
 
-#include <iostream>
-
 namespace coro::http {
 
 namespace {
@@ -14,7 +12,8 @@ struct SocketData {
 
 }  // namespace
 
-void SocketEvent(evutil_socket_t fd, short event, void* multi_handle) {
+void CurlHttp::SocketEvent(evutil_socket_t fd, short event,
+                           void* multi_handle) {
   int running_handles;
   curl_multi_socket_action(multi_handle, fd,
                            ((event & EV_READ) ? CURL_CSELECT_IN : 0) |
@@ -29,11 +28,10 @@ void SocketEvent(evutil_socket_t fd, short event, void* multi_handle) {
       CURL* handle = message->easy_handle;
       CurlHttpOperation* operation;
       curl_easy_getinfo(handle, CURLINFO_PRIVATE, &operation);
-      Response response;
       long response_code;
       curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &response_code);
-      response.status = static_cast<int>(response_code);
-      operation->set_response(std::move(response));
+      operation->response_.status = static_cast<int>(response_code);
+      operation->resume();
     }
   } while (message != nullptr);
 }
@@ -75,10 +73,19 @@ int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   return 0;
 }
 
+size_t CurlHttpOperation::WriteCallback(char* ptr, size_t size, size_t nmemb,
+                                        void* userdata) {
+  auto http_operation = reinterpret_cast<CurlHttpOperation*>(userdata);
+  http_operation->response_.body += std::string(ptr, ptr + size * nmemb);
+  return size * nmemb;
+}
+
 CurlHttpOperation::CurlHttpOperation(CurlHttp* http, std::string_view url)
     : http_(http), handle_(curl_easy_init()) {
   curl_easy_setopt(handle_, CURLOPT_URL, url.data());
   curl_easy_setopt(handle_, CURLOPT_PRIVATE, this);
+  curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback);
+  curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this);
 }
 
 CurlHttpOperation::~CurlHttpOperation() {
@@ -86,10 +93,7 @@ CurlHttpOperation::~CurlHttpOperation() {
   curl_easy_cleanup(handle_);
 }
 
-void CurlHttpOperation::set_response(Response&& response) {
-  response_ = std::move(response);
-  awaiting_coroutine_.resume();
-}
+void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
 
 void CurlHttpOperation::await_suspend(
     coroutine_handle<void> awaiting_coroutine) {

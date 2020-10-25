@@ -16,12 +16,13 @@ coro::Task<int> CoMain(coro::http::Http &http) noexcept {
     coro::http::Response response = co_await http.Fetch("http://example.com");
 
     std::cerr << "status:" << response.status << "\n";
+    std::cerr << "body: " << response.body << "\n";
 
     co_return 0;
   } catch (const std::exception &exception) {
     std::cerr << "exception: " << exception.what() << "\n";
+    co_return -1;
   }
-  co_return -1;
 }
 
 coro::Task<int> RunCoMain(coro::http::Http &http, event_base *base) {

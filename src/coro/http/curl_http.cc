@@ -141,19 +141,25 @@ size_t CurlHttpOperation::WriteCallback(char* ptr, size_t size, size_t nmemb,
   return size * nmemb;
 }
 
-CurlHttpOperation::CurlHttpOperation(CurlHttp* http, std::string_view url)
-    : http_(http), handle_(curl_easy_init()) {
-  Check(curl_easy_setopt(handle_, CURLOPT_URL, url.data()));
+CurlHttpOperation::CurlHttpOperation(CurlHttp* http, const Request& request)
+    : http_(http), handle_(curl_easy_init()), header_list_() {
+  Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
+  for (const auto& [header_name, header_value] : request.headers) {
+    header_list_ = curl_slist_append(
+        header_list_, (header_name + ": " + header_value).c_str());
+  }
+  Check(curl_easy_setopt(handle_, CURLOPT_HTTPHEADER, header_list_));
 }
 
 CurlHttpOperation::~CurlHttpOperation() {
   Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
   curl_easy_cleanup(handle_);
+  curl_slist_free_all(header_list_);
 }
 
 void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
@@ -194,8 +200,8 @@ CurlHttp::~CurlHttp() {
   Check(curl_multi_cleanup(curl_handle_));
 }
 
-HttpOperation CurlHttp::Fetch(std::string_view url) {
-  return HttpOperation(std::make_unique<CurlHttpOperation>(this, url));
+HttpOperation CurlHttp::Fetch(const Request& request) {
+  return HttpOperation(std::make_unique<CurlHttpOperation>(this, request));
 }
 
 }  // namespace coro::http

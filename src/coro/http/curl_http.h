@@ -13,7 +13,7 @@ class CurlHttp;
 
 class CurlHttpOperation : public HttpOperationImpl {
  public:
-  CurlHttpOperation(CurlHttp* http, std::string_view url);
+  CurlHttpOperation(CurlHttp* http, const Request&);
   ~CurlHttpOperation() override;
 
   void resume();
@@ -33,6 +33,7 @@ class CurlHttpOperation : public HttpOperationImpl {
   Response response_;
   CurlHttp* http_;
   CURL* handle_;
+  curl_slist* header_list_;
   std::exception_ptr exception_ptr_;
 };
 
@@ -41,7 +42,7 @@ class CurlHttp : public Http {
   explicit CurlHttp(event_base* event_loop);
   ~CurlHttp() override;
 
-  HttpOperation Fetch(std::string_view url) override;
+  HttpOperation Fetch(const Request& request) override;
 
  private:
   friend class CurlHttpOperation;

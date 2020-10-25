@@ -9,6 +9,12 @@
 
 namespace coro::http {
 
+struct Request {
+  std::string url;
+  std::unordered_multimap<std::string, std::string> headers;
+  std::string body;
+};
+
 struct Response {
   int status;
   std::unordered_multimap<std::string, std::string> headers;
@@ -50,7 +56,8 @@ class Http {
  public:
   virtual ~Http() = default;
 
-  virtual HttpOperation Fetch(std::string_view url) = 0;
+  HttpOperation Fetch(std::string_view url);
+  virtual HttpOperation Fetch(const Request& request) = 0;
 };
 
 }  // namespace coro::http

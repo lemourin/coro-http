@@ -20,4 +20,8 @@ bool HttpOperation::await_ready() { return false; }
 
 Response HttpOperation::await_resume() { return impl_->await_resume(); }
 
+HttpOperation Http::Fetch(std::string_view url) {
+  return Fetch(Request{.url = std::string(url)});
+}
+
 }  // namespace coro::http

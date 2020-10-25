@@ -25,12 +25,6 @@ coro::Task<int> CoMain(coro::http::Http &http) noexcept {
   }
 }
 
-coro::Task<int> RunCoMain(coro::http::Http &http, event_base *base) {
-  int result = co_await CoMain(http);
-  event_base_loopbreak(base);
-  co_return result;
-}
-
 int main() {
 #ifdef _WIN32
   WORD version_requested = MAKEWORD(2, 2);
@@ -42,7 +36,7 @@ int main() {
   auto base = MakePointer(event_base_new(), event_base_free);
   coro::http::CurlHttp http(base.get());
 
-  RunCoMain(http, base.get());
+  CoMain(http);
   event_base_dispatch(base.get());
   return 0;
 }

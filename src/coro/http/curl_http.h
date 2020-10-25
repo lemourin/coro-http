@@ -48,6 +48,7 @@ class CurlHttp : public Http {
                             void* userp, void* socketp);
   static int TimerCallback(CURLM* handle, long timeout_ms, void* userp);
   static void SocketEvent(evutil_socket_t fd, short event, void* multi_handle);
+  static void ProcessEvents(CURLM* handle);
 
   CURLM* curl_handle_;
   event_base* event_loop_;

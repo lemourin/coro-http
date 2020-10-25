@@ -156,17 +156,36 @@ size_t CurlHttpOperation::WriteCallback(char* ptr, size_t size, size_t nmemb,
 CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
     : request_(std::move(request)),
       http_(http),
-      handle_(curl_easy_init()),
+      handle_(),
       header_list_(),
       headers_ready_(),
-      headers_ready_event_posted_() {
+      headers_ready_event_posted_() {}
+
+CurlHttpOperation::~CurlHttpOperation() {
+  if (handle_) {
+    Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
+    curl_easy_cleanup(handle_);
+    curl_slist_free_all(header_list_);
+    event_del(&headers_ready_);
+  }
+}
+
+void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
+
+bool CurlHttpOperation::await_ready() { return false; }
+
+void CurlHttpOperation::await_suspend(
+    coroutine_handle<void> awaiting_coroutine) {
+  awaiting_coroutine_ = awaiting_coroutine;
+
+  handle_ = curl_easy_init();
   Check(curl_easy_setopt(handle_, CURLOPT_URL, request_.url.data()));
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
-  for (const auto& [header_name, header_value] : request.headers) {
+  for (const auto& [header_name, header_value] : request_.headers) {
     std::string header_line = header_name;
     header_line += ": ";
     header_line += header_value;
@@ -181,22 +200,7 @@ CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
         http_operation->resume();
       },
       this));
-}
 
-CurlHttpOperation::~CurlHttpOperation() {
-  Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
-  curl_easy_cleanup(handle_);
-  curl_slist_free_all(header_list_);
-  event_del(&headers_ready_);
-}
-
-void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
-
-bool CurlHttpOperation::await_ready() { return false; }
-
-void CurlHttpOperation::await_suspend(
-    coroutine_handle<void> awaiting_coroutine) {
-  awaiting_coroutine_ = awaiting_coroutine;
   Check(curl_multi_add_handle(http_->curl_handle_, handle_));
 }
 

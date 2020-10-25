@@ -1,7 +1,11 @@
+if(WIN32)
+    set(CMAKE_USE_SCHANNEL ON CACHE BOOL "build curl with native windows ssl library")
+endif()
+
 add_subdirectory(curl)
 
-set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "build without OpenSSL")
-set(EVENT__DISABLE_MBEDTLS ON CACHE BOOL "build without mbedTLS")
+set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "build libevent without OpenSSL")
+set(EVENT__DISABLE_MBEDTLS ON CACHE BOOL "build libevent without mbedTLS")
 if(BUILD_SHARED_LIBS)
     set(EVENT__LIBRARY_TYPE SHARED CACHE BOOL "build shared libevent")
 else()

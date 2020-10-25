@@ -15,7 +15,12 @@ coro::Task<int> CoMain(coro::http::Http &http) noexcept {
   try {
     coro::http::Response response = co_await http.Fetch("http://example.com");
 
-    std::cerr << "status:" << response.status << "\n";
+    std::cerr << "status: " << response.status << "\n";
+    std::cerr << "headers:\n";
+    for (const auto &[key, value] : response.headers) {
+      std::cerr << key << ": " << value << "\n";
+    }
+
     std::cerr << "body: " << response.body << "\n";
 
     co_return 0;

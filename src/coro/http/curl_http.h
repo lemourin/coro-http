@@ -26,6 +26,8 @@ class CurlHttpOperation : public HttpOperationImpl {
 
   static size_t WriteCallback(char* ptr, size_t size, size_t nmemb,
                               void* userdata);
+  static size_t HeaderCallback(char* buffer, size_t size, size_t nitems,
+                               void* userdata);
 
   coroutine_handle<void> awaiting_coroutine_;
   Response response_;

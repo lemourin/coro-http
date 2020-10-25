@@ -28,6 +28,25 @@ void Check(int code) {
   }
 }
 
+std::string ToLowerCase(std::string str) {
+  for (char& c : str) {
+    c = std::tolower(c);
+  }
+  return str;
+}
+
+std::string TrimWhitespace(std::string_view str) {
+  int it1 = 0;
+  while (it1 < str.size() && std::isspace(str[it1])) {
+    it1++;
+  }
+  int it2 = str.size() - 1;
+  while (it2 > it1 && std::isspace(str[it2])) {
+    it2--;
+  }
+  return std::string(str.begin() + it1, str.begin() + it2 + 1);
+}
+
 }  // namespace
 
 void CurlHttp::ProcessEvents(CURLM* handle) {
@@ -100,6 +119,21 @@ int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   return 0;
 }
 
+size_t CurlHttpOperation::HeaderCallback(char* buffer, size_t size,
+                                         size_t nitems, void* userdata) {
+  auto http_operation = reinterpret_cast<CurlHttpOperation*>(userdata);
+  std::string_view view(buffer, size * nitems);
+  auto index = view.find_first_of(":");
+  if (index != std::string::npos) {
+    http_operation->response_.headers.insert(std::make_pair(
+        ToLowerCase(std::string(view.begin(), view.begin() + index)),
+        TrimWhitespace(std::string(view.begin() + index + 1, view.end()))));
+  } else if (view.starts_with("HTTP")) {
+    http_operation->response_.headers.clear();
+  }
+  return size * nitems;
+}
+
 size_t CurlHttpOperation::WriteCallback(char* ptr, size_t size, size_t nmemb,
                                         void* userdata) {
   auto http_operation = reinterpret_cast<CurlHttpOperation*>(userdata);
@@ -113,6 +147,8 @@ CurlHttpOperation::CurlHttpOperation(CurlHttp* http, std::string_view url)
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
+  Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
 }
 
 CurlHttpOperation::~CurlHttpOperation() {

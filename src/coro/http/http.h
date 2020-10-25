@@ -5,11 +5,13 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 namespace coro::http {
 
 struct Response {
   int status;
+  std::unordered_multimap<std::string, std::string> headers;
   std::string body;
 };
 

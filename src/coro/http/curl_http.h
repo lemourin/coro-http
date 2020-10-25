@@ -13,7 +13,7 @@ class CurlHttp;
 
 class CurlHttpOperation : public HttpOperationImpl {
  public:
-  CurlHttpOperation(CurlHttp* http, const Request&);
+  CurlHttpOperation(CurlHttp* http, Request&&);
   ~CurlHttpOperation() override;
 
   void resume();
@@ -30,8 +30,9 @@ class CurlHttpOperation : public HttpOperationImpl {
   static size_t HeaderCallback(char* buffer, size_t size, size_t nitems,
                                void* userdata);
 
-  coroutine_handle<void> awaiting_coroutine_;
+  Request request_;
   Response response_;
+  coroutine_handle<void> awaiting_coroutine_;
   CurlHttp* http_;
   CURL* handle_;
   curl_slist* header_list_;
@@ -45,7 +46,7 @@ class CurlHttp : public Http {
   explicit CurlHttp(event_base* event_loop);
   ~CurlHttp() override;
 
-  HttpOperation Fetch(const Request& request) override;
+  HttpOperation Fetch(Request&& request) override;
 
  private:
   friend class CurlHttpOperation;

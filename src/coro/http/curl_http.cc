@@ -153,13 +153,14 @@ size_t CurlHttpOperation::WriteCallback(char* ptr, size_t size, size_t nmemb,
   return size * nmemb;
 }
 
-CurlHttpOperation::CurlHttpOperation(CurlHttp* http, const Request& request)
-    : http_(http),
+CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
+    : request_(std::move(request)),
+      http_(http),
       handle_(curl_easy_init()),
       header_list_(),
       headers_ready_(),
       headers_ready_event_posted_() {
-  Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
+  Check(curl_easy_setopt(handle_, CURLOPT_URL, request_.url.data()));
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
@@ -230,8 +231,9 @@ CurlHttp::~CurlHttp() {
   Check(curl_multi_cleanup(curl_handle_));
 }
 
-HttpOperation CurlHttp::Fetch(const Request& request) {
-  return HttpOperation(std::make_unique<CurlHttpOperation>(this, request));
+HttpOperation CurlHttp::Fetch(Request&& request) {
+  return HttpOperation(
+      std::make_unique<CurlHttpOperation>(this, std::move(request)));
 }
 
 }  // namespace coro::http

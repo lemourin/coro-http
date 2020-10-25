@@ -59,7 +59,7 @@ class Http {
   virtual ~Http() = default;
 
   HttpOperation Fetch(std::string_view url);
-  virtual HttpOperation Fetch(const Request& request) = 0;
+  virtual HttpOperation Fetch(Request&& request) = 0;
 };
 
 }  // namespace coro::http

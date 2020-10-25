@@ -42,27 +42,16 @@ using suspend_never = std::experimental::suspend_never;
 template <typename... Ts>
 class Task;
 
+namespace internal {
+struct EmptyPromiseType;
+template <typename>
+struct ValuePromiseType;
+}  // namespace internal
+
 template <typename T>
 class Task<T> {
  public:
-  struct promise_type {
-    Task& get_return_object() { return promise; }
-
-    suspend_never initial_suspend() noexcept { return {}; }
-    suspend_never final_suspend() noexcept { return {}; }
-
-    void unhandled_exception() { std::terminate(); }
-
-    template <typename ValueT>
-    void return_value(ValueT&& value) {
-      promise.data_->value = std::make_unique<T>(std::forward<ValueT>(value));
-      if (promise.data_->handle) {
-        promise.data_->handle.resume();
-      }
-    }
-
-    Task promise;
-  };
+  using promise_type = internal::ValuePromiseType<T>;
 
   bool await_ready() { return bool(data_->value); }
 
@@ -81,23 +70,7 @@ class Task<T> {
 template <>
 class Task<> {
  public:
-  struct promise_type {
-    Task& get_return_object() { return *promise; }
-
-    suspend_never initial_suspend() noexcept { return {}; }
-    suspend_never final_suspend() noexcept { return {}; }
-
-    void unhandled_exception() { std::terminate(); }
-
-    void return_void() {
-      promise->data_->ready = true;
-      if (promise->data_->handle) {
-        promise->data_->handle.resume();
-      }
-    }
-
-    std::unique_ptr<Task> promise = std::make_unique<Task>();
-  };
+  using promise_type = internal::EmptyPromiseType;
 
   bool await_ready() { return data_->ready; }
 
@@ -110,6 +83,48 @@ class Task<> {
 
   std::shared_ptr<CommonData> data_ = std::make_shared<CommonData>();
 };
+
+namespace internal {
+
+template <typename T>
+struct ValuePromiseType {
+  Task<T>& get_return_object() { return promise; }
+
+  suspend_never initial_suspend() noexcept { return {}; }
+  suspend_never final_suspend() noexcept { return {}; }
+
+  void unhandled_exception() { std::terminate(); }
+
+  template <typename ValueT>
+  void return_value(ValueT&& value) {
+    promise.data_->value = std::make_unique<T>(std::forward<ValueT>(value));
+    if (promise.data_->handle) {
+      promise.data_->handle.resume();
+    }
+  }
+
+  Task<T> promise;
+};
+
+struct EmptyPromiseType {
+  Task<>& get_return_object() { return promise; }
+
+  suspend_never initial_suspend() noexcept { return {}; }
+  suspend_never final_suspend() noexcept { return {}; }
+
+  void unhandled_exception() { std::terminate(); }
+
+  void return_void() {
+    promise.data_->ready = true;
+    if (promise.data_->handle) {
+      promise.data_->handle.resume();
+    }
+  }
+
+  Task<> promise;
+};
+
+}  // namespace internal
 
 }  // namespace coro
 

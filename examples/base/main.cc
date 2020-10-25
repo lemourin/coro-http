@@ -4,6 +4,7 @@
 #include <event2/event.h>
 
 #include <iostream>
+#include <memory>
 
 template <typename T, typename Deleter>
 auto MakePointer(T *ptr, Deleter &&deleter) {
@@ -26,7 +27,7 @@ coro::Task<int> CoMain(coro::http::Http &http) noexcept {
 coro::Task<int> RunCoMain(coro::http::Http &http, event_base *base) {
   int result = co_await CoMain(http);
   event_base_loopbreak(base);
-  return result;
+  co_return result;
 }
 
 int main() {

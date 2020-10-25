@@ -14,16 +14,6 @@ set_target_properties(coro
         LINKER_LANGUAGE CXX
 )
 
-check_cxx_compiler_flag("-fcoroutines" COROUTINES_SUPPORTED)
-if(${COROUTINES_SUPPORTED})
-    target_compile_options(coro PUBLIC -fcoroutines)
-else()
-    check_cxx_compiler_flag("-fcoroutines-ts" COROUTINES_TS_SUPPORTED)
-    if(${COROUTINES_TS_SUPPORTED})
-        target_compile_options(coro PUBLIC -fcoroutines-ts)
-    endif()
-endif()
-
 if(MSVC)
     include(CheckCXXSourceCompiles)
     set(CMAKE_REQUIRED_FLAGS "/std:c++latest")
@@ -35,10 +25,27 @@ if(MSVC)
         #endif
         int main() {}
         "
-        HAVE_COROUTINES
+        COROUTINES_SUPPORTED
     )
-    if(NOT HAVE_COROUTINES)
-        target_compile_options(coro PUBLIC /await)
+    if(NOT COROUTINES_SUPPORTED)
+        check_cxx_compiler_flag("/await" COROUTINES_TS_SUPPORTED)
+        if(COROUTINES_TS_SUPPORTED)
+            target_compile_options(coro PUBLIC /await)
+        else()
+            message(FATAL_ERROR "Coroutines not supported.")
+        endif()
+    endif()
+else()
+    check_cxx_compiler_flag("-fcoroutines" COROUTINES_SUPPORTED)
+    if(COROUTINES_SUPPORTED)
+        target_compile_options(coro PUBLIC -fcoroutines)
+    else()
+        check_cxx_compiler_flag("-fcoroutines-ts" COROUTINES_TS_SUPPORTED)
+        if(COROUTINES_TS_SUPPORTED)
+            target_compile_options(coro PUBLIC -fcoroutines-ts)
+        else()
+            message(FATAL_ERROR "Coroutines not supported.")
+        endif()
     endif()
 endif()
 

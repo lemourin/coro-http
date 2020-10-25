@@ -80,7 +80,7 @@ void CurlHttpOperation::set_response(Response&& response) {
 }
 
 void CurlHttpOperation::await_suspend(
-    std::experimental::coroutine_handle<> awaiting_coroutine) {
+    coroutine_handle<void> awaiting_coroutine) {
   awaiting_coroutine_ = awaiting_coroutine;
   curl_multi_add_handle(http_->curl_handle_, handle_);
 }

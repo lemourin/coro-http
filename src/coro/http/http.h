@@ -1,7 +1,9 @@
 #ifndef CORO_HTTP_HTTP_H
 #define CORO_HTTP_HTTP_H
 
-#include <experimental/coroutine>
+#include <coro/task.h>
+
+#include <memory>
 #include <string>
 
 namespace coro::http {
@@ -14,8 +16,7 @@ struct Response {
 class HttpOperationImpl {
  public:
   virtual ~HttpOperationImpl() = default;
-  virtual void await_suspend(
-      std::experimental::coroutine_handle<> awaiting_coroutine) = 0;
+  virtual void await_suspend(coroutine_handle<void> awaiting_coroutine) = 0;
   virtual Response await_resume() = 0;
 };
 
@@ -24,7 +25,7 @@ class HttpOperation {
   explicit HttpOperation(std::unique_ptr<HttpOperationImpl>&&);
 
   static bool await_ready();
-  void await_suspend(std::experimental::coroutine_handle<> awaiting_coroutine);
+  void await_suspend(coroutine_handle<void> awaiting_coroutine);
   Response await_resume();
 
  private:

@@ -18,12 +18,11 @@ class CurlHttpOperation : public HttpOperationImpl {
   void set_response(Response&& response);
 
  private:
-  void await_suspend(
-      std::experimental::coroutine_handle<> awaiting_coroutine) override;
+  void await_suspend(coroutine_handle<void> awaiting_coroutine) override;
 
   Response await_resume() override;
 
-  std::experimental::coroutine_handle<> awaiting_coroutine_;
+  coroutine_handle<void> awaiting_coroutine_;
   Response response_;
   CurlHttp* http_;
   CURL* handle_;

@@ -1,6 +1,10 @@
 add_subdirectory(curl)
 
-set(EVENT__DISABLE_OPENSSL ON)
-set(EVENT__DISABLE_MBEDTLS ON)
-set(EVENT__LIBRARY_TYPE STATIC)
+set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "build without OpenSSL")
+set(EVENT__DISABLE_MBEDTLS ON CACHE BOOL "build without mbedTLS")
+if(BUILD_SHARED_LIBS)
+    set(EVENT__LIBRARY_TYPE SHARED CACHE BOOL "build shared libevent")
+else()
+    set(EVENT__LIBRARY_TYPE STATIC CACHE BOOL "build static libevent")
+endif()
 add_subdirectory(libevent)

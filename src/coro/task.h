@@ -21,6 +21,8 @@
 #endif
 #endif
 
+#include <memory>
+
 namespace coro {
 
 #ifdef HAVE_COROUTINES
@@ -34,8 +36,6 @@ template <typename T>
 using coroutine_handle = std::experimental::coroutine_handle<T>;
 using suspend_never = std::experimental::suspend_never;
 #endif
-
-#define HAVE_COROUTINE_SUPPORT
 
 #ifdef HAVE_COROUTINE_SUPPORT
 
@@ -56,8 +56,8 @@ class Task<T> {
     template <typename ValueT>
     void return_value(ValueT&& value) {
       promise.data_->value = std::make_unique<T>(std::forward<ValueT>(value));
-      if (promise.data_->coroutine_handle) {
-        promise.data_->coroutine_handle.resume();
+      if (promise.data_->handle) {
+        promise.data_->handle.resume();
       }
     }
 
@@ -68,13 +68,11 @@ class Task<T> {
 
   T await_resume() { return *std::move(data_->value); }
 
-  void await_suspend(coroutine_handle<void> handle) {
-    data_->coroutine_handle = handle;
-  }
+  void await_suspend(coroutine_handle<void> handle) { data_->handle = handle; }
 
   struct CommonData {
     std::unique_ptr<T> value;
-    coroutine_handle<void> coroutine_handle;
+    coroutine_handle<void> handle;
   };
 
   std::shared_ptr<CommonData> data_ = std::make_shared<CommonData>();
@@ -93,8 +91,8 @@ class Task<> {
 
     void return_void() {
       promise->data_->ready = true;
-      if (promise->data_->coroutine_handle) {
-        promise->data_->coroutine_handle.resume();
+      if (promise->data_->handle) {
+        promise->data_->handle.resume();
       }
     }
 
@@ -103,13 +101,11 @@ class Task<> {
 
   bool await_ready() { return data_->ready; }
 
-  void await_suspend(coroutine_handle<void> handle) {
-    data_->coroutine_handle = handle;
-  }
+  void await_suspend(coroutine_handle<void> handle) { data_->handle = handle; }
 
   struct CommonData {
     bool ready = false;
-    coroutine_handle<void> coroutine_handle;
+    coroutine_handle<void> handle;
   };
 
   std::shared_ptr<CommonData> data_ = std::make_shared<CommonData>();

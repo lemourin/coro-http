@@ -31,6 +31,7 @@ class CurlHttpOperation : public HttpOperationImpl {
   Response response_;
   CurlHttp* http_;
   CURL* handle_;
+  std::exception_ptr exception_ptr_;
 };
 
 class CurlHttp : public Http {

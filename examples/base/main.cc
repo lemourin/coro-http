@@ -19,7 +19,7 @@ coro::Task<int> CoMain(coro::http::Http &http) noexcept {
     std::cerr << "body: " << response.body << "\n";
 
     co_return 0;
-  } catch (const std::exception &exception) {
+  } catch (const coro::http::HttpException &exception) {
     std::cerr << "exception: " << exception.what() << "\n";
     co_return -1;
   }

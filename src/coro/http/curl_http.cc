@@ -28,9 +28,14 @@ void CurlHttp::SocketEvent(evutil_socket_t fd, short event,
       CURL* handle = message->easy_handle;
       CurlHttpOperation* operation;
       curl_easy_getinfo(handle, CURLINFO_PRIVATE, &operation);
-      long response_code;
-      curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &response_code);
-      operation->response_.status = static_cast<int>(response_code);
+      if (message->data.result == CURLE_OK) {
+        long response_code;
+        curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &response_code);
+        operation->response_.status = static_cast<int>(response_code);
+      } else {
+        operation->exception_ptr_ = std::make_exception_ptr(HttpException(
+            message->data.result, curl_easy_strerror(message->data.result)));
+      }
       operation->resume();
     }
   } while (message != nullptr);
@@ -101,7 +106,12 @@ void CurlHttpOperation::await_suspend(
   curl_multi_add_handle(http_->curl_handle_, handle_);
 }
 
-Response CurlHttpOperation::await_resume() { return std::move(response_); }
+Response CurlHttpOperation::await_resume() {
+  if (exception_ptr_) {
+    std::rethrow_exception(exception_ptr_);
+  }
+  return std::move(response_);
+}
 
 CurlHttp::CurlHttp(event_base* event_loop) : event_loop_(event_loop) {
   curl_handle_ = curl_multi_init();

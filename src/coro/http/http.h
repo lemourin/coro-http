@@ -13,6 +13,18 @@ struct Response {
   std::string body;
 };
 
+class HttpException : public std::exception {
+ public:
+  HttpException(int status, std::string_view message);
+
+  const char* what() const noexcept override;
+  int status() const noexcept;
+
+ private:
+  int status_;
+  std::string message_;
+};
+
 class HttpOperationImpl {
  public:
   virtual ~HttpOperationImpl() = default;

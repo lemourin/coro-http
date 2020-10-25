@@ -191,6 +191,8 @@ CurlHttpOperation::~CurlHttpOperation() {
 
 void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
 
+bool CurlHttpOperation::await_ready() { return false; }
+
 void CurlHttpOperation::await_suspend(
     coroutine_handle<void> awaiting_coroutine) {
   awaiting_coroutine_ = awaiting_coroutine;

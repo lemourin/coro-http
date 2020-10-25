@@ -16,7 +16,7 @@ void HttpOperation::await_suspend(coroutine_handle<void> awaiting_coroutine) {
   impl_->await_suspend(awaiting_coroutine);
 }
 
-bool HttpOperation::await_ready() { return false; }
+bool HttpOperation::await_ready() { return impl_->await_ready(); }
 
 Response HttpOperation::await_resume() { return impl_->await_resume(); }
 

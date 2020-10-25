@@ -36,6 +36,8 @@ class HttpException : public std::exception {
 class HttpOperationImpl {
  public:
   virtual ~HttpOperationImpl() = default;
+
+  virtual bool await_ready() = 0;
   virtual void await_suspend(coroutine_handle<void> awaiting_coroutine) = 0;
   virtual Response await_resume() = 0;
 };
@@ -44,7 +46,7 @@ class HttpOperation {
  public:
   explicit HttpOperation(std::unique_ptr<HttpOperationImpl>&&);
 
-  static bool await_ready();
+  bool await_ready();
   void await_suspend(coroutine_handle<void> awaiting_coroutine);
   Response await_resume();
 

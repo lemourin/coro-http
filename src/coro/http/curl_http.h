@@ -21,6 +21,7 @@ class CurlHttpOperation : public HttpOperationImpl {
  private:
   friend class CurlHttp;
 
+  bool await_ready() override;
   void await_suspend(coroutine_handle<void> awaiting_coroutine) override;
   Response await_resume() override;
 

@@ -166,6 +166,7 @@ CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_SSL_VERIFYPEER, 0L));
   for (const auto& [header_name, header_value] : request_.headers) {
     std::string header_line = header_name;
     header_line += ": ";

@@ -2,17 +2,25 @@ add_library(coro OBJECT)
 
 set(coro-headers
     task.h
+    wait_task.h
 )
 
-target_sources(coro PRIVATE ${coro-headers})
+set(coro-sources
+    wait_task.cpp
+)
 
-include(CheckCXXCompilerFlag)
+target_sources(coro PRIVATE ${coro-headers} ${coro-sources})
+
+target_link_libraries(coro PUBLIC event_core)
+target_include_directories(coro PUBLIC ..)
 
 set_target_properties(coro
     PROPERTIES
         CXX_STANDARD 20
         LINKER_LANGUAGE CXX
 )
+
+include(CheckCXXCompilerFlag)
 
 if(MSVC)
     include(CheckCXXSourceCompiles)

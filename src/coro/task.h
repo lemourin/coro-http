@@ -76,6 +76,8 @@ class Task<> {
 
   void await_suspend(coroutine_handle<void> handle) { data_->handle = handle; }
 
+  void await_resume() {}
+
   struct CommonData {
     bool ready = false;
     coroutine_handle<void> handle;

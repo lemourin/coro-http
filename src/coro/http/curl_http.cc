@@ -67,7 +67,7 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
       timeval tv = {};
       Check(event_add(&http_operation->headers_ready_, &tv));
     }
-    http_operation->body_ = std::string(ptr, ptr + size * nmemb);
+    http_operation->body_ += std::string(ptr, ptr + size * nmemb);
   } else if (std::holds_alternative<CurlHttpBodyGenerator*>(handle->owner_)) {
     auto http_body_generator = std::get<CurlHttpBodyGenerator*>(handle->owner_);
     timeval tv = {};

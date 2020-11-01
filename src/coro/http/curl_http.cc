@@ -103,6 +103,14 @@ CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
   Check(event_del(&chunk_ready_));
 }
 
+void CurlHttpBodyGenerator::Pause() {
+  Check(curl_easy_pause(handle_.handle_, CURLPAUSE_RECV));
+}
+
+void CurlHttpBodyGenerator::Resume() {
+  Check(curl_easy_pause(handle_.handle_, CURLPAUSE_RECV_CONT));
+}
+
 CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
     : request_(std::move(request)),
       handle_(http, request_, this),

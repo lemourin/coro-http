@@ -73,6 +73,9 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator {
   friend class CurlHandle;
   friend class CurlHttp;
 
+  void Pause() override;
+  void Resume() override;
+
   CurlHandle handle_;
   event chunk_ready_;
   std::string data_;

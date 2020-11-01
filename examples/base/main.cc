@@ -11,7 +11,7 @@ auto MakePointer(T *ptr, Deleter &&deleter) {
 coro::Task<int> CoMain(coro::http::Http &http) noexcept {
   try {
     coro::http::Response response =
-        co_await *http.Fetch("https://www.google.com");
+        co_await *http.Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv");
 
     std::cerr << "HTTP: " << response.status << "\n";
     for (const auto &[header_name, header_value] : response.headers) {

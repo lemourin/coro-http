@@ -3,12 +3,13 @@
 
 #include <coro/task.h>
 
-#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_map>
 
 namespace coro::http {
+
+const int MAX_BUFFER_SIZE = 1u << 20u;
 
 class HttpBodyGenerator {
  public:
@@ -29,11 +30,15 @@ class HttpBodyGenerator {
       } else {
         offset_++;
       }
-      buffer_.clear();
+      http_body_generator_->data_.clear();
+      if (http_body_generator_->paused_) {
+        http_body_generator_->paused_ = false;
+        http_body_generator_->Resume();
+      }
       return *this;
     }
 
-    const std::string& operator*() const { return buffer_; }
+    const std::string& operator*() const { return http_body_generator_->data_; }
 
     [[nodiscard]] bool await_ready() const {
       return !http_body_generator_->data_.empty() ||
@@ -44,27 +49,23 @@ class HttpBodyGenerator {
       http_body_generator_->handle_ = handle;
     }
 
-    Iterator& await_resume() {
-      if (http_body_generator_->status_ != -1) {
-        return *this;
-      }
-      buffer_ = std::move(http_body_generator_->data_.front());
-      http_body_generator_->data_.pop_front();
-      return *this;
-    }
+    Iterator& await_resume() { return *this; }
 
    private:
     HttpBodyGenerator* http_body_generator_;
     int64_t offset_;
-    std::string buffer_;
   };
 
   Iterator begin() { return Iterator(this, 0); }
 
   Iterator end() { return Iterator(this, INT64_MAX); }
 
-  void ReceivedData(std::string data) {
-    data_.emplace_back(std::move(data));
+  void ReceivedData(std::string_view data) {
+    data_ += data;
+    if (data_.size() >= MAX_BUFFER_SIZE && !paused_) {
+      paused_ = true;
+      Pause();
+    }
     if (handle_) {
       handle_.resume();
     }
@@ -77,9 +78,13 @@ class HttpBodyGenerator {
     }
   }
 
+  virtual void Pause() = 0;
+  virtual void Resume() = 0;
+
   coroutine_handle<void> handle_;
-  std::deque<std::string> data_;
+  std::string data_;
   int status_ = -1;
+  bool paused_ = false;
 };
 
 struct Request {

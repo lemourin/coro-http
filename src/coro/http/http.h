@@ -81,6 +81,7 @@ class HttpBodyGenerator {
   virtual void Pause() = 0;
   virtual void Resume() = 0;
 
+ private:
   coroutine_handle<void> handle_;
   std::string data_;
   int status_ = -1;

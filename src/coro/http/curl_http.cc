@@ -102,7 +102,12 @@ CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle&& handle)
       [](evutil_socket_t, short, void* handle) {
         auto curl_http_body_generator =
             reinterpret_cast<CurlHttpBodyGenerator*>(handle);
-        curl_http_body_generator->Close(curl_http_body_generator->status_);
+        if (curl_http_body_generator->exception_ptr_) {
+          curl_http_body_generator->Close(
+              curl_http_body_generator->exception_ptr_);
+        } else {
+          curl_http_body_generator->Close(curl_http_body_generator->status_);
+        }
       },
       this));
 }
@@ -113,13 +118,13 @@ CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
 }
 
 void CurlHttpBodyGenerator::Pause() {
-  if (status_ == -1) {
+  if (status_ == -1 && !exception_ptr_) {
     Check(curl_easy_pause(handle_.handle_, CURLPAUSE_RECV));
   }
 }
 
 void CurlHttpBodyGenerator::Resume() {
-  if (status_ == -1) {
+  if (status_ == -1 && !exception_ptr_) {
     Check(curl_easy_pause(handle_.handle_, CURLPAUSE_RECV_CONT));
   }
 }
@@ -211,10 +216,13 @@ void CurlHttp::ProcessEvents(CURLM* multi_handle) {
                      curl_handle->owner_)) {
         auto curl_http_body_generator =
             std::get<CurlHttpBodyGenerator*>(curl_handle->owner_);
-        long response_code;
-        Check(
-            curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &response_code));
-        curl_http_body_generator->status_ = static_cast<int>(response_code);
+        curl_http_body_generator->status_ =
+            static_cast<int>(message->data.result);
+        if (message->data.result != CURLE_OK) {
+          curl_http_body_generator->exception_ptr_ = std::make_exception_ptr(
+              HttpException(message->data.result,
+                            curl_easy_strerror(message->data.result)));
+        }
         timeval tv = {};
         event_add(&curl_http_body_generator->body_ready_, &tv);
       }

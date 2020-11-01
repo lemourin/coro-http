@@ -37,6 +37,7 @@ class HttpBodyGenerator {
 
   void ReceivedData(std::string_view data);
   void Close(int status);
+  void Close(std::exception_ptr);
 
   virtual void Pause() = 0;
   virtual void Resume() = 0;
@@ -45,6 +46,7 @@ class HttpBodyGenerator {
   coroutine_handle<void> handle_;
   std::string data_;
   int status_ = -1;
+  std::exception_ptr exception_ptr_;
   bool paused_ = false;
 };
 

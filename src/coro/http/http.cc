@@ -37,7 +37,8 @@ const std::string& HttpBodyGenerator::Iterator::operator*() const {
 
 bool HttpBodyGenerator::Iterator::await_ready() const {
   return !http_body_generator_->data_.empty() ||
-         http_body_generator_->status_ != -1;
+         http_body_generator_->status_ != -1 ||
+         http_body_generator_->exception_ptr_;
 }
 
 void HttpBodyGenerator::Iterator::await_suspend(coroutine_handle<void> handle) {
@@ -45,6 +46,9 @@ void HttpBodyGenerator::Iterator::await_suspend(coroutine_handle<void> handle) {
 }
 
 HttpBodyGenerator::Iterator& HttpBodyGenerator::Iterator::await_resume() {
+  if (http_body_generator_->exception_ptr_) {
+    std::rethrow_exception(http_body_generator_->exception_ptr_);
+  }
   return *this;
 }
 
@@ -71,6 +75,15 @@ void HttpBodyGenerator::ReceivedData(std::string_view data) {
 
 void HttpBodyGenerator::Close(int status) {
   status_ = status;
+  if (handle_) {
+    auto handle = handle_;
+    handle_ = nullptr;
+    handle.resume();
+  }
+}
+
+void HttpBodyGenerator::Close(std::exception_ptr exception) {
+  exception_ptr_ = exception;
   if (handle_) {
     auto handle = handle_;
     handle_ = nullptr;

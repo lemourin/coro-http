@@ -80,6 +80,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator {
   event chunk_ready_;
   event body_ready_;
   int status_ = -1;
+  std::exception_ptr exception_ptr_;
   std::string data_;
 };
 

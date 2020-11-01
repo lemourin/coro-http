@@ -17,70 +17,26 @@ class HttpBodyGenerator {
 
   class Iterator {
    public:
-    Iterator(HttpBodyGenerator* http_body_generator, int64_t offset)
-        : http_body_generator_(http_body_generator), offset_(offset) {}
+    Iterator(HttpBodyGenerator* http_body_generator, int64_t offset);
 
-    bool operator!=(const Iterator& iterator) const {
-      return offset_ != iterator.offset_;
-    }
+    bool operator!=(const Iterator& iterator) const;
+    Iterator& operator++();
+    const std::string& operator*() const;
 
-    Iterator& operator++() {
-      if (http_body_generator_->status_ != -1) {
-        offset_ = INT64_MAX;
-      } else {
-        offset_++;
-      }
-      http_body_generator_->data_.clear();
-      if (http_body_generator_->paused_) {
-        http_body_generator_->paused_ = false;
-        http_body_generator_->Resume();
-      }
-      return *this;
-    }
-
-    const std::string& operator*() const { return http_body_generator_->data_; }
-
-    [[nodiscard]] bool await_ready() const {
-      return !http_body_generator_->data_.empty() ||
-             http_body_generator_->status_ != -1;
-    }
-
-    void await_suspend(coroutine_handle<void> handle) {
-      http_body_generator_->handle_ = handle;
-    }
-
-    Iterator& await_resume() { return *this; }
+    [[nodiscard]] bool await_ready() const;
+    void await_suspend(coroutine_handle<void> handle);
+    Iterator& await_resume();
 
    private:
     HttpBodyGenerator* http_body_generator_;
     int64_t offset_;
   };
 
-  Iterator begin() { return Iterator(this, 0); }
+  Iterator begin();
+  Iterator end();
 
-  Iterator end() { return Iterator(this, INT64_MAX); }
-
-  void ReceivedData(std::string_view data) {
-    data_ += data;
-    if (data_.size() >= MAX_BUFFER_SIZE && !paused_) {
-      paused_ = true;
-      Pause();
-    }
-    if (handle_) {
-      auto handle = handle_;
-      handle_ = nullptr;
-      handle.resume();
-    }
-  }
-
-  void Close(int status) {
-    status_ = status;
-    if (handle_) {
-      auto handle = handle_;
-      handle_ = nullptr;
-      handle.resume();
-    }
-  }
+  void ReceivedData(std::string_view data);
+  void Close(int status);
 
   virtual void Pause() = 0;
   virtual void Resume() = 0;

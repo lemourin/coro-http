@@ -1,33 +1,16 @@
 #include "curl_http.h"
 
-#include <iostream>
 #include <sstream>
 
 namespace coro::http {
 
 namespace {
 
+using internal::Check;
+
 struct SocketData {
   event socket_event = {};
 };
-
-void Check(CURLMcode code) {
-  if (code != CURLM_OK) {
-    throw HttpException(code, curl_multi_strerror(code));
-  }
-}
-
-void Check(CURLcode code) {
-  if (code != CURLE_OK) {
-    throw HttpException(code, curl_easy_strerror(code));
-  }
-}
-
-void Check(int code) {
-  if (code != 0) {
-    throw HttpException(code, "Unknown error.");
-  }
-}
 
 std::string ToLowerCase(std::string str) {
   for (char& c : str) {
@@ -60,7 +43,7 @@ size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
   std::string_view view(buffer, size * nitems);
   auto index = view.find_first_of(":");
   if (index != std::string::npos) {
-    http_operation->response_.headers.insert(std::make_pair(
+    http_operation->headers_.insert(std::make_pair(
         ToLowerCase(std::string(view.begin(), view.begin() + index)),
         TrimWhitespace(std::string(view.begin() + index + 1, view.end()))));
   } else if (view.starts_with("HTTP")) {
@@ -68,8 +51,8 @@ size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
     std::string http_version;
     int code;
     stream >> http_version >> code;
-    http_operation->response_.headers.clear();
-    http_operation->response_.status = code;
+    http_operation->headers_.clear();
+    http_operation->status_ = code;
   }
   return size * nitems;
 }
@@ -84,32 +67,14 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
       timeval tv = {};
       Check(event_add(&http_operation->headers_ready_, &tv));
     }
-    http_operation->response_.body += std::string(ptr, ptr + size * nmemb);
+    http_operation->body_ = std::string(ptr, ptr + size * nmemb);
+  } else if (std::holds_alternative<CurlHttpBodyGenerator*>(handle->owner_)) {
+    auto http_body_generator = std::get<CurlHttpBodyGenerator*>(handle->owner_);
+    timeval tv = {};
+    http_body_generator->data_ += std::string(ptr, ptr + size * nmemb);
+    Check(event_add(&http_body_generator->chunk_ready_, &tv));
   }
   return size * nmemb;
-}
-
-CurlHandle::CurlHandle(CurlHttp* http, CurlHttpOperation* http_operation,
-                       const Request& request)
-    : http_(http),
-      handle_(curl_easy_init()),
-      header_list_(),
-      owner_(http_operation) {
-  Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
-  Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
-  Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
-  Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_SSL_VERIFYPEER, 0L));
-  for (const auto& [header_name, header_value] : request.headers) {
-    std::string header_line = header_name;
-    header_line += ": ";
-    header_line += header_value;
-    header_list_ = curl_slist_append(header_list_, header_line.c_str());
-  }
-  Check(curl_easy_setopt(handle_, CURLOPT_HTTPHEADER, header_list_));
-  Check(curl_multi_add_handle(http->curl_handle_, handle_));
 }
 
 CurlHandle::~CurlHandle() {
@@ -120,9 +85,27 @@ CurlHandle::~CurlHandle() {
   }
 }
 
+CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle&& handle)
+    : handle_(std::move(handle), this) {
+  Check(event_assign(
+      &chunk_ready_, handle_.http_->event_loop_, -1, 0,
+      [](evutil_socket_t, short, void* handle) {
+        auto curl_http_body_generator =
+            reinterpret_cast<CurlHttpBodyGenerator*>(handle);
+        std::string data = std::move(curl_http_body_generator->data_);
+        curl_http_body_generator->data_.clear();
+        curl_http_body_generator->ReceivedData(std::move(data));
+      },
+      this));
+}
+
+CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
+  Check(event_del(&chunk_ready_));
+}
+
 CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
     : request_(std::move(request)),
-      handle_(http, this, request_),
+      handle_(http, request_, this),
       headers_ready_(),
       headers_ready_event_posted_() {
   Check(event_assign(
@@ -134,7 +117,7 @@ CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
       this));
 }
 
-CurlHttpOperation::~CurlHttpOperation() { event_del(&headers_ready_); }
+CurlHttpOperation::~CurlHttpOperation() { Check(event_del(&headers_ready_)); }
 
 void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
 
@@ -149,7 +132,12 @@ Response CurlHttpOperation::await_resume() {
   if (exception_ptr_) {
     std::rethrow_exception(exception_ptr_);
   }
-  return std::move(response_);
+  Response response{
+      .status = status_,
+      .headers = std::move(headers_),
+      .body = std::make_unique<CurlHttpBodyGenerator>(std::move(handle_))};
+  response.body->ReceivedData(std::move(body_));
+  return response;
 }
 
 CurlHttp::CurlHttp(event_base* event_loop)
@@ -192,12 +180,20 @@ void CurlHttp::ProcessEvents(CURLM* multi_handle) {
           long response_code;
           Check(curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE,
                                   &response_code));
-          operation->response_.status = static_cast<int>(response_code);
+          operation->status_ = static_cast<int>(response_code);
         } else {
           operation->exception_ptr_ = std::make_exception_ptr(HttpException(
               message->data.result, curl_easy_strerror(message->data.result)));
         }
         operation->resume();
+      } else if (std::holds_alternative<CurlHttpBodyGenerator*>(
+                     curl_handle->owner_)) {
+        auto curl_http_body_generator =
+            std::get<CurlHttpBodyGenerator*>(curl_handle->owner_);
+        long response_code;
+        Check(
+            curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &response_code));
+        curl_http_body_generator->Close(static_cast<int>(response_code));
       }
     }
   } while (message != nullptr);
@@ -250,9 +246,8 @@ int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   return 0;
 }
 
-HttpOperation CurlHttp::Fetch(Request&& request) {
-  return HttpOperation(
-      std::make_unique<CurlHttpOperation>(this, std::move(request)));
+std::unique_ptr<HttpOperation> CurlHttp::Fetch(Request&& request) {
+  return std::make_unique<CurlHttpOperation>(this, std::move(request));
 }
 
 }  // namespace coro::http

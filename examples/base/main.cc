@@ -11,12 +11,18 @@ auto MakePointer(T *ptr, Deleter &&deleter) {
 coro::Task<int> CoMain(coro::http::Http &http) noexcept {
   try {
     coro::http::Response response =
-        co_await http.Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv");
+        co_await *http.Fetch("https://www.google.com");
 
     std::cerr << "HTTP: " << response.status << "\n";
     for (const auto &[header_name, header_value] : response.headers) {
       std::cerr << header_name << ": " << header_value << "\n";
     }
+
+    for co_await(const std::string& bytes : *response.body) {
+      std::cerr << "bytes:" << bytes.size() << "\n";
+    }
+
+    std::cerr << "DONE\n";
 
     co_return 0;
   } catch (const coro::http::HttpException &exception) {

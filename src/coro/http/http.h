@@ -9,7 +9,7 @@
 
 namespace coro::http {
 
-const int MAX_BUFFER_SIZE = 1u << 20u;
+const int MAX_BUFFER_SIZE = 1u << 16u;
 
 class HttpBodyGenerator {
  public:
@@ -67,14 +67,18 @@ class HttpBodyGenerator {
       Pause();
     }
     if (handle_) {
-      handle_.resume();
+      auto handle = handle_;
+      handle_ = nullptr;
+      handle.resume();
     }
   }
 
   void Close(int status) {
     status_ = status;
     if (handle_) {
-      handle_.resume();
+      auto handle = handle_;
+      handle_ = nullptr;
+      handle.resume();
     }
   }
 

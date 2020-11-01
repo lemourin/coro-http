@@ -5,11 +5,34 @@
 #include <event2/event.h>
 #include <event2/event_struct.h>
 
+#include <variant>
+
 #include "http.h"
 
 namespace coro::http {
 
 class CurlHttp;
+class CurlHttpOperation;
+
+class CurlHandle {
+ public:
+  CurlHandle(CurlHttp*, CurlHttpOperation*, const Request&);
+  ~CurlHandle();
+
+ private:
+  friend class CurlHttp;
+  friend class CurlHttpOperation;
+
+  static size_t WriteCallback(char* ptr, size_t size, size_t nmemb,
+                              void* userdata);
+  static size_t HeaderCallback(char* buffer, size_t size, size_t nitems,
+                               void* userdata);
+
+  CurlHttp* http_;
+  CURL* handle_;
+  curl_slist* header_list_;
+  std::variant<std::monostate, CurlHttpOperation*> owner_;
+};
 
 class CurlHttpOperation : public HttpOperationImpl {
  public:
@@ -20,22 +43,16 @@ class CurlHttpOperation : public HttpOperationImpl {
 
  private:
   friend class CurlHttp;
+  friend class CurlHandle;
 
   bool await_ready() override;
   void await_suspend(coroutine_handle<void> awaiting_coroutine) override;
   Response await_resume() override;
 
-  static size_t WriteCallback(char* ptr, size_t size, size_t nmemb,
-                              void* userdata);
-  static size_t HeaderCallback(char* buffer, size_t size, size_t nitems,
-                               void* userdata);
-
   Request request_;
   Response response_;
   coroutine_handle<void> awaiting_coroutine_;
-  CurlHttp* http_;
-  CURL* handle_;
-  curl_slist* header_list_;
+  CurlHandle handle_;
   std::exception_ptr exception_ptr_;
   event headers_ready_;
   bool headers_ready_event_posted_;
@@ -50,6 +67,7 @@ class CurlHttp : public Http {
 
  private:
   friend class CurlHttpOperation;
+  friend class CurlHandle;
 
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,
                             void* userp, void* socketp);

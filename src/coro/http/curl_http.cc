@@ -166,11 +166,12 @@ Response CurlHttpOperation::await_resume() {
   if (exception_ptr_) {
     std::rethrow_exception(exception_ptr_);
   }
-  Response response{
-      .status = status_,
-      .headers = std::move(headers_),
-      .body = std::make_unique<CurlHttpBodyGenerator>(std::move(handle_))};
-  response.body->ReceivedData(std::move(body_));
+  auto http_body_generator =
+      std::make_unique<CurlHttpBodyGenerator>(std::move(handle_));
+  http_body_generator->ReceivedData(std::move(body_));
+  Response response{.status = status_,
+                    .headers = std::move(headers_),
+                    .body = std::move(http_body_generator)};
   return response;
 }
 

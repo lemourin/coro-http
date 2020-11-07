@@ -12,6 +12,12 @@ namespace coro::http {
 
 const int MAX_BUFFER_SIZE = 1u << 16u;
 
+struct Request {
+  std::string url;
+  std::unordered_multimap<std::string, std::string> headers;
+  std::string body;
+};
+
 class HttpBodyGenerator {
  public:
   virtual ~HttpBodyGenerator() = default;
@@ -36,12 +42,13 @@ class HttpBodyGenerator {
   Iterator begin();
   Iterator end();
 
+ protected:
+  virtual void Pause() = 0;
+  virtual void Resume() = 0;
+
   void ReceivedData(std::string_view data);
   void Close(int status);
   void Close(std::exception_ptr);
-
-  virtual void Pause() = 0;
-  virtual void Resume() = 0;
 
  private:
   coroutine_handle<void> handle_;
@@ -49,12 +56,6 @@ class HttpBodyGenerator {
   int status_ = -1;
   std::exception_ptr exception_ptr_;
   bool paused_ = false;
-};
-
-struct Request {
-  std::string url;
-  std::unordered_multimap<std::string, std::string> headers;
-  std::string body;
 };
 
 struct Response {

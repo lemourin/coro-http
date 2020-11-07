@@ -22,7 +22,7 @@ WaitTask::WaitTask(event_base *event_loop, int msec,
 WaitTask::~WaitTask() { event_del(&event_); }
 
 WaitTask Wait(event_base *event_loop, int msec,
-              coro::stop_token &&stop_token) noexcept {
+              coro::stop_token stop_token) noexcept {
   return WaitTask(event_loop, msec, std::move(stop_token));
 }
 

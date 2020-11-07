@@ -119,8 +119,8 @@ class CurlHttp : public Http {
   explicit CurlHttp(event_base* event_loop);
   ~CurlHttp() override;
 
-  std::unique_ptr<HttpOperation> Fetch(Request&& request,
-                                       coro::stop_token&&) override;
+  std::unique_ptr<HttpOperation> Fetch(Request request,
+                                       coro::stop_token) override;
 
  private:
   friend class CurlHttpOperation;

@@ -90,9 +90,9 @@ class Http {
   virtual ~Http() = default;
 
   std::unique_ptr<HttpOperation> Fetch(std::string_view url,
-                                       coro::stop_token&& = coro::stop_token());
+                                       coro::stop_token = coro::stop_token());
   virtual std::unique_ptr<HttpOperation> Fetch(
-      Request&& request, coro::stop_token&& = coro::stop_token()) = 0;
+      Request request, coro::stop_token = coro::stop_token()) = 0;
 };
 
 }  // namespace coro::http

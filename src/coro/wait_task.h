@@ -50,7 +50,7 @@ class WaitTask {
 };
 
 WaitTask Wait(event_base* event_loop, int msec,
-              coro::stop_token&& = coro::stop_token()) noexcept;
+              coro::stop_token = coro::stop_token()) noexcept;
 
 }  // namespace coro
 

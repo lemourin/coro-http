@@ -287,8 +287,8 @@ int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   return 0;
 }
 
-std::unique_ptr<HttpOperation> CurlHttp::Fetch(Request&& request,
-                                               coro::stop_token&& token) {
+std::unique_ptr<HttpOperation> CurlHttp::Fetch(Request request,
+                                               coro::stop_token token) {
   return std::make_unique<CurlHttpOperation>(this, std::move(request),
                                              std::move(token));
 }

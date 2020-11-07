@@ -1,14 +1,17 @@
-add_library(coro OBJECT)
+add_library(coro OBJECT stop_source.cc)
 
 set(coro-headers
     task.h
     wait_task.h
     stop_token.h
     stop_source.h
+    stop_callback.h
 )
 
 set(coro-sources
     wait_task.cpp
+    stop_token.cc
+    stop_source.cc
 )
 
 target_sources(coro PRIVATE ${coro-headers} ${coro-sources})

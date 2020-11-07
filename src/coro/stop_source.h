@@ -3,25 +3,35 @@
 
 #include <coro/stop_token.h>
 
+#include <unordered_set>
+
 namespace coro {
+
+namespace internal {
+
+class base_stop_callback {
+ public:
+  virtual void operator()() = 0;
+};
+
+struct stop_source_state {
+  bool stopped = false;
+  std::unordered_set<base_stop_callback*> stop_callback;
+};
+
+}  // namespace internal
 
 class stop_source {
  public:
-  stop_source(): state_(std::make_shared<std::atomic_bool>(false)) {}
+  stop_source();
 
-  bool request_stop() noexcept {
-    *state_ = true;
-    return true;
-  }
-
-  [[nodiscard]] stop_token get_token() const noexcept {
-    return stop_token{state_};
-  }
+  bool request_stop() noexcept;
+  [[nodiscard]] stop_token get_token() const noexcept;
 
  private:
-  std::shared_ptr<std::atomic_bool> state_;
+  std::shared_ptr<internal::stop_source_state> state_;
 };
 
-}
+}  // namespace coro
 
 #endif  // CORO_HTTP_STOP_SOURCE_H

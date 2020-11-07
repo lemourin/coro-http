@@ -5,24 +5,26 @@
 
 namespace coro {
 
+namespace internal {
+struct stop_source_state;
+}
+
 class stop_token {
  public:
   stop_token() noexcept = default;
 
-  [[nodiscard]] bool stop_requested() const noexcept {
-    return stop_state_ && *stop_state_;
-  }
-  [[nodiscard]] bool stop_possible() const noexcept {
-    return stop_state_ == nullptr;
-  }
+  [[nodiscard]] bool stop_requested() const noexcept;
+  [[nodiscard]] bool stop_possible() const noexcept;
 
  private:
   friend class stop_source;
+  template <typename C>
+  friend class stop_callback;
 
-  explicit stop_token(std::shared_ptr<std::atomic_bool> stop_state) noexcept
-      : stop_state_(std::move(stop_state)) {}
+  explicit stop_token(
+      std::shared_ptr<internal::stop_source_state> stop_state) noexcept;
 
-  std::shared_ptr<std::atomic_bool> stop_state_;
+  std::shared_ptr<internal::stop_source_state> state_;
 };
 
 }  // namespace coro

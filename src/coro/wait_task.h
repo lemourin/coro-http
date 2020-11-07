@@ -28,7 +28,7 @@ class WaitTask {
 
   ~WaitTask();
 
-  bool await_ready() { return false; }
+  bool await_ready() { return interrupted_; }
   void await_suspend(coroutine_handle<void> handle) { handle_ = handle; }
   void await_resume() {
     if (interrupted_) {
@@ -43,7 +43,7 @@ class WaitTask {
   };
 
   coroutine_handle<void> handle_;
-  event event_;
+  event event_ = {};
   coro::stop_token stop_token_;
   bool interrupted_ = false;
   coro::stop_callback<OnCancel> stop_callback_;

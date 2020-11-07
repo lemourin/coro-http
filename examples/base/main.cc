@@ -1,4 +1,5 @@
 #include <coro/http/curl_http.h>
+#include <coro/stop_source.h>
 #include <coro/wait_task.h>
 
 #include <iostream>
@@ -9,10 +10,37 @@ auto MakePointer(T *ptr, Deleter &&deleter) {
   return std::unique_ptr<T, Deleter>(ptr, std::forward<Deleter>(deleter));
 }
 
-coro::Task<int> CoMain(event_base* event_loop, coro::http::Http *http) noexcept {
+class CancelRequest {
+ public:
+  CancelRequest(event_base *event_loop, coro::stop_source request_stop_source) {
+    Init(event_loop, std::move(request_stop_source));
+  }
+
+  ~CancelRequest() { timeout_stop_source_.request_stop(); }
+
+ private:
+  coro::Task<> Init(event_base *event_loop,
+                    coro::stop_source request_stop_source) {
+    try {
+      co_await coro::Wait(event_loop, 3000, timeout_stop_source_.get_token());
+      std::cerr << "REQUESTING STOP\n";
+      request_stop_source.request_stop();
+    } catch (const coro::InterruptedException &) {
+    }
+  };
+
+  coro::stop_source timeout_stop_source_;
+};
+
+coro::Task<int> CoMain(event_base *event_loop,
+                       coro::http::Http *http) noexcept {
   try {
+    coro::stop_source stop_source;
+    CancelRequest cancel_request(event_loop, stop_source);
+
     coro::http::Response response =
-        co_await *http->Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv");
+        co_await * http->Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv",
+                               stop_source.get_token());
 
     std::cerr << "HTTP: " << response.status << "\n";
     for (const auto &[header_name, header_value] : response.headers) {
@@ -20,12 +48,13 @@ coro::Task<int> CoMain(event_base* event_loop, coro::http::Http *http) noexcept 
     }
 
     int size = 0;
-    for co_await(const std::string& bytes : *response.body) {
-      std::cerr << "awaiting...\n";
-      co_await coro::Wait(event_loop, 1000);
-      std::cerr << "bytes:" << bytes.size() << "\n";
-      size += bytes.size();
-    }
+    for
+      co_await(const std::string &bytes : *response.body) {
+        std::cerr << "awaiting...\n";
+        co_await coro::Wait(event_loop, 1000);
+        std::cerr << "bytes:" << bytes.size() << "\n";
+        size += bytes.size();
+      }
 
     std::cerr << "DONE (SIZE=" << size << ")\n";
 

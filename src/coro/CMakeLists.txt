@@ -3,6 +3,8 @@ add_library(coro OBJECT)
 set(coro-headers
     task.h
     wait_task.h
+    stop_token.h
+    stop_source.h
 )
 
 set(coro-sources

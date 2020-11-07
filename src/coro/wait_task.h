@@ -10,6 +10,13 @@ namespace coro {
 class WaitTask {
  public:
   WaitTask(event_base *event_loop, int msec);
+
+  WaitTask(const WaitTask&) = delete;
+  WaitTask(WaitTask&&) = delete;
+
+  WaitTask& operator=(const WaitTask&) = delete;
+  WaitTask& operator=(WaitTask&&) = delete;
+
   ~WaitTask();
 
   bool await_ready() { return false; }

@@ -21,7 +21,7 @@ std::string ToLowerCase(std::string str) {
 
 std::string TrimWhitespace(std::string_view str) {
   int it1 = 0;
-  while (it1 < str.size() && std::isspace(str[it1])) {
+  while (it1 < static_cast<int>(str.size()) && std::isspace(str[it1])) {
     it1++;
   }
   int it2 = static_cast<int>(str.size()) - 1;

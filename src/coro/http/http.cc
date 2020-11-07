@@ -67,27 +67,21 @@ void HttpBodyGenerator::ReceivedData(std::string_view data) {
     Pause();
   }
   if (handle_) {
-    auto handle = handle_;
-    handle_ = nullptr;
-    handle.resume();
+    std::exchange(handle_, nullptr).resume();
   }
 }
 
 void HttpBodyGenerator::Close(int status) {
   status_ = status;
   if (handle_) {
-    auto handle = handle_;
-    handle_ = nullptr;
-    handle.resume();
+    std::exchange(handle_, nullptr).resume();
   }
 }
 
 void HttpBodyGenerator::Close(std::exception_ptr exception) {
   exception_ptr_ = exception;
   if (handle_) {
-    auto handle = handle_;
-    handle_ = nullptr;
-    handle.resume();
+    std::exchange(handle_, nullptr).resume();
   }
 }
 

@@ -9,7 +9,7 @@ set(coro-headers
 )
 
 set(coro-sources
-    wait_task.cpp
+    wait_task.cc
     stop_token.cc
     stop_source.cc
 )

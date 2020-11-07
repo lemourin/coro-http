@@ -77,6 +77,13 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
   return size * nmemb;
 }
 
+int CurlHandle::ProgressCallback(void* clientp, curl_off_t /*dltotal*/,
+                                 curl_off_t /*dlnow*/, curl_off_t /*ultotal*/,
+                                 curl_off_t /*ulnow*/) {
+  auto handle = reinterpret_cast<CurlHandle*>(clientp);
+  return handle->stop_token_.stop_requested() ? -1 : 0;
+}
+
 CurlHandle::~CurlHandle() {
   if (http_) {
     Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
@@ -129,9 +136,10 @@ void CurlHttpBodyGenerator::Resume() {
   }
 }
 
-CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request)
+CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request,
+                                     coro::stop_token&& stop_token)
     : request_(std::move(request)),
-      handle_(http, request_, this),
+      handle_(http, request_, std::move(stop_token), this),
       headers_ready_(),
       headers_ready_event_posted_() {
   Check(event_assign(
@@ -278,8 +286,10 @@ int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   return 0;
 }
 
-std::unique_ptr<HttpOperation> CurlHttp::Fetch(Request&& request) {
-  return std::make_unique<CurlHttpOperation>(this, std::move(request));
+std::unique_ptr<HttpOperation> CurlHttp::Fetch(Request&& request,
+                                               coro::stop_token&& token) {
+  return std::make_unique<CurlHttpOperation>(this, std::move(request),
+                                             std::move(token));
 }
 
 }  // namespace coro::http

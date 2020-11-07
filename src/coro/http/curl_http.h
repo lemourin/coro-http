@@ -40,7 +40,7 @@ inline void Check(int code) {
 class CurlHandle {
  public:
   template <typename Owner>
-  CurlHandle(CurlHttp*, const Request&, Owner*);
+  CurlHandle(CurlHttp*, const Request&, coro::stop_token&&, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
@@ -56,10 +56,14 @@ class CurlHandle {
                               void* userdata);
   static size_t HeaderCallback(char* buffer, size_t size, size_t nitems,
                                void* userdata);
+  static int ProgressCallback(void* clientp, curl_off_t dltotal,
+                              curl_off_t dlnow, curl_off_t ultotal,
+                              curl_off_t ulnow);
 
   CurlHttp* http_;
   CURL* handle_;
   curl_slist* header_list_;
+  coro::stop_token stop_token_;
   std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner_;
 };
 
@@ -86,7 +90,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator {
 
 class CurlHttpOperation : public HttpOperation {
  public:
-  CurlHttpOperation(CurlHttp* http, Request&&);
+  CurlHttpOperation(CurlHttp* http, Request&&, coro::stop_token&&);
   ~CurlHttpOperation() override;
 
   void resume();
@@ -115,7 +119,8 @@ class CurlHttp : public Http {
   explicit CurlHttp(event_base* event_loop);
   ~CurlHttp() override;
 
-  std::unique_ptr<HttpOperation> Fetch(Request&& request) override;
+  std::unique_ptr<HttpOperation> Fetch(Request&& request,
+                                       coro::stop_token&&) override;
 
  private:
   friend class CurlHttpOperation;
@@ -134,8 +139,13 @@ class CurlHttp : public Http {
 };
 
 template <typename Owner>
-CurlHandle::CurlHandle(CurlHttp* http, const Request& request, Owner* owner)
-    : http_(http), handle_(curl_easy_init()), header_list_(), owner_(owner) {
+CurlHandle::CurlHandle(CurlHttp* http, const Request& request,
+                       coro::stop_token&& stop_token, Owner* owner)
+    : http_(http),
+      handle_(curl_easy_init()),
+      header_list_(),
+      stop_token_(std::move(stop_token)),
+      owner_(owner) {
   using internal::Check;
 
   Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
@@ -144,6 +154,9 @@ CurlHandle::CurlHandle(CurlHttp* http, const Request& request, Owner* owner)
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFOFUNCTION, ProgressCallback));
+  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_NOPROGRESS, 0L));
   Check(curl_easy_setopt(handle_, CURLOPT_SSL_VERIFYPEER, 0L));
   for (const auto& [header_name, header_value] : request.headers) {
     std::string header_line = header_name;
@@ -160,6 +173,7 @@ CurlHandle::CurlHandle(CurlHandle&& handle, NewOwner* owner)
     : http_(handle.http_),
       handle_(handle.handle_),
       header_list_(handle.header_list_),
+      stop_token_(std::move(handle.stop_token_)),
       owner_(owner) {
   using internal::Check;
 
@@ -168,6 +182,7 @@ CurlHandle::CurlHandle(CurlHandle&& handle, NewOwner* owner)
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
 }
 
 }  // namespace coro::http

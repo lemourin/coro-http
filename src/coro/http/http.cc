@@ -91,8 +91,9 @@ void HttpBodyGenerator::Close(std::exception_ptr exception) {
   }
 }
 
-std::unique_ptr<HttpOperation> Http::Fetch(std::string_view url) {
-  return Fetch(Request{.url = std::string(url)});
+std::unique_ptr<HttpOperation> Http::Fetch(std::string_view url,
+                                           coro::stop_token&& stop_token) {
+  return Fetch(Request{.url = std::string(url)}, std::move(stop_token));
 }
 
 }  // namespace coro::http

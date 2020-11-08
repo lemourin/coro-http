@@ -4,6 +4,7 @@ add_library(coro OBJECT)
 
 set(coro-headers
     task.h
+    generator.h
     wait_task.h
 )
 

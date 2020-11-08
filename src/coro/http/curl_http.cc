@@ -137,7 +137,7 @@ void CurlHttpBodyGenerator::Resume() {
 }
 
 CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request,
-                                     coro::stop_token&& stop_token)
+                                     stdx::stop_token&& stop_token)
     : request_(std::move(request)),
       handle_(http, request_, std::move(stop_token), this),
       headers_ready_(),
@@ -288,7 +288,7 @@ int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
 }
 
 std::unique_ptr<HttpOperation> CurlHttp::Fetch(Request request,
-                                               coro::stop_token token) {
+                                               stdx::stop_token token) {
   return std::make_unique<CurlHttpOperation>(this, std::move(request),
                                              std::move(token));
 }

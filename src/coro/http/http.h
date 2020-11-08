@@ -1,7 +1,7 @@
 #ifndef CORO_HTTP_HTTP_H
 #define CORO_HTTP_HTTP_H
 
-#include <coro/stop_token.h>
+#include <coro/stdx/stop_token.h>
 #include <coro/task.h>
 
 #include <memory>
@@ -90,9 +90,9 @@ class Http {
   virtual ~Http() = default;
 
   std::unique_ptr<HttpOperation> Fetch(std::string_view url,
-                                       coro::stop_token = coro::stop_token());
+                                       stdx::stop_token = stdx::stop_token());
   virtual std::unique_ptr<HttpOperation> Fetch(
-      Request request, coro::stop_token = coro::stop_token()) = 0;
+      Request request, stdx::stop_token = stdx::stop_token()) = 0;
 };
 
 }  // namespace coro::http

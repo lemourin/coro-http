@@ -3,7 +3,7 @@
 namespace coro {
 
 WaitTask::WaitTask(event_base *event_loop, int msec,
-                   coro::stop_token &&stop_token)
+                   stdx::stop_token &&stop_token)
     : stop_token_(std::move(stop_token)),
       stop_callback_(stop_token_, OnCancel{this}) {
   if (!interrupted_) {
@@ -28,7 +28,7 @@ WaitTask::~WaitTask() {
 }
 
 WaitTask Wait(event_base *event_loop, int msec,
-              coro::stop_token stop_token) noexcept {
+              stdx::stop_token stop_token) noexcept {
   return WaitTask(event_loop, msec, std::move(stop_token));
 }
 

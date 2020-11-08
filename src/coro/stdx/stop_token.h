@@ -3,7 +3,7 @@
 
 #include <memory>
 
-namespace coro {
+namespace stdx {
 
 namespace internal {
 struct stop_source_state;

@@ -1,22 +1,19 @@
-add_library(coro OBJECT stop_source.cc)
+add_subdirectory(stdx)
+
+add_library(coro OBJECT)
 
 set(coro-headers
     task.h
     wait_task.h
-    stop_token.h
-    stop_source.h
-    stop_callback.h
 )
 
 set(coro-sources
     wait_task.cc
-    stop_token.cc
-    stop_source.cc
 )
 
 target_sources(coro PRIVATE ${coro-headers} ${coro-sources})
 
-target_link_libraries(coro PUBLIC event_core)
+target_link_libraries(coro PUBLIC event_core stdx)
 target_include_directories(coro PUBLIC ..)
 
 set_target_properties(coro

@@ -2,7 +2,7 @@
 
 #include "stop_source.h"
 
-namespace coro {
+namespace stdx {
 
 bool stop_token::stop_requested() const noexcept {
   return state_ && state_->stopped;

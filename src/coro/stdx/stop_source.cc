@@ -1,6 +1,6 @@
 #include "stop_source.h"
 
-namespace coro {
+namespace stdx {
 
 stop_source::stop_source()
     : state_(std::make_shared<internal::stop_source_state>()) {}

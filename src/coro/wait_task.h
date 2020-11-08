@@ -1,8 +1,8 @@
 #ifndef CORO_HTTP_WAIT_TASK_H
 #define CORO_HTTP_WAIT_TASK_H
 
-#include <coro/stop_callback.h>
-#include <coro/stop_token.h>
+#include <coro/stdx/stop_callback.h>
+#include <coro/stdx/stop_token.h>
 #include <coro/task.h>
 #include <event2/event.h>
 #include <event2/event_struct.h>
@@ -18,7 +18,7 @@ class InterruptedException : public std::exception {
 
 class WaitTask {
  public:
-  WaitTask(event_base* event_loop, int msec, coro::stop_token&&);
+  WaitTask(event_base* event_loop, int msec, stdx::stop_token&&);
 
   WaitTask(const WaitTask&) = delete;
   WaitTask(WaitTask&&) = delete;
@@ -44,13 +44,13 @@ class WaitTask {
 
   coroutine_handle<void> handle_;
   event event_ = {};
-  coro::stop_token stop_token_;
+  stdx::stop_token stop_token_;
   bool interrupted_ = false;
-  coro::stop_callback<OnCancel> stop_callback_;
+  stdx::stop_callback<OnCancel> stop_callback_;
 };
 
 WaitTask Wait(event_base* event_loop, int msec,
-              coro::stop_token = coro::stop_token()) noexcept;
+              stdx::stop_token = stdx::stop_token()) noexcept;
 
 }  // namespace coro
 

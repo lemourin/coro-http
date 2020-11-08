@@ -1,11 +1,11 @@
 #ifndef CORO_HTTP_STOP_SOURCE_H
 #define CORO_HTTP_STOP_SOURCE_H
 
-#include <coro/stop_token.h>
+#include "stop_token.h"
 
 #include <unordered_set>
 
-namespace coro {
+namespace stdx {
 
 namespace internal {
 

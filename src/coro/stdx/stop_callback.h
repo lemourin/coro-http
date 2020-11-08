@@ -1,9 +1,9 @@
 #ifndef CORO_HTTP_STOP_CALLBACK_H
 #define CORO_HTTP_STOP_CALLBACK_H
 
-#include <coro/stop_source.h>
+#include "stop_source.h"
 
-namespace coro {
+namespace stdx {
 
 template <typename C>
 class stop_callback : private internal::base_stop_callback {
@@ -23,7 +23,7 @@ class stop_callback : private internal::base_stop_callback {
 
   template <typename Callable>
   stop_callback(const stop_token& stop_token, Callable&& callable)
-      : stop_callback(coro::stop_token{stop_token},
+      : stop_callback(stdx::stop_token{stop_token},
                       std::forward<Callable>(callable)) {}
 
   ~stop_callback() {

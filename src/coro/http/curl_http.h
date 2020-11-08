@@ -40,7 +40,7 @@ inline void Check(int code) {
 class CurlHandle {
  public:
   template <typename Owner>
-  CurlHandle(CurlHttp*, const Request&, coro::stop_token&&, Owner*);
+  CurlHandle(CurlHttp*, const Request&, stdx::stop_token&&, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
@@ -63,7 +63,7 @@ class CurlHandle {
   CurlHttp* http_;
   CURL* handle_;
   curl_slist* header_list_;
-  coro::stop_token stop_token_;
+  stdx::stop_token stop_token_;
   std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner_;
 };
 
@@ -90,7 +90,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator {
 
 class CurlHttpOperation : public HttpOperation {
  public:
-  CurlHttpOperation(CurlHttp* http, Request&&, coro::stop_token&&);
+  CurlHttpOperation(CurlHttp* http, Request&&, stdx::stop_token&&);
   ~CurlHttpOperation() override;
 
   void resume();
@@ -120,7 +120,7 @@ class CurlHttp : public Http {
   ~CurlHttp() override;
 
   std::unique_ptr<HttpOperation> Fetch(Request request,
-                                       coro::stop_token) override;
+                                       stdx::stop_token) override;
 
  private:
   friend class CurlHttpOperation;
@@ -140,7 +140,7 @@ class CurlHttp : public Http {
 
 template <typename Owner>
 CurlHandle::CurlHandle(CurlHttp* http, const Request& request,
-                       coro::stop_token&& stop_token, Owner* owner)
+                       stdx::stop_token&& stop_token, Owner* owner)
     : http_(http),
       handle_(curl_easy_init()),
       header_list_(),

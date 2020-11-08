@@ -1,6 +1,6 @@
 #include "stop_source.h"
 
-namespace stdx {
+namespace coro::stdx {
 
 stop_source::stop_source()
     : state_(std::make_shared<internal::stop_source_state>()) {}
@@ -21,4 +21,4 @@ stop_token stop_source::get_token() const noexcept {
   return stop_token{state_};
 }
 
-}  // namespace coro
+}  // namespace coro::stdx

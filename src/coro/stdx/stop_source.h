@@ -1,11 +1,11 @@
 #ifndef CORO_HTTP_STOP_SOURCE_H
 #define CORO_HTTP_STOP_SOURCE_H
 
-#include "stop_token.h"
-
 #include <unordered_set>
 
-namespace stdx {
+#include "stop_token.h"
+
+namespace coro::stdx {
 
 namespace internal {
 
@@ -32,6 +32,6 @@ class stop_source {
   std::shared_ptr<internal::stop_source_state> state_;
 };
 
-}  // namespace coro
+}  // namespace coro::stdx
 
 #endif  // CORO_HTTP_STOP_SOURCE_H

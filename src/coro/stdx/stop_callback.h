@@ -3,7 +3,7 @@
 
 #include "stop_source.h"
 
-namespace stdx {
+namespace coro::stdx {
 
 template <typename C>
 class stop_callback : private internal::base_stop_callback {
@@ -48,9 +48,9 @@ class stop_callback : private internal::base_stop_callback {
   C callable_;
 };
 
-//template <typename C>
-//stop_callback(stop_token, C) -> stop_callback<C>;
+template <typename C>
+stop_callback(stop_token, C) -> stop_callback<C>;
 
-}  // namespace stdx
+}  // namespace coro::stdx
 
 #endif  // CORO_HTTP_STOP_CALLBACK_H

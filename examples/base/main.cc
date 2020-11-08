@@ -12,7 +12,8 @@ auto MakePointer(T *ptr, Deleter &&deleter) {
 
 class CancelRequest {
  public:
-  CancelRequest(event_base *event_loop, stdx::stop_source request_stop_source) {
+  CancelRequest(event_base *event_loop,
+                coro::stdx::stop_source request_stop_source) {
     Init(event_loop, std::move(request_stop_source));
   }
 
@@ -20,7 +21,7 @@ class CancelRequest {
 
  private:
   coro::Task<> Init(event_base *event_loop,
-                    stdx::stop_source request_stop_source) {
+                    coro::stdx::stop_source request_stop_source) {
     try {
       co_await coro::Wait(event_loop, 3000, timeout_stop_source_.get_token());
       std::cerr << "REQUESTING STOP\n";
@@ -29,13 +30,13 @@ class CancelRequest {
     }
   };
 
-  stdx::stop_source timeout_stop_source_;
+  coro::stdx::stop_source timeout_stop_source_;
 };
 
 coro::Task<int> CoMain(event_base *event_loop,
                        coro::http::Http *http) noexcept {
   try {
-    stdx::stop_source stop_source;
+    coro::stdx::stop_source stop_source;
     CancelRequest cancel_request(event_loop, stop_source);
 
     coro::http::Response response =

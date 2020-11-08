@@ -2,7 +2,7 @@
 
 #include "stop_source.h"
 
-namespace stdx {
+namespace coro::stdx {
 
 bool stop_token::stop_requested() const noexcept {
   return state_ && state_->stopped;
@@ -14,4 +14,4 @@ stop_token::stop_token(
     std::shared_ptr<internal::stop_source_state> state) noexcept
     : state_(std::move(state)) {}
 
-}  // namespace coro
+}  // namespace coro::stdx

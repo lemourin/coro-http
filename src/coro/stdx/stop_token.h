@@ -3,7 +3,7 @@
 
 #include <memory>
 
-namespace stdx {
+namespace coro::stdx {
 
 namespace internal {
 struct stop_source_state;
@@ -27,6 +27,6 @@ class stop_token {
   std::shared_ptr<internal::stop_source_state> state_;
 };
 
-}  // namespace stdx
+}  // namespace coro::stdx
 
 #endif  // CORO_HTTP_STOP_TOKEN_H

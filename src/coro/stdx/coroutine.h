@@ -15,11 +15,11 @@ namespace std_ns = std::experimental;
 #error "Coroutines unsupported."
 #endif
 
-namespace stdx {
+namespace coro::stdx {
 template <typename T>
 using coroutine_handle = coro::std_ns::coroutine_handle<T>;
 using suspend_never = coro::std_ns::suspend_never;
 using suspend_always = coro::std_ns::suspend_always;
-}  // namespace stdx
+}  // namespace coro::stdx
 
 #endif  // CORO_HTTP_COROUTINE_H

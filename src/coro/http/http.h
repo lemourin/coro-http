@@ -2,7 +2,7 @@
 #define CORO_HTTP_HTTP_H
 
 #include <coro/stdx/stop_token.h>
-#include <coro/task.h>
+#include <coro/stdx/coroutine.h>
 
 #include <memory>
 #include <string>

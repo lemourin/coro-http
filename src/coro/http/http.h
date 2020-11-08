@@ -31,7 +31,7 @@ class HttpBodyGenerator {
     const std::string& operator*() const;
 
     [[nodiscard]] bool await_ready() const;
-    void await_suspend(coroutine_handle<void> handle);
+    void await_suspend(stdx::coroutine_handle<void> handle);
     Iterator& await_resume();
 
    private:
@@ -51,7 +51,7 @@ class HttpBodyGenerator {
   void Close(std::exception_ptr);
 
  private:
-  coroutine_handle<void> handle_;
+  stdx::coroutine_handle<void> handle_;
   std::string data_;
   int status_ = -1;
   std::exception_ptr exception_ptr_;
@@ -81,7 +81,8 @@ class HttpOperation {
   virtual ~HttpOperation() = default;
 
   virtual bool await_ready() = 0;
-  virtual void await_suspend(coroutine_handle<void> awaiting_coroutine) = 0;
+  virtual void await_suspend(
+      stdx::coroutine_handle<void> awaiting_coroutine) = 0;
   virtual Response await_resume() = 0;
 };
 

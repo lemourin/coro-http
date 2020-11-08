@@ -29,7 +29,7 @@ class WaitTask {
   ~WaitTask();
 
   bool await_ready() { return interrupted_; }
-  void await_suspend(coroutine_handle<void> handle) { handle_ = handle; }
+  void await_suspend(stdx::coroutine_handle<void> handle) { handle_ = handle; }
   void await_resume() {
     if (interrupted_) {
       throw InterruptedException();
@@ -42,7 +42,7 @@ class WaitTask {
     WaitTask* task;
   };
 
-  coroutine_handle<void> handle_;
+  stdx::coroutine_handle<void> handle_;
   event event_ = {};
   stdx::stop_token stop_token_;
   bool interrupted_ = false;

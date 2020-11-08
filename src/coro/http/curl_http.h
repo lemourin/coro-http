@@ -100,11 +100,11 @@ class CurlHttpOperation : public HttpOperation {
   friend class CurlHandle;
 
   bool await_ready() override;
-  void await_suspend(coroutine_handle<void> awaiting_coroutine) override;
+  void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine) override;
   Response await_resume() override;
 
   Request request_;
-  coroutine_handle<void> awaiting_coroutine_;
+  stdx::coroutine_handle<void> awaiting_coroutine_;
   CurlHandle handle_;
   std::exception_ptr exception_ptr_;
   event headers_ready_;

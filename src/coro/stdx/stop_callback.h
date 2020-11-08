@@ -48,9 +48,9 @@ class stop_callback : private internal::base_stop_callback {
   C callable_;
 };
 
-template <typename C>
-stop_callback(stop_token, C) -> stop_callback<C>;
+//template <typename C>
+//stop_callback(stop_token, C) -> stop_callback<C>;
 
-}  // namespace coro
+}  // namespace stdx
 
 #endif  // CORO_HTTP_STOP_CALLBACK_H

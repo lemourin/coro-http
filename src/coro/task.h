@@ -1,43 +1,11 @@
 #ifndef CORO_TASK_H
 #define CORO_TASK_H
 
-#ifdef __has_include
-#if __has_include(<version>)
-#include <version>
-#endif
-#endif
-
-#ifdef __cpp_lib_coroutine
-#include <coroutine>
-#define HAVE_COROUTINES
-#define HAVE_COROUTINE_SUPPORT
-#endif
-
-#ifdef __has_include
-#if __has_include(<experimental/coroutine>)
-#include <experimental/coroutine>
-#define HAVE_EXPERIMENTAL_COROUTINES
-#define HAVE_COROUTINE_SUPPORT
-#endif
-#endif
+#include <coro/stdx/coroutine.h>
 
 #include <memory>
 
 namespace coro {
-
-#ifdef HAVE_COROUTINES
-template <typename T>
-using coroutine_handle = std::coroutine_handle<T>;
-using suspend_never = std::suspend_never;
-#endif
-
-#ifdef HAVE_EXPERIMENTAL_COROUTINES
-template <typename T>
-using coroutine_handle = std::experimental::coroutine_handle<T>;
-using suspend_never = std::experimental::suspend_never;
-#endif
-
-#ifdef HAVE_COROUTINE_SUPPORT
 
 template <typename... Ts>
 class Task;
@@ -57,11 +25,13 @@ class Task<T> {
 
   T await_resume() { return *std::move(data_->value); }
 
-  void await_suspend(coroutine_handle<void> handle) { data_->handle = handle; }
+  void await_suspend(stdx::coroutine_handle<void> handle) {
+    data_->handle = handle;
+  }
 
   struct CommonData {
     std::unique_ptr<T> value;
-    coroutine_handle<void> handle;
+    stdx::coroutine_handle<void> handle;
   };
 
   std::shared_ptr<CommonData> data_ = std::make_shared<CommonData>();
@@ -74,13 +44,15 @@ class Task<> {
 
   bool await_ready() { return data_->ready; }
 
-  void await_suspend(coroutine_handle<void> handle) { data_->handle = handle; }
+  void await_suspend(stdx::coroutine_handle<void> handle) {
+    data_->handle = handle;
+  }
 
   void await_resume() {}
 
   struct CommonData {
     bool ready = false;
-    coroutine_handle<void> handle;
+    stdx::coroutine_handle<void> handle;
   };
 
   std::shared_ptr<CommonData> data_ = std::make_shared<CommonData>();
@@ -92,8 +64,8 @@ template <typename T>
 struct ValuePromiseType {
   Task<T>& get_return_object() { return promise; }
 
-  suspend_never initial_suspend() noexcept { return {}; }
-  suspend_never final_suspend() noexcept { return {}; }
+  stdx::suspend_never initial_suspend() noexcept { return {}; }
+  stdx::suspend_never final_suspend() noexcept { return {}; }
 
   void unhandled_exception() { std::terminate(); }
 
@@ -111,8 +83,8 @@ struct ValuePromiseType {
 struct EmptyPromiseType {
   Task<>& get_return_object() { return promise; }
 
-  suspend_never initial_suspend() noexcept { return {}; }
-  suspend_never final_suspend() noexcept { return {}; }
+  stdx::suspend_never initial_suspend() noexcept { return {}; }
+  stdx::suspend_never final_suspend() noexcept { return {}; }
 
   void unhandled_exception() { std::terminate(); }
 
@@ -129,9 +101,5 @@ struct EmptyPromiseType {
 }  // namespace internal
 
 }  // namespace coro
-
-#else
-#error "Coroutines unsupported."
-#endif
 
 #endif  // CORO_TASK_H

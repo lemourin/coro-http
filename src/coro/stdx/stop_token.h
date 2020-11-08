@@ -27,6 +27,6 @@ class stop_token {
   std::shared_ptr<internal::stop_source_state> state_;
 };
 
-}  // namespace coro
+}  // namespace stdx
 
 #endif  // CORO_HTTP_STOP_TOKEN_H

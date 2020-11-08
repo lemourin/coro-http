@@ -41,7 +41,8 @@ bool HttpBodyGenerator::Iterator::await_ready() const {
          http_body_generator_->exception_ptr_;
 }
 
-void HttpBodyGenerator::Iterator::await_suspend(coroutine_handle<void> handle) {
+void HttpBodyGenerator::Iterator::await_suspend(
+    stdx::coroutine_handle<void> handle) {
   http_body_generator_->handle_ = handle;
 }
 

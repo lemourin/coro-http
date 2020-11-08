@@ -3,99 +3,109 @@
 
 #include <coro/stdx/coroutine.h>
 
+#include <iostream>
 #include <memory>
+#include <utility>
 
 namespace coro {
+
+namespace internal {
+
+template <typename PromiseTypeT>
+class BaseTask {
+ public:
+  using promise_type = PromiseTypeT;
+
+  ~BaseTask() {
+    if (promise_) {
+      stdx::coroutine_handle<promise_type>::from_promise(*promise_).destroy();
+    }
+  }
+
+  BaseTask(const BaseTask&) = delete;
+  BaseTask(BaseTask&& task) noexcept
+      : promise_(std::exchange(task.promise_, nullptr)) {}
+
+  BaseTask& operator=(const BaseTask&) = delete;
+  BaseTask& operator=(BaseTask&& task) noexcept {
+    promise_ = std::exchange(task.promise_, nullptr);
+    return *this;
+  }
+
+  bool await_ready() { return true; }
+  void await_suspend(stdx::coroutine_handle<void>) {}
+
+ protected:
+  explicit BaseTask(promise_type* promise) : promise_(promise) {}
+
+  promise_type* promise_;
+};
+
+template <typename T>
+class ValuePromiseType;
+
+class NoValuePromiseType;
+
+}  // namespace internal
 
 template <typename... Ts>
 class Task;
 
-namespace internal {
-struct EmptyPromiseType;
-template <typename>
-struct ValuePromiseType;
-}  // namespace internal
-
 template <typename T>
-class Task<T> {
+class Task<T> : public internal::BaseTask<internal::ValuePromiseType<T>> {
  public:
-  using promise_type = internal::ValuePromiseType<T>;
+  T await_resume() { return *std::move(this->promise_->value_); }
 
-  bool await_ready() { return bool(data_->value); }
+ private:
+  template <typename>
+  friend class internal::ValuePromiseType;
 
-  T await_resume() { return *std::move(data_->value); }
-
-  void await_suspend(stdx::coroutine_handle<void> handle) {
-    data_->handle = handle;
-  }
-
-  struct CommonData {
-    std::unique_ptr<T> value;
-    stdx::coroutine_handle<void> handle;
-  };
-
-  std::shared_ptr<CommonData> data_ = std::make_shared<CommonData>();
+  using internal::BaseTask<internal::ValuePromiseType<T>>::BaseTask;
 };
 
 template <>
-class Task<> {
+class Task<> : public internal::BaseTask<internal::NoValuePromiseType> {
  public:
-  using promise_type = internal::EmptyPromiseType;
-
-  bool await_ready() { return data_->ready; }
-
-  void await_suspend(stdx::coroutine_handle<void> handle) {
-    data_->handle = handle;
-  }
-
   void await_resume() {}
 
-  struct CommonData {
-    bool ready = false;
-    stdx::coroutine_handle<void> handle;
-  };
+ private:
+  friend class internal::NoValuePromiseType;
 
-  std::shared_ptr<CommonData> data_ = std::make_shared<CommonData>();
+  using internal::BaseTask<internal::NoValuePromiseType>::BaseTask;
 };
 
 namespace internal {
 
 template <typename T>
-struct ValuePromiseType {
-  Task<T>& get_return_object() { return promise; }
+class ValuePromiseType {
+ public:
+  Task<T> get_return_object() { return Task<T>(this); }
 
-  stdx::suspend_never initial_suspend() noexcept { return {}; }
-  stdx::suspend_never final_suspend() noexcept { return {}; }
-
+  stdx::suspend_never initial_suspend() { return {}; }
+  stdx::suspend_always final_suspend() { return {}; }
   void unhandled_exception() { std::terminate(); }
 
-  template <typename ValueT>
-  void return_value(ValueT&& value) {
-    promise.data_->value = std::make_unique<T>(std::forward<ValueT>(value));
-    if (promise.data_->handle) {
-      promise.data_->handle.resume();
-    }
+  template <typename V>
+  void return_value(V&& value) {
+    value_ = std::make_unique<T>(std::forward<V>(value));
   }
 
-  Task<T> promise;
+ private:
+  template <typename...>
+  friend class coro::Task;
+
+  std::unique_ptr<T> value_;
 };
 
-struct EmptyPromiseType {
-  Task<>& get_return_object() { return promise; }
+class NoValuePromiseType {
+ public:
+  Task<> get_return_object() { return Task<>(this); }
 
-  stdx::suspend_never initial_suspend() noexcept { return {}; }
-  stdx::suspend_never final_suspend() noexcept { return {}; }
-
+  stdx::suspend_never initial_suspend() { return {}; }
+  stdx::suspend_always final_suspend() { return {}; }
   void unhandled_exception() { std::terminate(); }
 
-  void return_void() {
-    promise.data_->ready = true;
-    if (promise.data_->handle) {
-      promise.data_->handle.resume();
-    }
-  }
-
-  Task<> promise;
+  void return_void() {}
 };
 
 }  // namespace internal

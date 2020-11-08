@@ -1,3 +1,4 @@
+#include <coro/generator.h>
 #include <coro/http/curl_http.h>
 #include <coro/stdx/stop_source.h>
 #include <coro/wait_task.h>
@@ -13,9 +14,8 @@ auto MakePointer(T *ptr, Deleter &&deleter) {
 class CancelRequest {
  public:
   CancelRequest(event_base *event_loop,
-                coro::stdx::stop_source request_stop_source) {
-    Init(event_loop, std::move(request_stop_source));
-  }
+                coro::stdx::stop_source request_stop_source)
+      : task_(Init(event_loop, std::move(request_stop_source))) {}
 
   ~CancelRequest() { timeout_stop_source_.request_stop(); }
 
@@ -31,13 +31,29 @@ class CancelRequest {
   };
 
   coro::stdx::stop_source timeout_stop_source_;
+  coro::Task<> task_;
 };
+
+coro::Generator<int> Iota() {
+  int idx = 0;
+  while (true) {
+    co_yield idx;
+    idx++;
+  }
+}
 
 coro::Task<int> CoMain(event_base *event_loop,
                        coro::http::Http *http) noexcept {
   try {
     coro::stdx::stop_source stop_source;
     CancelRequest cancel_request(event_loop, stop_source);
+
+    for (int d : Iota()) {
+      std::cerr << d << "\n";
+      if (d == 5) {
+        break;
+      }
+    }
 
     coro::http::Response response =
         co_await * http->Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv",
@@ -77,7 +93,7 @@ int main() {
   auto base = MakePointer(event_base_new(), event_base_free);
   coro::http::CurlHttp http(base.get());
 
-  CoMain(base.get(), &http);
+  auto main_task = CoMain(base.get(), &http);
   event_base_dispatch(base.get());
   return 0;
 }

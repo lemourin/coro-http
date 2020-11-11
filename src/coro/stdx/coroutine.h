@@ -22,4 +22,17 @@ using suspend_never = coro::std_ns::suspend_never;
 using suspend_always = coro::std_ns::suspend_always;
 }  // namespace coro::stdx
 
+#define FOR_CO_AWAIT(decl_expr, container_expr, code) \
+  {                                                   \
+    auto &&___container = container_expr;             \
+    auto ___begin = std::begin(___container);         \
+    auto ___end = std::end(___container);             \
+    while (___begin != ___end) {                      \
+      co_await ___begin;                              \
+      decl_expr = *___begin;                          \
+      code;                                           \
+      ++___begin;                                     \
+    }                                                 \
+  }
+
 #endif  // CORO_HTTP_COROUTINE_H

@@ -65,13 +65,12 @@ coro::Task<int> CoMain(event_base *event_loop,
     }
 
     int size = 0;
-    for
-      co_await(const std::string &bytes : *response.body) {
-        std::cerr << "awaiting...\n";
-        co_await coro::Wait(event_loop, 1000);
-        std::cerr << "bytes:" << bytes.size() << "\n";
-        size += bytes.size();
-      }
+    FOR_CO_AWAIT(const std::string &bytes, *response.body, {
+      std::cerr << "awaiting...\n";
+      co_await coro::Wait(event_loop, 1000);
+      std::cerr << "bytes:" << bytes.size() << "\n";
+      size += bytes.size();
+    });
 
     std::cerr << "DONE (SIZE=" << size << ")\n";
 

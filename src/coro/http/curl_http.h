@@ -45,6 +45,12 @@ class CurlHandle {
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
 
+  CurlHandle(const CurlHandle&) = delete;
+  CurlHandle(CurlHandle&&) noexcept;
+
+  CurlHandle& operator=(const CurlHandle&) = delete;
+  CurlHandle& operator=(CurlHandle&&) = delete;
+
   ~CurlHandle();
 
  private:
@@ -67,18 +73,26 @@ class CurlHandle {
   std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner_;
 };
 
-class CurlHttpBodyGenerator : public HttpBodyGenerator {
+class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
  public:
-  explicit CurlHttpBodyGenerator(CurlHandle&& handle);
-  ~CurlHttpBodyGenerator() override;
+  CurlHttpBodyGenerator(CurlHandle&& handle, std::string&& initial_chunk);
+  CurlHttpBodyGenerator(const CurlHttpBodyGenerator&) = delete;
+  CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) = delete;
+  ~CurlHttpBodyGenerator();
+
+  CurlHttpBodyGenerator& operator=(const CurlHttpBodyGenerator&) = delete;
+  CurlHttpBodyGenerator& operator=(CurlHttpBodyGenerator&&) = delete;
+
+  void Pause();
+  void Resume();
 
  private:
   friend class CurlHttpOperation;
   friend class CurlHandle;
   friend class CurlHttp;
 
-  void Pause() override;
-  void Resume() override;
+  static void OnChunkReady(evutil_socket_t, short, void* handle);
+  static void OnBodyReady(evutil_socket_t, short, void* handle);
 
   CurlHandle handle_;
   event chunk_ready_;
@@ -88,20 +102,24 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator {
   std::string data_;
 };
 
-class CurlHttpOperation : public HttpOperation {
+class CurlHttpOperation {
  public:
   CurlHttpOperation(CurlHttp* http, Request&&, stdx::stop_token&&);
-  ~CurlHttpOperation() override;
+  CurlHttpOperation(const CurlHttpOperation&) = delete;
+  CurlHttpOperation(CurlHttpOperation&&) = delete;
+  ~CurlHttpOperation();
+
+  CurlHttpOperation& operator=(const CurlHttpOperation&) = delete;
+  CurlHttpOperation& operator=(CurlHttpOperation&&) = delete;
 
   void resume();
+  bool await_ready();
+  void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine);
+  Response<CurlHttpBodyGenerator> await_resume();
 
  private:
   friend class CurlHttp;
   friend class CurlHandle;
-
-  bool await_ready() override;
-  void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine) override;
-  Response await_resume() override;
 
   Request request_;
   stdx::coroutine_handle<void> awaiting_coroutine_;
@@ -114,13 +132,17 @@ class CurlHttpOperation : public HttpOperation {
   std::string body_;
 };
 
-class CurlHttp : public Http {
+class CurlHttp {
  public:
   explicit CurlHttp(event_base* event_loop);
-  ~CurlHttp() override;
+  CurlHttp(const CurlHttp&) = delete;
+  CurlHttp(CurlHttp&&) = delete;
+  ~CurlHttp();
 
-  std::unique_ptr<HttpOperation> Fetch(Request request,
-                                       stdx::stop_token) override;
+  CurlHttp& operator=(const CurlHttp&) = delete;
+  CurlHttp& operator=(CurlHttp&&) = delete;
+
+  CurlHttpOperation Fetch(Request request, stdx::stop_token);
 
  private:
   friend class CurlHttpOperation;
@@ -170,19 +192,8 @@ CurlHandle::CurlHandle(CurlHttp* http, const Request& request,
 
 template <typename NewOwner>
 CurlHandle::CurlHandle(CurlHandle&& handle, NewOwner* owner)
-    : http_(handle.http_),
-      handle_(handle.handle_),
-      header_list_(handle.header_list_),
-      stop_token_(std::move(handle.stop_token_)),
-      owner_(owner) {
-  using internal::Check;
-
-  handle.http_ = nullptr;
-
-  Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
+    : CurlHandle(std::move(handle)) {
+  owner_ = owner;
 }
 
 }  // namespace coro::http

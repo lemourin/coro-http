@@ -1,8 +1,8 @@
 #ifndef CORO_HTTP_HTTP_H
 #define CORO_HTTP_HTTP_H
 
-#include <coro/stdx/stop_token.h>
 #include <coro/stdx/coroutine.h>
+#include <coro/stdx/stop_token.h>
 
 #include <memory>
 #include <string>
@@ -16,12 +16,14 @@ struct Request {
   std::string url;
   std::unordered_multimap<std::string, std::string> headers;
   std::string body;
+
+  template <typename StringType>
+  Request(StringType&& url) : url(std::forward<StringType>(url)) {}
 };
 
+template <typename Impl>
 class HttpBodyGenerator {
  public:
-  virtual ~HttpBodyGenerator() = default;
-
   class Iterator {
    public:
     Iterator(HttpBodyGenerator* http_body_generator, int64_t offset);
@@ -43,9 +45,6 @@ class HttpBodyGenerator {
   Iterator end();
 
  protected:
-  virtual void Pause() = 0;
-  virtual void Resume() = 0;
-
   void ReceivedData(std::string_view data);
   void Close(int status);
   void Close(std::exception_ptr);
@@ -58,10 +57,11 @@ class HttpBodyGenerator {
   bool paused_ = false;
 };
 
+template <typename HttpBodyGenerator>
 struct Response {
-  int status;
+  int status = -1;
   std::unordered_multimap<std::string, std::string> headers;
-  std::unique_ptr<HttpBodyGenerator> body;
+  HttpBodyGenerator body;
 };
 
 class HttpException : public std::exception {
@@ -76,25 +76,98 @@ class HttpException : public std::exception {
   std::string message_;
 };
 
-class HttpOperation {
- public:
-  virtual ~HttpOperation() = default;
+template <typename Impl>
+HttpBodyGenerator<Impl>::Iterator::Iterator(
+    HttpBodyGenerator* http_body_generator, int64_t offset)
+    : http_body_generator_(http_body_generator), offset_(offset) {}
 
-  virtual bool await_ready() = 0;
-  virtual void await_suspend(
-      stdx::coroutine_handle<void> awaiting_coroutine) = 0;
-  virtual Response await_resume() = 0;
-};
+template <typename Impl>
+bool HttpBodyGenerator<Impl>::Iterator::operator!=(
+    const Iterator& iterator) const {
+  return offset_ != iterator.offset_;
+}
 
-class Http {
- public:
-  virtual ~Http() = default;
+template <typename Impl>
+typename HttpBodyGenerator<Impl>::Iterator&
+HttpBodyGenerator<Impl>::Iterator::operator++() {
+  if (http_body_generator_->status_ != -1 ||
+      http_body_generator_->exception_ptr_) {
+    offset_ = INT64_MAX;
+  } else {
+    offset_++;
+  }
+  http_body_generator_->data_.clear();
+  if (http_body_generator_->paused_) {
+    http_body_generator_->paused_ = false;
+    static_cast<Impl*>(http_body_generator_)->Resume();
+  }
+  return *this;
+}
 
-  std::unique_ptr<HttpOperation> Fetch(std::string_view url,
-                                       stdx::stop_token = stdx::stop_token());
-  virtual std::unique_ptr<HttpOperation> Fetch(
-      Request request, stdx::stop_token = stdx::stop_token()) = 0;
-};
+template <typename Impl>
+const std::string& HttpBodyGenerator<Impl>::Iterator::operator*() const {
+  return http_body_generator_->data_;
+}
+
+template <typename Impl>
+bool HttpBodyGenerator<Impl>::Iterator::await_ready() const {
+  return !http_body_generator_->data_.empty() ||
+         http_body_generator_->status_ != -1 ||
+         http_body_generator_->exception_ptr_;
+}
+
+template <typename Impl>
+void HttpBodyGenerator<Impl>::Iterator::await_suspend(
+    stdx::coroutine_handle<void> handle) {
+  http_body_generator_->handle_ = handle;
+}
+
+template <typename Impl>
+typename HttpBodyGenerator<Impl>::Iterator&
+HttpBodyGenerator<Impl>::Iterator::await_resume() {
+  if (http_body_generator_->exception_ptr_) {
+    std::rethrow_exception(http_body_generator_->exception_ptr_);
+  }
+  return *this;
+}
+
+template <typename Impl>
+typename HttpBodyGenerator<Impl>::Iterator HttpBodyGenerator<Impl>::begin() {
+  return Iterator(this, 0);
+}
+
+template <typename Impl>
+typename HttpBodyGenerator<Impl>::Iterator HttpBodyGenerator<Impl>::end() {
+  return Iterator(this, INT64_MAX);
+}
+
+template <typename Impl>
+void HttpBodyGenerator<Impl>::ReceivedData(std::string_view data) {
+  data_ += data;
+  if (data_.size() >= MAX_BUFFER_SIZE && !paused_) {
+    paused_ = true;
+    static_cast<Impl*>(this)->Pause();
+  }
+  if (handle_) {
+    std::exchange(handle_, nullptr).resume();
+  }
+}
+
+template <typename Impl>
+void HttpBodyGenerator<Impl>::Close(int status) {
+  status_ = status;
+  if (handle_) {
+    std::exchange(handle_, nullptr).resume();
+  }
+}
+
+template <typename Impl>
+void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
+  exception_ptr_ = std::move(exception);
+  if (handle_) {
+    std::exchange(handle_, nullptr).resume();
+  }
+}
 
 }  // namespace coro::http
 

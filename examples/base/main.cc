@@ -42,8 +42,8 @@ coro::Generator<int> Iota() {
   }
 }
 
-coro::Task<int> CoMain(event_base *event_loop,
-                       coro::http::Http *http) noexcept {
+template <typename Http>
+coro::Task<int> CoMain(event_base *event_loop, Http *http) noexcept {
   try {
     coro::stdx::stop_source stop_source;
     CancelRequest cancel_request(event_loop, stop_source);
@@ -56,8 +56,8 @@ coro::Task<int> CoMain(event_base *event_loop,
     }
 
     coro::http::Response response =
-        co_await * http->Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv",
-                               stop_source.get_token());
+        co_await http->Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv",
+                             stop_source.get_token());
 
     std::cerr << "HTTP: " << response.status << "\n";
     for (const auto &[header_name, header_value] : response.headers) {
@@ -65,7 +65,7 @@ coro::Task<int> CoMain(event_base *event_loop,
     }
 
     int size = 0;
-    FOR_CO_AWAIT(const std::string &bytes, *response.body, {
+    FOR_CO_AWAIT(const std::string &bytes, response.body, {
       std::cerr << "awaiting...\n";
       co_await coro::Wait(event_loop, 1000);
       std::cerr << "bytes:" << bytes.size() << "\n";

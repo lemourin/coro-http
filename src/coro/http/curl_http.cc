@@ -33,6 +33,18 @@ std::string TrimWhitespace(std::string_view str) {
 
 }  // namespace
 
+CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
+    : http_(std::exchange(handle.http_, nullptr)),
+      handle_(handle.handle_),
+      header_list_(handle.header_list_),
+      stop_token_(std::move(handle.stop_token_)),
+      owner_(handle.owner_) {
+  Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
+}
+
 size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
                                   void* userdata) {
   auto handle = reinterpret_cast<CurlHandle*>(userdata);
@@ -92,31 +104,32 @@ CurlHandle::~CurlHandle() {
   }
 }
 
-CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle&& handle)
+CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle&& handle,
+                                             std::string&& initial_chunk)
     : handle_(std::move(handle), this) {
-  Check(event_assign(
-      &chunk_ready_, handle_.http_->event_loop_, -1, 0,
-      [](evutil_socket_t, short, void* handle) {
-        auto curl_http_body_generator =
-            reinterpret_cast<CurlHttpBodyGenerator*>(handle);
-        std::string data = std::move(curl_http_body_generator->data_);
-        curl_http_body_generator->data_.clear();
-        curl_http_body_generator->ReceivedData(std::move(data));
-      },
-      this));
-  Check(event_assign(
-      &body_ready_, handle_.http_->event_loop_, -1, 0,
-      [](evutil_socket_t, short, void* handle) {
-        auto curl_http_body_generator =
-            reinterpret_cast<CurlHttpBodyGenerator*>(handle);
-        if (curl_http_body_generator->exception_ptr_) {
-          curl_http_body_generator->Close(
-              curl_http_body_generator->exception_ptr_);
-        } else {
-          curl_http_body_generator->Close(curl_http_body_generator->status_);
-        }
-      },
-      this));
+  Check(event_assign(&chunk_ready_, handle_.http_->event_loop_, -1, 0,
+                     OnChunkReady, this));
+  Check(event_assign(&body_ready_, handle_.http_->event_loop_, -1, 0,
+                     OnBodyReady, this));
+  ReceivedData(std::move(initial_chunk));
+}
+
+void CurlHttpBodyGenerator::OnChunkReady(evutil_socket_t, short, void* handle) {
+  auto curl_http_body_generator =
+      reinterpret_cast<CurlHttpBodyGenerator*>(handle);
+  std::string data = std::move(curl_http_body_generator->data_);
+  curl_http_body_generator->data_.clear();
+  curl_http_body_generator->ReceivedData(std::move(data));
+}
+
+void CurlHttpBodyGenerator::OnBodyReady(evutil_socket_t, short, void* handle) {
+  auto curl_http_body_generator =
+      reinterpret_cast<CurlHttpBodyGenerator*>(handle);
+  if (curl_http_body_generator->exception_ptr_) {
+    curl_http_body_generator->Close(curl_http_body_generator->exception_ptr_);
+  } else {
+    curl_http_body_generator->Close(curl_http_body_generator->status_);
+  }
 }
 
 CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
@@ -162,17 +175,13 @@ void CurlHttpOperation::await_suspend(
   awaiting_coroutine_ = awaiting_coroutine;
 }
 
-Response CurlHttpOperation::await_resume() {
+Response<CurlHttpBodyGenerator> CurlHttpOperation::await_resume() {
   if (exception_ptr_) {
     std::rethrow_exception(exception_ptr_);
   }
-  auto http_body_generator =
-      std::make_unique<CurlHttpBodyGenerator>(std::move(handle_));
-  http_body_generator->ReceivedData(std::move(body_));
-  Response response{.status = status_,
-                    .headers = std::move(headers_),
-                    .body = std::move(http_body_generator)};
-  return response;
+  return {.status = status_,
+          .headers = std::move(headers_),
+          .body = CurlHttpBodyGenerator(std::move(handle_), std::move(body_))};
 }
 
 CurlHttp::CurlHttp(event_base* event_loop)
@@ -287,10 +296,8 @@ int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   return 0;
 }
 
-std::unique_ptr<HttpOperation> CurlHttp::Fetch(Request request,
-                                               stdx::stop_token token) {
-  return std::make_unique<CurlHttpOperation>(this, std::move(request),
-                                             std::move(token));
+CurlHttpOperation CurlHttp::Fetch(Request request, stdx::stop_token token) {
+  return CurlHttpOperation{this, std::move(request), std::move(token)};
 }
 
 }  // namespace coro::http

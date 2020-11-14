@@ -6,7 +6,6 @@ set(coro-http-headers
 )
 
 set(coro-http-sources
-    http.cc
     curl_http.cc
 )
 

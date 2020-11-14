@@ -21,6 +21,28 @@ struct Request {
   Request(StringType&& url) : url(std::forward<StringType>(url)) {}
 };
 
+template <typename HttpBodyGenerator>
+struct Response {
+  int status = -1;
+  std::unordered_multimap<std::string, std::string> headers;
+  HttpBodyGenerator body;
+};
+
+class HttpException : public std::exception {
+ public:
+  HttpException(int status, std::string_view message)
+      : status_(status), message_(message) {}
+
+  [[nodiscard]] const char* what() const noexcept override {
+    return message_.c_str();
+  }
+  [[nodiscard]] int status() const noexcept { return status_; }
+
+ private:
+  int status_;
+  std::string message_;
+};
+
 template <typename Impl>
 class HttpBodyGenerator {
  public:
@@ -55,25 +77,6 @@ class HttpBodyGenerator {
   int status_ = -1;
   std::exception_ptr exception_ptr_;
   bool paused_ = false;
-};
-
-template <typename HttpBodyGenerator>
-struct Response {
-  int status = -1;
-  std::unordered_multimap<std::string, std::string> headers;
-  HttpBodyGenerator body;
-};
-
-class HttpException : public std::exception {
- public:
-  HttpException(int status, std::string_view message);
-
-  [[nodiscard]] const char* what() const noexcept override;
-  [[nodiscard]] int status() const noexcept;
-
- private:
-  int status_;
-  std::string message_;
 };
 
 template <typename Impl>

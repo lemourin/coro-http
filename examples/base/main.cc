@@ -21,7 +21,7 @@ class CancelRequest {
 
  private:
   coro::Task<> Init(event_base *event_loop,
-                    coro::stdx::stop_source request_stop_source) {
+                    coro::stdx::stop_source request_stop_source) noexcept {
     try {
       co_await coro::Wait(event_loop, 3000, timeout_stop_source_.get_token());
       std::cerr << "REQUESTING STOP\n";
@@ -67,7 +67,7 @@ coro::Task<> CoMain(event_base *event_loop, Http *http) noexcept {
     std::size_t size = 0;
     FOR_CO_AWAIT(const std::string &bytes, response.body, {
       std::cerr << "awaiting...\n";
-      co_await coro::Wait(event_loop, 1000);
+      co_await coro::Wait(event_loop, 1000, stop_source.get_token());
       std::cerr << "bytes:" << bytes.size() << "\n";
       size += bytes.size();
     });
@@ -93,7 +93,7 @@ int main() {
   auto base = MakePointer(event_base_new(), event_base_free);
   coro::http::CurlHttp http(base.get());
 
-  auto main_task = CoMain(base.get(), &http);
+  CoMain(base.get(), &http);
   event_base_dispatch(base.get());
   return 0;
 }

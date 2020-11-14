@@ -20,12 +20,6 @@ class BaseTask {
  public:
   using promise_type = PromiseTypeT;
 
-  ~BaseTask() {
-    if (promise_ && !promise_->exception_) {
-      stdx::coroutine_handle<promise_type>::from_promise(*promise_).destroy();
-    }
-  }
-
   BaseTask(const BaseTask&) = delete;
   BaseTask(BaseTask&& task) noexcept
       : promise_(std::exchange(task.promise_, nullptr)) {}
@@ -86,7 +80,7 @@ class PromiseType {
    public:
     FinalSuspend(PromiseType* promise) : promise_(promise) {}
 
-    bool await_ready() { return bool(promise_->exception_); }
+    bool await_ready() { return true; }
     void await_resume() {
       if (promise_->continuation_) {
         promise_->continuation_.resume();
@@ -97,6 +91,12 @@ class PromiseType {
    private:
     PromiseType* promise_;
   };
+
+  ~PromiseType() {
+    if (exception_) {
+      std::terminate();
+    }
+  }
 
   stdx::suspend_never initial_suspend() { return {}; }
   FinalSuspend final_suspend() { return {this}; }
@@ -143,14 +143,14 @@ class NoValuePromiseType : public PromiseType {
 
 inline void Task<>::await_resume() {
   if (promise_->exception_) {
-    std::rethrow_exception(promise_->exception_);
+    std::rethrow_exception(std::exchange(promise_->exception_, nullptr));
   }
 }
 
 template <typename T>
 T Task<T>::await_resume() {
   if (this->promise_->exception_) {
-    std::rethrow_exception(this->promise_->exception_);
+    std::rethrow_exception(std::exchange(this->promise_->exception_, nullptr));
   }
   return *std::move(this->promise_->value_);
 }

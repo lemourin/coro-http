@@ -39,24 +39,19 @@ inline void Check(int code) {
 
 class CurlHandle {
  public:
+  CurlHandle(const CurlHandle&) = delete;
+  CurlHandle(CurlHandle&&) noexcept;
+  ~CurlHandle();
+
+  CurlHandle& operator=(const CurlHandle&) = delete;
+  CurlHandle& operator=(CurlHandle&&) = delete;
+
+ private:
   template <typename Owner>
   CurlHandle(CurlHttp*, const Request&, stdx::stop_token&&, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
-
-  CurlHandle(const CurlHandle&) = delete;
-  CurlHandle(CurlHandle&&) noexcept;
-
-  CurlHandle& operator=(const CurlHandle&) = delete;
-  CurlHandle& operator=(CurlHandle&&) = delete;
-
-  ~CurlHandle();
-
- private:
-  friend class CurlHttp;
-  friend class CurlHttpOperation;
-  friend class CurlHttpBodyGenerator;
 
   static size_t WriteCallback(char* ptr, size_t size, size_t nmemb,
                               void* userdata);
@@ -65,6 +60,10 @@ class CurlHandle {
   static int ProgressCallback(void* clientp, curl_off_t dltotal,
                               curl_off_t dlnow, curl_off_t ultotal,
                               curl_off_t ulnow);
+
+  friend class CurlHttp;
+  friend class CurlHttpOperation;
+  friend class CurlHttpBodyGenerator;
 
   CurlHttp* http_;
   CURL* handle_;
@@ -75,7 +74,6 @@ class CurlHandle {
 
 class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
  public:
-  CurlHttpBodyGenerator(CurlHandle&& handle, std::string&& initial_chunk);
   CurlHttpBodyGenerator(const CurlHttpBodyGenerator&) = delete;
   CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) = delete;
   ~CurlHttpBodyGenerator();
@@ -87,12 +85,14 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
   void Resume();
 
  private:
-  friend class CurlHttpOperation;
-  friend class CurlHandle;
-  friend class CurlHttp;
+  CurlHttpBodyGenerator(CurlHandle&& handle, std::string&& initial_chunk);
 
   static void OnChunkReady(evutil_socket_t, short, void* handle);
   static void OnBodyReady(evutil_socket_t, short, void* handle);
+
+  friend class CurlHttpOperation;
+  friend class CurlHandle;
+  friend class CurlHttp;
 
   CurlHandle handle_;
   event chunk_ready_;
@@ -104,7 +104,6 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 
 class CurlHttpOperation {
  public:
-  CurlHttpOperation(CurlHttp* http, Request&&, stdx::stop_token&&);
   CurlHttpOperation(const CurlHttpOperation&) = delete;
   CurlHttpOperation(CurlHttpOperation&&) = delete;
   ~CurlHttpOperation();
@@ -112,12 +111,15 @@ class CurlHttpOperation {
   CurlHttpOperation& operator=(const CurlHttpOperation&) = delete;
   CurlHttpOperation& operator=(CurlHttpOperation&&) = delete;
 
-  void resume();
   bool await_ready();
   void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine);
   Response<CurlHttpBodyGenerator> await_resume();
 
  private:
+  CurlHttpOperation(CurlHttp* http, Request&&, stdx::stop_token&&);
+
+  void resume();
+
   friend class CurlHttp;
   friend class CurlHandle;
 
@@ -145,15 +147,15 @@ class CurlHttp {
   CurlHttpOperation Fetch(Request request, stdx::stop_token);
 
  private:
-  friend class CurlHttpOperation;
-  friend class CurlHttpBodyGenerator;
-  friend class CurlHandle;
-
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,
                             void* userp, void* socketp);
   static int TimerCallback(CURLM* handle, long timeout_ms, void* userp);
   static void SocketEvent(evutil_socket_t fd, short event, void* multi_handle);
   static void ProcessEvents(CURLM* handle);
+
+  friend class CurlHttpOperation;
+  friend class CurlHttpBodyGenerator;
+  friend class CurlHandle;
 
   CURLM* curl_handle_;
   event_base* event_loop_;

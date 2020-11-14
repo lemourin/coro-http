@@ -21,7 +21,7 @@ class BaseTask {
   using promise_type = PromiseTypeT;
 
   ~BaseTask() {
-    if (promise_) {
+    if (promise_ && !promise_->exception_) {
       stdx::coroutine_handle<promise_type>::from_promise(*promise_).destroy();
     }
   }
@@ -37,7 +37,10 @@ class BaseTask {
   }
 
   bool await_ready() { return false; }
-  void await_suspend(stdx::coroutine_handle<void>) {}
+
+  void await_suspend(stdx::coroutine_handle<void> continuation) {
+    promise_->continuation_ = continuation;
+  }
 
  protected:
   explicit BaseTask(promise_type* promise) : promise_(promise) {}
@@ -79,9 +82,29 @@ namespace internal {
 
 class PromiseType {
  public:
+  class FinalSuspend {
+   public:
+    FinalSuspend(PromiseType* promise) : promise_(promise) {}
+
+    bool await_ready() { return bool(promise_->exception_); }
+    void await_resume() {
+      if (promise_->continuation_) {
+        promise_->continuation_.resume();
+      }
+    }
+    void await_suspend(stdx::coroutine_handle<void>) {}
+
+   private:
+    PromiseType* promise_;
+  };
+
   stdx::suspend_never initial_suspend() { return {}; }
-  stdx::suspend_always final_suspend() { return {}; }
-  void unhandled_exception() { std::terminate(); }
+  FinalSuspend final_suspend() { return {this}; }
+  void unhandled_exception() { exception_ = std::current_exception(); }
+
+ protected:
+  std::exception_ptr exception_;
+  stdx::coroutine_handle<void> continuation_;
 
  private:
   template <typename>
@@ -118,10 +141,17 @@ class NoValuePromiseType : public PromiseType {
 
 }  // namespace internal
 
-inline void Task<>::await_resume() {}
+inline void Task<>::await_resume() {
+  if (promise_->exception_) {
+    std::rethrow_exception(promise_->exception_);
+  }
+}
 
 template <typename T>
 T Task<T>::await_resume() {
+  if (this->promise_->exception_) {
+    std::rethrow_exception(this->promise_->exception_);
+  }
   return *std::move(this->promise_->value_);
 }
 

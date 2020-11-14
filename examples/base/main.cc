@@ -64,7 +64,7 @@ coro::Task<int> CoMain(event_base *event_loop, Http *http) noexcept {
       std::cerr << header_name << ": " << header_value << "\n";
     }
 
-    int size = 0;
+    std::size_t size = 0;
     FOR_CO_AWAIT(const std::string &bytes, response.body, {
       std::cerr << "awaiting...\n";
       co_await coro::Wait(event_loop, 1000);

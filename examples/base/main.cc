@@ -43,7 +43,7 @@ coro::Generator<int> Iota() {
 }
 
 template <typename Http>
-coro::Task<int> CoMain(event_base *event_loop, Http *http) noexcept {
+coro::Task<> CoMain(event_base *event_loop, Http *http) noexcept {
   try {
     coro::stdx::stop_source stop_source;
     CancelRequest cancel_request(event_loop, stop_source);
@@ -73,11 +73,12 @@ coro::Task<int> CoMain(event_base *event_loop, Http *http) noexcept {
     });
 
     std::cerr << "DONE (SIZE=" << size << ")\n";
-
-    co_return 0;
   } catch (const coro::http::HttpException &exception) {
     std::cerr << "exception: " << exception.what() << "\n";
-    co_return -1;
+    co_return;
+  } catch (const coro::InterruptedException &) {
+    std::cerr << "interrupted\n";
+    co_return;
   }
 }
 

@@ -3,13 +3,17 @@
 
 #include <coro/stdx/coroutine.h>
 
-#include <iostream>
 #include <memory>
 #include <utility>
 
 namespace coro {
 
 namespace internal {
+
+class PromiseType;
+class NoValuePromiseType;
+template <typename T>
+class ValuePromiseType;
 
 template <typename PromiseTypeT>
 class BaseTask {
@@ -33,7 +37,6 @@ class BaseTask {
   }
 
   bool await_ready() { return false; }
-
   void await_suspend(stdx::coroutine_handle<void>) {}
 
  protected:
@@ -41,11 +44,6 @@ class BaseTask {
 
   promise_type* promise_;
 };
-
-template <typename T>
-class ValuePromiseType;
-
-class NoValuePromiseType;
 
 }  // namespace internal
 
@@ -55,11 +53,12 @@ class Task;
 template <typename T>
 class Task<T> : public internal::BaseTask<internal::ValuePromiseType<T>> {
  public:
-  T await_resume() { return *std::move(this->promise_->value_); }
+  T await_resume();
 
  private:
   template <typename>
   friend class internal::ValuePromiseType;
+  friend class internal::PromiseType;
 
   using internal::BaseTask<internal::ValuePromiseType<T>>::BaseTask;
 };
@@ -67,24 +66,32 @@ class Task<T> : public internal::BaseTask<internal::ValuePromiseType<T>> {
 template <>
 class Task<> : public internal::BaseTask<internal::NoValuePromiseType> {
  public:
-  void await_resume() {}
+  void await_resume();
 
  private:
   friend class internal::NoValuePromiseType;
+  friend class internal::PromiseType;
 
   using internal::BaseTask<internal::NoValuePromiseType>::BaseTask;
 };
 
 namespace internal {
 
-template <typename T>
-class ValuePromiseType {
+class PromiseType {
  public:
-  Task<T> get_return_object() { return Task<T>(this); }
-
   stdx::suspend_never initial_suspend() { return {}; }
   stdx::suspend_always final_suspend() { return {}; }
   void unhandled_exception() { std::terminate(); }
+
+ private:
+  template <typename>
+  friend class coro::internal::BaseTask;
+};
+
+template <typename T>
+class ValuePromiseType : public PromiseType {
+ public:
+  Task<T> get_return_object() { return Task<T>(this); }
 
   template <typename V>
   void return_value(V&& value) {
@@ -98,18 +105,25 @@ class ValuePromiseType {
   std::unique_ptr<T> value_;
 };
 
-class NoValuePromiseType {
+class NoValuePromiseType : public PromiseType {
  public:
   Task<> get_return_object() { return Task<>(this); }
 
-  stdx::suspend_never initial_suspend() { return {}; }
-  stdx::suspend_always final_suspend() { return {}; }
-  void unhandled_exception() { std::terminate(); }
-
   void return_void() {}
+
+ private:
+  template <typename...>
+  friend class coro::Task;
 };
 
 }  // namespace internal
+
+inline void Task<>::await_resume() {}
+
+template <typename T>
+T Task<T>::await_resume() {
+  return *std::move(this->promise_->value_);
+}
 
 }  // namespace coro
 

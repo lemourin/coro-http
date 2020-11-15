@@ -6,11 +6,27 @@ namespace coro::http {
 
 namespace {
 
-using internal::Check;
-
 struct SocketData {
   event socket_event = {};
 };
+
+void Check(CURLMcode code) {
+  if (code != CURLM_OK) {
+    throw HttpException(code, curl_multi_strerror(code));
+  }
+}
+
+void Check(CURLcode code) {
+  if (code != CURLE_OK) {
+    throw HttpException(code, curl_easy_strerror(code));
+  }
+}
+
+void Check(int code) {
+  if (code != 0) {
+    throw HttpException(code, "Unknown error.");
+  }
+}
 
 std::string ToLowerCase(std::string str) {
   for (char& c : str) {
@@ -94,6 +110,40 @@ int CurlHandle::ProgressCallback(void* clientp, curl_off_t /*dltotal*/,
                                  curl_off_t /*ulnow*/) {
   auto handle = reinterpret_cast<CurlHandle*>(clientp);
   return handle->stop_token_.stop_requested() ? -1 : 0;
+}
+
+template <typename Owner>
+CurlHandle::CurlHandle(CurlHttp* http, const Request& request,
+                       stdx::stop_token&& stop_token, Owner* owner)
+    : http_(http),
+      handle_(curl_easy_init()),
+      header_list_(),
+      stop_token_(std::move(stop_token)),
+      owner_(owner) {
+  Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
+  Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
+  Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
+  Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFOFUNCTION, ProgressCallback));
+  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_NOPROGRESS, 0L));
+  Check(curl_easy_setopt(handle_, CURLOPT_SSL_VERIFYPEER, 0L));
+  for (const auto& [header_name, header_value] : request.headers) {
+    std::string header_line = header_name;
+    header_line += ": ";
+    header_line += header_value;
+    header_list_ = curl_slist_append(header_list_, header_line.c_str());
+  }
+  Check(curl_easy_setopt(handle_, CURLOPT_HTTPHEADER, header_list_));
+  Check(curl_multi_add_handle(http->curl_handle_, handle_));
+}
+
+template <typename NewOwner>
+CurlHandle::CurlHandle(CurlHandle&& handle, NewOwner* owner)
+    : CurlHandle(std::move(handle)) {
+  owner_ = owner;
 }
 
 CurlHandle::~CurlHandle() {

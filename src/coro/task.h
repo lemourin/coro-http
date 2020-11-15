@@ -10,15 +10,16 @@ namespace coro {
 
 namespace internal {
 
-class PromiseType;
-class NoValuePromiseType;
-template <typename T>
-class ValuePromiseType;
+template <typename...>
+class BasePromiseType;
 
-template <typename PromiseTypeT>
+template <typename...>
+class PromiseType;
+
+template <typename... T>
 class BaseTask {
  public:
-  using promise_type = PromiseTypeT;
+  using promise_type = PromiseType<T...>;
 
   BaseTask(const BaseTask&) = delete;
   BaseTask(BaseTask&& task) noexcept
@@ -39,6 +40,9 @@ class BaseTask {
  protected:
   explicit BaseTask(promise_type* promise) : promise_(promise) {}
 
+  template <typename...>
+  friend class internal::BasePromiseType;
+
   promise_type* promise_;
 };
 
@@ -48,37 +52,37 @@ template <typename... Ts>
 class Task;
 
 template <typename T>
-class Task<T> : public internal::BaseTask<internal::ValuePromiseType<T>> {
+class Task<T> : public internal::BaseTask<T> {
  public:
   T await_resume();
 
  private:
-  template <typename>
-  friend class internal::ValuePromiseType;
-  friend class internal::PromiseType;
+  template <typename...>
+  friend class internal::BasePromiseType;
 
-  using internal::BaseTask<internal::ValuePromiseType<T>>::BaseTask;
+  using internal::BaseTask<T>::BaseTask;
 };
 
 template <>
-class Task<> : public internal::BaseTask<internal::NoValuePromiseType> {
+class Task<> : public internal::BaseTask<> {
  public:
   void await_resume();
 
  private:
-  friend class internal::NoValuePromiseType;
-  friend class internal::PromiseType;
+  template <typename...>
+  friend class internal::BasePromiseType;
 
-  using internal::BaseTask<internal::NoValuePromiseType>::BaseTask;
+  using internal::BaseTask<>::BaseTask;
 };
 
 namespace internal {
 
-class PromiseType {
+template <typename... T>
+class BasePromiseType {
  public:
   class FinalSuspend {
    public:
-    FinalSuspend(PromiseType* promise) : promise_(promise) {}
+    FinalSuspend(BasePromiseType* promise) : promise_(promise) {}
 
     bool await_ready() { return true; }
     void await_resume() {
@@ -89,15 +93,18 @@ class PromiseType {
     void await_suspend(stdx::coroutine_handle<void>) {}
 
    private:
-    PromiseType* promise_;
+    BasePromiseType* promise_;
   };
 
-  ~PromiseType() {
+  ~BasePromiseType() {
     if (exception_) {
       std::terminate();
     }
   }
 
+  Task<T...> get_return_object() {
+    return Task<T...>{static_cast<PromiseType<T...>*>(this)};
+  }
   stdx::suspend_never initial_suspend() { return {}; }
   FinalSuspend final_suspend() { return {this}; }
   void unhandled_exception() { exception_ = std::current_exception(); }
@@ -107,15 +114,13 @@ class PromiseType {
   stdx::coroutine_handle<void> continuation_;
 
  private:
-  template <typename>
+  template <typename...>
   friend class coro::internal::BaseTask;
 };
 
 template <typename T>
-class ValuePromiseType : public PromiseType {
+class PromiseType<T> : public BasePromiseType<T> {
  public:
-  Task<T> get_return_object() { return Task<T>(this); }
-
   template <typename V>
   void return_value(V&& value) {
     value_ = std::make_unique<T>(std::forward<V>(value));
@@ -128,10 +133,9 @@ class ValuePromiseType : public PromiseType {
   std::unique_ptr<T> value_;
 };
 
-class NoValuePromiseType : public PromiseType {
+template <>
+class PromiseType<> : public BasePromiseType<> {
  public:
-  Task<> get_return_object() { return Task<>(this); }
-
   void return_void() {}
 
  private:
@@ -152,7 +156,7 @@ T Task<T>::await_resume() {
   if (this->promise_->exception_) {
     std::rethrow_exception(std::exchange(this->promise_->exception_, nullptr));
   }
-  return *std::move(this->promise_->value_);
+  return std::move(*this->promise_->value_);
 }
 
 }  // namespace coro

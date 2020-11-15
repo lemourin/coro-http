@@ -225,13 +225,15 @@ void CurlHttpOperation::await_suspend(
   awaiting_coroutine_ = awaiting_coroutine;
 }
 
-Response<CurlHttpBodyGenerator> CurlHttpOperation::await_resume() {
+Response<std::unique_ptr<CurlHttpBodyGenerator>>
+CurlHttpOperation::await_resume() {
   if (exception_ptr_) {
     std::rethrow_exception(exception_ptr_);
   }
   return {.status = status_,
           .headers = std::move(headers_),
-          .body = CurlHttpBodyGenerator(std::move(handle_), std::move(body_))};
+          .body = std::make_unique<CurlHttpBodyGenerator>(std::move(handle_),
+                                                          std::move(body_))};
 }
 
 CurlHttp::CurlHttp(event_base* event_loop)

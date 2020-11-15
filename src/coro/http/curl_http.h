@@ -52,6 +52,8 @@ class CurlHandle {
 
 class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
  public:
+  CurlHttpBodyGenerator(CurlHandle&& handle, std::string&& initial_chunk);
+
   CurlHttpBodyGenerator(const CurlHttpBodyGenerator&) = delete;
   CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) = delete;
   ~CurlHttpBodyGenerator();
@@ -63,8 +65,6 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
   void Resume();
 
  private:
-  CurlHttpBodyGenerator(CurlHandle&& handle, std::string&& initial_chunk);
-
   static void OnChunkReady(evutil_socket_t, short, void* handle);
   static void OnBodyReady(evutil_socket_t, short, void* handle);
 
@@ -91,7 +91,7 @@ class CurlHttpOperation {
 
   bool await_ready();
   void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine);
-  Response<CurlHttpBodyGenerator> await_resume();
+  Response<std::unique_ptr<CurlHttpBodyGenerator>> await_resume();
 
  private:
   CurlHttpOperation(CurlHttp* http, Request&&, stdx::stop_token&&);
@@ -122,8 +122,10 @@ class CurlHttp {
   CurlHttp& operator=(const CurlHttp&) = delete;
   CurlHttp& operator=(CurlHttp&&) = delete;
 
-  CurlHttpOperation Fetch(Request request, stdx::stop_token);
-  CurlHttpOperation Fetch(std::string url, stdx::stop_token);
+  CurlHttpOperation Fetch(Request request,
+                          stdx::stop_token = stdx::stop_token());
+  CurlHttpOperation Fetch(std::string url,
+                          stdx::stop_token = stdx::stop_token());
 
  private:
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,

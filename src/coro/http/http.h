@@ -16,9 +16,6 @@ struct Request {
   std::string url;
   std::unordered_multimap<std::string, std::string> headers;
   std::string body;
-
-  template <typename StringType>
-  Request(StringType&& url) : url(std::forward<StringType>(url)) {}
 };
 
 template <typename HttpBodyGenerator>

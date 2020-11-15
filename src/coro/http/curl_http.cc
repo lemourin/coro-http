@@ -350,4 +350,8 @@ CurlHttpOperation CurlHttp::Fetch(Request request, stdx::stop_token token) {
   return CurlHttpOperation{this, std::move(request), std::move(token)};
 }
 
+CurlHttpOperation CurlHttp::Fetch(std::string url, stdx::stop_token token) {
+  return Fetch(Request{.url = std::move(url)}, std::move(token));
+}
+
 }  // namespace coro::http

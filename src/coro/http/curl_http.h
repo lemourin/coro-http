@@ -123,6 +123,7 @@ class CurlHttp {
   CurlHttp& operator=(CurlHttp&&) = delete;
 
   CurlHttpOperation Fetch(Request request, stdx::stop_token);
+  CurlHttpOperation Fetch(std::string url, stdx::stop_token);
 
  private:
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,

@@ -62,8 +62,8 @@ class HttpServer {
     stdx::stop_source stop_source;
     stdx::stop_callback stop_callback(stop_source_.get_token(),
                                       [&] { stop_source.request_stop(); });
-    evhttp_connection_set_closecb(ev_request->evcon, OnConnectionClose,
-                                  new stdx::stop_source(stop_source));
+    evhttp_connection_set_closecb(evhttp_request_get_connection(ev_request),
+                                  OnConnectionClose, &stop_source);
 
     evkeyvalq* ev_headers = evhttp_request_get_input_headers(ev_request);
     evkeyval* header = ev_headers ? ev_headers->tqh_first : nullptr;
@@ -85,7 +85,10 @@ class HttpServer {
 
       reply_started = true;
       evhttp_send_reply_start(ev_request, response.status, nullptr);
-      auto guard = Make(ev_request, evhttp_send_reply_end);
+      auto guard = Make(ev_request, [](evhttp_request* ev_request) {
+        ResetOnCloseCallback(ev_request);
+        evhttp_send_reply_end(ev_request);
+      });
 
       auto buffer = Make(evbuffer_new(), evbuffer_free);
       int size = 0;
@@ -101,6 +104,7 @@ class HttpServer {
       });
     } catch (const coro::http::HttpException&) {
       if (!reply_started) {
+        ResetOnCloseCallback(ev_request);
         evhttp_send_reply(ev_request, 500, nullptr, nullptr);
       }
     }
@@ -112,9 +116,7 @@ class HttpServer {
   }
 
   static void OnConnectionClose(evhttp_connection*, void* arg) {
-    auto stop_source = reinterpret_cast<stdx::stop_source*>(arg);
-    stop_source->request_stop();
-    delete stop_source;
+    reinterpret_cast<stdx::stop_source*>(arg)->request_stop();
   }
 
   static void OnHttpRequest(evhttp_request* request, void* arg) {
@@ -128,6 +130,13 @@ class HttpServer {
   static void OnQuit(evutil_socket_t, short, void* handle) {
     evhttp_free(
         std::exchange(reinterpret_cast<HttpServer*>(handle)->http_, nullptr));
+  }
+
+  static void ResetOnCloseCallback(evhttp_request* request) {
+    evhttp_connection* connection = evhttp_request_get_connection(request);
+    if (connection) {
+      evhttp_connection_set_closecb(connection, nullptr, nullptr);
+    }
   }
 
   static void Check(int code) {

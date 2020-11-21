@@ -6,7 +6,7 @@
 #include <memory>
 
 constexpr const char *kUrl =
-    R"(https://r2---sn-oxup5-3ufs.googlevideo.com/videoplayback?expire=1605567894&ei=NrGyX4LjLtnByQXB-J3oDg&ip=87.205.168.166&id=o-AH3xEeRFz46rKjehFu9hzz7iWAOACnUcXwMskmgX2V86&itag=248&aitags=133%2C134%2C135%2C136%2C137%2C160%2C242%2C243%2C244%2C247%2C248%2C278%2C394%2C395%2C396%2C397%2C398%2C399&source=youtube&requiressl=yes&mh=kN&mm=31%2C29&mn=sn-oxup5-3ufs%2Csn-f5f7lne7&ms=au%2Crdu&mv=m&mvi=2&pl=19&initcwndbps=1065000&vprv=1&mime=video%2Fwebm&gir=yes&clen=1139885028&dur=3588.933&lmt=1575425961931478&mt=1605546183&fvip=2&keepalive=yes&c=WEB&txp=5535432&sparams=expire%2Cei%2Cip%2Cid%2Caitags%2Csource%2Crequiressl%2Cvprv%2Cmime%2Cgir%2Cclen%2Cdur%2Clmt&lsparams=mh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Cinitcwndbps&lsig=AG3C_xAwRAIgA_5V1vBMK3wfTU-aBliPFKNjbbC2LdKvRTmRvhUQH4MCIE5NG5u5kXGVD7GywuBX03oc8Z6wKl7SWYfAbM0PTvLt&sig=AOq0QJ8wRgIhAI3lTHTFYcs-re8JbpvZax3ttWoAHtoLqt0O8Nk-cnxSAiEA1-oFnPFIri8QqnuvdbVurdPGB0-bvCyj_sih6me2KjU=&ratebypass=yes)";
+    R"(http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)";
 
 template <typename T, typename Deleter>
 auto MakePointer(T *ptr, Deleter &&deleter) {

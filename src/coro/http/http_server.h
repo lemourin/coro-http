@@ -19,7 +19,7 @@ namespace coro::http {
 template <typename HandlerType>
 class HttpServer {
  public:
-  explicit HttpServer(event_base* event_loop, HandlerType on_request)
+  explicit HttpServer(event_base* event_loop, HandlerType&& on_request)
       : event_loop_(event_loop),
         http_(evhttp_new(event_loop)),
         on_request_(std::move(on_request)) {

@@ -208,15 +208,15 @@ CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request,
   Check(event_assign(
       &headers_ready_, http->event_loop_, -1, 0,
       [](evutil_socket_t fd, short event, void* handle) {
-        auto http_operation = reinterpret_cast<CurlHttpOperation*>(handle);
-        http_operation->resume();
+        auto http_operation =  reinterpret_cast<CurlHttpOperation*>(handle);
+        http_operation->awaiting_coroutine_.resume();
       },
       this));
 }
 
-CurlHttpOperation::~CurlHttpOperation() { Check(event_del(&headers_ready_)); }
-
-void CurlHttpOperation::resume() { awaiting_coroutine_.resume(); }
+CurlHttpOperation::~CurlHttpOperation() {
+  Check(event_del(&headers_ready_));
+}
 
 bool CurlHttpOperation::await_ready() { return false; }
 
@@ -281,7 +281,7 @@ void CurlHttp::ProcessEvents(CURLM* multi_handle) {
           operation->exception_ptr_ = std::make_exception_ptr(HttpException(
               message->data.result, curl_easy_strerror(message->data.result)));
         }
-        operation->resume();
+        operation->awaiting_coroutine_.resume();
       } else if (std::holds_alternative<CurlHttpBodyGenerator*>(
                      curl_handle->owner_)) {
         auto curl_http_body_generator =

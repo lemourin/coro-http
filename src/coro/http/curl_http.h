@@ -96,8 +96,6 @@ class CurlHttpOperation {
  private:
   CurlHttpOperation(CurlHttp* http, Request&&, stdx::stop_token&&);
 
-  void resume();
-
   friend class CurlHttp;
   friend class CurlHandle;
 

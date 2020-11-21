@@ -13,6 +13,33 @@ auto MakePointer(T *ptr, Deleter &&deleter) {
   return std::unique_ptr<T, Deleter>(ptr, std::forward<Deleter>(deleter));
 }
 
+class HttpHandler {
+ public:
+  explicit HttpHandler(coro::http::CurlHttp &http) : http_(http) {}
+
+  coro::Task<
+      coro::http::Response<std::unique_ptr<coro::http::CurlHttpBodyGenerator>>>
+  operator()(const coro::http::Request &request,
+             const coro::stdx::stop_token &stop_token) const {
+    std::unordered_multimap<std::string, std::string> headers;
+    auto range_it = request.headers.find("Range");
+    if (range_it != std::end(request.headers)) {
+      headers.emplace(*range_it);
+    }
+    auto pipe_request =
+        coro::http::Request{.url = kUrl, .headers = std::move(headers)};
+    auto pipe = co_await http_.Fetch(std::move(pipe_request), stop_token);
+    co_return coro::http::Response<
+        std::unique_ptr<coro::http::CurlHttpBodyGenerator>>{
+        .status = pipe.status,
+        .headers = pipe.headers,
+        .body = std::move(pipe.body)};
+  }
+
+ private:
+  coro::http::CurlHttp &http_;
+};
+
 int main() {
 #ifdef _WIN32
   WORD version_requested = MAKEWORD(2, 2);
@@ -27,27 +54,7 @@ int main() {
 
   auto base = MakePointer(event_base_new(), event_base_free);
   coro::http::CurlHttp http(base.get());
-  coro::http::HttpServer http_server(
-      base.get(),
-      [&http](const coro::http::Request &request,
-              coro::stdx::stop_token stop_token)
-          -> coro::Task<coro::http::Response<
-              std::unique_ptr<coro::http::CurlHttpBodyGenerator>>> {
-        std::unordered_multimap<std::string, std::string> headers;
-        auto range_it = request.headers.find("Range");
-        if (range_it != std::end(request.headers)) {
-          headers.emplace(*range_it);
-        }
-        auto pipe = co_await http.Fetch(
-            coro::http::Request{.url = kUrl, .headers = std::move(headers)},
-            stop_token);
-        co_return coro::http::Response<
-            std::unique_ptr<coro::http::CurlHttpBodyGenerator>>{
-            .status = pipe.status,
-            .headers = pipe.headers,
-            .body = std::move(pipe.body)};
-      });
-
+  coro::http::HttpServer http_server(base.get(), HttpHandler{http});
   event_base_dispatch(base.get());
   return 0;
 }

@@ -28,7 +28,7 @@ using suspend_always = coro::std_ns::suspend_always;
     auto ___begin = std::begin(___container);         \
     auto ___end = std::end(___container);             \
     while (___begin != ___end) {                      \
-      co_await ___begin;                              \
+      co_await std::move(___begin);                   \
       decl_expr = *___begin;                          \
       code;                                           \
       ++___begin;                                     \

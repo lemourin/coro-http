@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <concepts>
 
 namespace coro::http {
 
@@ -168,6 +169,27 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
     std::exchange(handle_, nullptr).resume();
   }
 }
+
+template <typename T>
+concept IsIntegral = std::is_integral_v<T>;
+
+template <typename T>
+concept ResponseType = requires(T v) {
+  { v.status } -> IsIntegral;
+  { v.headers } -> std::same_as<std::unordered_multimap<std::string, std::string>>;
+  v.body;
+};
+
+template <typename T>
+concept HttpOperation = requires (T v) {
+  { v.await_resume() } -> ResponseType;
+};
+
+template <typename T>
+concept HttpClient = requires(T v) {
+  { v.Fetch(Request(), stdx::stop_token()) } -> HttpOperation;
+  { v.Fetch(std::string(), stdx::stop_token()) } -> HttpOperation;
+};
 
 }  // namespace coro::http
 

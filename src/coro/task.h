@@ -31,7 +31,7 @@ class BaseTask {
     return *this;
   }
 
-  bool await_ready() { return false; }
+  bool await_ready() noexcept { return false; }
 
   void await_suspend(stdx::coroutine_handle<void> continuation) {
     promise_->continuation_ = continuation;
@@ -84,13 +84,13 @@ class BasePromiseType {
    public:
     FinalSuspend(BasePromiseType* promise) : promise_(promise) {}
 
-    bool await_ready() { return true; }
-    void await_resume() {
+    bool await_ready() noexcept { return true; }
+    void await_resume() noexcept {
       if (promise_->continuation_) {
         promise_->continuation_.resume();
       }
     }
-    void await_suspend(stdx::coroutine_handle<void>) {}
+    void await_suspend(stdx::coroutine_handle<void>) noexcept {}
 
    private:
     BasePromiseType* promise_;
@@ -106,7 +106,7 @@ class BasePromiseType {
     return Task<T...>{static_cast<PromiseType<T...>*>(this)};
   }
   stdx::suspend_never initial_suspend() { return {}; }
-  FinalSuspend final_suspend() { return {this}; }
+  FinalSuspend final_suspend() noexcept { return {this}; }
   void unhandled_exception() { exception_ = std::current_exception(); }
 
  protected:

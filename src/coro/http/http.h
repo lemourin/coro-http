@@ -173,15 +173,13 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
 }
 
 // clang-format off
-template <typename T>
-concept IsIntegral = std::is_integral_v<T>;
 
 template <typename T>
-concept ResponseType = requires(T v) {
-  { v.status } -> stdx::integral;
-  { v.headers } -> std::same_as<std::unordered_multimap<std::string, std::string>>;
-  { v.body } -> util::GeneratorLike;
-};
+concept ResponseType =
+  stdx::integral<decltype(std::declval<T>().status)> &&
+  std::same_as<decltype(std::declval<T>().headers),
+               std::unordered_multimap<std::string, std::string>> &&
+  util::GeneratorLike<decltype(std::declval<T>().body)>;
 
 template <typename T>
 concept HttpOperation = requires (T v) {
@@ -190,12 +188,13 @@ concept HttpOperation = requires (T v) {
 
 template <typename T>
 concept HttpClientImpl = requires(T v) {
-  { v.Fetch(Request(), stdx::stop_token()) } -> HttpOperation;
+  { v.Fetch(std::declval<Request>(), stdx::stop_token()) } -> HttpOperation;
 };
 
 template <typename T>
 concept HttpClient = HttpClientImpl<T> && requires(T v) {
   { v.Fetch(std::string(), stdx::stop_token()) } -> HttpOperation;
+  typename T::ResponseType;
 };
 
 // clang-format on

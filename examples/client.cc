@@ -52,7 +52,7 @@ coro::Task<> CoMain(event_base *event_loop) noexcept {
     }
 
     std::size_t size = 0;
-    FOR_CO_AWAIT(const std::string &bytes, *response.body, {
+    FOR_CO_AWAIT(const std::string &bytes, response.body, {
       std::cerr << "awaiting...\n";
       co_await coro::Wait(event_loop, 1000, stop_source.get_token());
       std::cerr << "bytes:" << bytes.size() << "\n";

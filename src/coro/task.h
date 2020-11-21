@@ -1,6 +1,7 @@
 #ifndef CORO_TASK_H
 #define CORO_TASK_H
 
+#include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 
 #include <memory>
@@ -158,6 +159,15 @@ T Task<T>::await_resume() {
   }
   return std::move(*this->promise_->value_);
 }
+
+// clang-format off
+template <typename T>
+concept Awaitable = requires(T v) {
+  v.await_resume();
+  v.await_suspend(std::declval<stdx::coroutine_handle<void>>());
+  { v.await_ready() } -> std::same_as<bool>;
+};
+// clang-format on
 
 }  // namespace coro
 

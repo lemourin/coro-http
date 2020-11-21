@@ -179,7 +179,7 @@ concept ResponseType =
   stdx::integral<decltype(std::declval<T>().status)> &&
   std::same_as<decltype(std::declval<T>().headers),
                std::unordered_multimap<std::string, std::string>> &&
-  util::GeneratorLike<decltype(std::declval<T>().body)>;
+  coro::GeneratorLike<decltype(std::declval<T>().body)>;
 
 template <typename T>
 concept HttpOperation = requires (T v) {

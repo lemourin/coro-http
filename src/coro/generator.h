@@ -2,6 +2,7 @@
 #define CORO_HTTP_GENERATOR_H
 
 #include <coro/stdx/coroutine.h>
+#include <coro/task.h>
 
 #include <exception>
 #include <memory>
@@ -83,6 +84,14 @@ class Generator {
 
   promise_type* promise_;
 };
+
+// clang-format off
+template <typename T>
+concept GeneratorLike = requires(T v) {
+  { v.begin() } -> Awaitable;
+  { v.end() } -> Awaitable;
+};
+// clang-format on
 
 }  // namespace coro
 

@@ -1,21 +1,14 @@
 #ifndef CORO_CLOUDSTORAGE_WRAP_H
 #define CORO_CLOUDSTORAGE_WRAP_H
 
+#include <coro/generator.h>
 #include <coro/stdx/coroutine.h>
+#include <coro/task.h>
 
 #include <concepts>
 #include <memory>
 
 namespace coro::util {
-
-// clang-format off
-template <typename T>
-concept Awaitable = requires(T v) {
-  v.await_resume();
-  v.await_suspend(std::declval<stdx::coroutine_handle<void>>());
-  { v.await_ready() } -> std::same_as<bool>;
-};
-// clang-format on
 
 template <Awaitable T>
 class WrapAwaitable {
@@ -32,14 +25,6 @@ class WrapAwaitable {
  private:
   std::unique_ptr<T> awaitable_;
 };
-
-// clang-format off
-template <typename T>
-concept GeneratorLike = requires(T v) {
-  { v.begin() } -> Awaitable;
-  { v.end() } -> Awaitable;
-};
-// clang-format on
 
 template <GeneratorLike T>
 class WrapGenerator {

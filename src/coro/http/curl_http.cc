@@ -113,7 +113,7 @@ int CurlHandle::ProgressCallback(void* clientp, curl_off_t /*dltotal*/,
 }
 
 template <typename Owner>
-CurlHandle::CurlHandle(CurlHttp* http, const Request& request,
+CurlHandle::CurlHandle(CurlHttpImpl* http, const Request& request,
                        stdx::stop_token&& stop_token, Owner* owner)
     : http_(http),
       handle_(curl_easy_init()),
@@ -199,7 +199,7 @@ void CurlHttpBodyGenerator::Resume() {
   }
 }
 
-CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request,
+CurlHttpOperation::CurlHttpOperation(CurlHttpImpl* http, Request&& request,
                                      stdx::stop_token&& stop_token)
     : request_(std::move(request)),
       handle_(http, request_, std::move(stop_token), this),
@@ -208,15 +208,13 @@ CurlHttpOperation::CurlHttpOperation(CurlHttp* http, Request&& request,
   Check(event_assign(
       &headers_ready_, http->event_loop_, -1, 0,
       [](evutil_socket_t fd, short event, void* handle) {
-        auto http_operation =  reinterpret_cast<CurlHttpOperation*>(handle);
+        auto http_operation = reinterpret_cast<CurlHttpOperation*>(handle);
         http_operation->awaiting_coroutine_.resume();
       },
       this));
 }
 
-CurlHttpOperation::~CurlHttpOperation() {
-  Check(event_del(&headers_ready_));
-}
+CurlHttpOperation::~CurlHttpOperation() { Check(event_del(&headers_ready_)); }
 
 bool CurlHttpOperation::await_ready() { return false; }
 
@@ -225,18 +223,18 @@ void CurlHttpOperation::await_suspend(
   awaiting_coroutine_ = awaiting_coroutine;
 }
 
-Response<std::unique_ptr<CurlHttpBodyGenerator>>
+Response<util::WrapGenerator<CurlHttpBodyGenerator>>
 CurlHttpOperation::await_resume() {
   if (exception_ptr_) {
     std::rethrow_exception(exception_ptr_);
   }
   return {.status = status_,
           .headers = std::move(headers_),
-          .body = std::make_unique<CurlHttpBodyGenerator>(std::move(handle_),
-                                                          std::move(body_))};
+          .body = util::WrapGenerator(std::make_unique<CurlHttpBodyGenerator>(
+              std::move(handle_), std::move(body_)))};
 }
 
-CurlHttp::CurlHttp(event_base* event_loop)
+CurlHttpImpl::CurlHttpImpl(event_base* event_loop)
     : curl_handle_(curl_multi_init()),
       event_loop_(event_loop),
       timeout_event_() {
@@ -256,12 +254,12 @@ CurlHttp::CurlHttp(event_base* event_loop)
   Check(curl_multi_setopt(curl_handle_, CURLMOPT_TIMERDATA, this));
 }
 
-CurlHttp::~CurlHttp() {
+CurlHttpImpl::~CurlHttpImpl() {
   Check(event_del(&timeout_event_));
   Check(curl_multi_cleanup(curl_handle_));
 }
 
-void CurlHttp::ProcessEvents(CURLM* multi_handle) {
+void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
   CURLMsg* message;
   do {
     int message_count;
@@ -300,7 +298,7 @@ void CurlHttp::ProcessEvents(CURLM* multi_handle) {
   } while (message != nullptr);
 }
 
-void CurlHttp::SocketEvent(evutil_socket_t fd, short event, void* handle) {
+void CurlHttpImpl::SocketEvent(evutil_socket_t fd, short event, void* handle) {
   int running_handles;
   Check(
       curl_multi_socket_action(handle, fd,
@@ -310,9 +308,9 @@ void CurlHttp::SocketEvent(evutil_socket_t fd, short event, void* handle) {
   ProcessEvents(handle);
 }
 
-int CurlHttp::SocketCallback(CURL*, curl_socket_t socket, int what, void* userp,
-                             void* socketp) {
-  auto http = reinterpret_cast<CurlHttp*>(userp);
+int CurlHttpImpl::SocketCallback(CURL*, curl_socket_t socket, int what,
+                                 void* userp, void* socketp) {
+  auto http = reinterpret_cast<CurlHttpImpl*>(userp);
   if (what == CURL_POLL_REMOVE) {
     auto data = reinterpret_cast<SocketData*>(socketp);
     if (data) {
@@ -336,8 +334,8 @@ int CurlHttp::SocketCallback(CURL*, curl_socket_t socket, int what, void* userp,
   return 0;
 }
 
-int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
-  auto http = reinterpret_cast<CurlHttp*>(userp);
+int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
+  auto http = reinterpret_cast<CurlHttpImpl*>(userp);
   if (timeout_ms == -1) {
     Check(event_del(&http->timeout_event_));
   } else {
@@ -348,12 +346,10 @@ int CurlHttp::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   return 0;
 }
 
-CurlHttpOperation CurlHttp::Fetch(Request request, stdx::stop_token token) {
-  return CurlHttpOperation{this, std::move(request), std::move(token)};
-}
-
-CurlHttpOperation CurlHttp::Fetch(std::string url, stdx::stop_token token) {
-  return Fetch(Request{.url = std::move(url)}, std::move(token));
+util::WrapAwaitable<CurlHttpOperation> CurlHttpImpl::Fetch(
+    Request request, stdx::stop_token token) {
+  return util::WrapAwaitable(std::make_unique<CurlHttpOperation>(
+      this, std::move(request), std::move(token)));
 }
 
 }  // namespace coro::http

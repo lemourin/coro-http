@@ -3,11 +3,12 @@
 
 #include <coro/stdx/coroutine.h>
 #include <coro/stdx/stop_token.h>
+#include <coro/util/wrap.h>
 
+#include <concepts>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <concepts>
 
 namespace coro::http {
 
@@ -170,6 +171,7 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
   }
 }
 
+// clang-format off
 template <typename T>
 concept IsIntegral = std::is_integral_v<T>;
 
@@ -177,7 +179,7 @@ template <typename T>
 concept ResponseType = requires(T v) {
   { v.status } -> IsIntegral;
   { v.headers } -> std::same_as<std::unordered_multimap<std::string, std::string>>;
-  v.body;
+  { v.body } -> util::GeneratorLike;
 };
 
 template <typename T>
@@ -186,9 +188,33 @@ concept HttpOperation = requires (T v) {
 };
 
 template <typename T>
-concept HttpClient = requires(T v) {
+concept HttpClientImpl = requires(T v) {
   { v.Fetch(Request(), stdx::stop_token()) } -> HttpOperation;
+};
+
+template <typename T>
+concept HttpClient = HttpClientImpl<T> && requires(T v) {
   { v.Fetch(std::string(), stdx::stop_token()) } -> HttpOperation;
+};
+
+// clang-format on
+
+template <HttpClientImpl Impl>
+class ToHttpClient : protected Impl {
+ public:
+  using ResponseType = decltype(
+      std::declval<Impl>().Fetch(std::declval<Request>()).await_resume());
+
+  using Impl::Impl;
+
+  auto Fetch(Request request,
+             stdx::stop_token stop_token = stdx::stop_token()) {
+    return Impl::Fetch(request, std::move(stop_token));
+  }
+  auto Fetch(std::string url,
+             stdx::stop_token stop_token = stdx::stop_token()) {
+    return Fetch(Request{.url = std::move(url)}, std::move(stop_token));
+  }
 };
 
 }  // namespace coro::http

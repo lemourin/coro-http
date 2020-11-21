@@ -97,7 +97,7 @@ class HttpServer {
 
       auto buffer = Make(evbuffer_new(), evbuffer_free);
       int size = 0;
-      FOR_CO_AWAIT(const std::string& chunk, *response.body, {
+      FOR_CO_AWAIT(const std::string& chunk, response.body, {
         evbuffer_add(buffer.get(), chunk.c_str(), chunk.size());
         size += chunk.size();
         Semaphore semaphore;
@@ -134,8 +134,7 @@ class HttpServer {
 
   static void OnQuit(evutil_socket_t, short, void* handle) {
     auto http_server = reinterpret_cast<HttpServer*>(handle);
-    evhttp_free(
-        std::exchange(http_server->http_, nullptr));
+    evhttp_free(std::exchange(http_server->http_, nullptr));
     http_server->quit_semaphore_.resume();
   }
 

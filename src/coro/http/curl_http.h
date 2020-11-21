@@ -1,6 +1,7 @@
 #ifndef CORO_HTTP_SRC_CORO_HTTP_CURL_HTTP_H_
 #define CORO_HTTP_SRC_CORO_HTTP_CURL_HTTP_H_
 
+#include <coro/util/wrap.h>
 #include <curl/curl.h>
 #include <event2/event.h>
 #include <event2/event_struct.h>
@@ -11,7 +12,7 @@
 
 namespace coro::http {
 
-class CurlHttp;
+class CurlHttpImpl;
 class CurlHttpOperation;
 class CurlHttpBodyGenerator;
 
@@ -26,7 +27,7 @@ class CurlHandle {
 
  private:
   template <typename Owner>
-  CurlHandle(CurlHttp*, const Request&, stdx::stop_token&&, Owner*);
+  CurlHandle(CurlHttpImpl*, const Request&, stdx::stop_token&&, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
@@ -39,11 +40,11 @@ class CurlHandle {
                               curl_off_t dlnow, curl_off_t ultotal,
                               curl_off_t ulnow);
 
-  friend class CurlHttp;
+  friend class CurlHttpImpl;
   friend class CurlHttpOperation;
   friend class CurlHttpBodyGenerator;
 
-  CurlHttp* http_;
+  CurlHttpImpl* http_;
   CURL* handle_;
   curl_slist* header_list_;
   stdx::stop_token stop_token_;
@@ -70,7 +71,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 
   friend class CurlHttpOperation;
   friend class CurlHandle;
-  friend class CurlHttp;
+  friend class CurlHttpImpl;
 
   CurlHandle handle_;
   event chunk_ready_;
@@ -82,6 +83,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 
 class CurlHttpOperation {
  public:
+  CurlHttpOperation(CurlHttpImpl* http, Request&&, stdx::stop_token&&);
   CurlHttpOperation(const CurlHttpOperation&) = delete;
   CurlHttpOperation(CurlHttpOperation&&) = delete;
   ~CurlHttpOperation();
@@ -91,12 +93,10 @@ class CurlHttpOperation {
 
   bool await_ready();
   void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine);
-  Response<std::unique_ptr<CurlHttpBodyGenerator>> await_resume();
+  Response<util::WrapGenerator<CurlHttpBodyGenerator>> await_resume();
 
  private:
-  CurlHttpOperation(CurlHttp* http, Request&&, stdx::stop_token&&);
-
-  friend class CurlHttp;
+  friend class CurlHttpImpl;
   friend class CurlHandle;
 
   Request request_;
@@ -110,20 +110,18 @@ class CurlHttpOperation {
   std::string body_;
 };
 
-class CurlHttp {
+class CurlHttpImpl {
  public:
-  explicit CurlHttp(event_base* event_loop);
-  CurlHttp(const CurlHttp&) = delete;
-  CurlHttp(CurlHttp&&) = delete;
-  ~CurlHttp();
+  explicit CurlHttpImpl(event_base* event_loop);
+  CurlHttpImpl(const CurlHttpImpl&) = delete;
+  CurlHttpImpl(CurlHttpImpl&&) = delete;
+  ~CurlHttpImpl();
 
-  CurlHttp& operator=(const CurlHttp&) = delete;
-  CurlHttp& operator=(CurlHttp&&) = delete;
+  CurlHttpImpl& operator=(const CurlHttpImpl&) = delete;
+  CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
 
-  CurlHttpOperation Fetch(Request request,
-                          stdx::stop_token = stdx::stop_token());
-  CurlHttpOperation Fetch(std::string url,
-                          stdx::stop_token = stdx::stop_token());
+  util::WrapAwaitable<CurlHttpOperation> Fetch(
+      Request request, stdx::stop_token = stdx::stop_token());
 
  private:
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,
@@ -140,6 +138,8 @@ class CurlHttp {
   event_base* event_loop_;
   event timeout_event_;
 };
+
+using CurlHttp = ToHttpClient<CurlHttpImpl>;
 
 }  // namespace coro::http
 

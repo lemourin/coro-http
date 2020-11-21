@@ -41,6 +41,16 @@ class HttpServer {
   HttpServer& operator=(const HttpServer&) = delete;
   HttpServer& operator=(HttpServer&&) = delete;
 
+  Task<> Quit() noexcept {
+    quitting_ = true;
+    stop_source_.request_stop();
+    if (current_connections_ == 0) {
+      timeval tv = {};
+      Check(event_add(&quit_event_, &tv));
+    }
+    co_await quit_semaphore_;
+  }
+
  private:
   Task<> OnHttpRequest(evhttp_request* ev_request) noexcept {
     if (quitting_) {
@@ -48,13 +58,8 @@ class HttpServer {
       co_return;
     }
     if (evhttp_request_get_uri(ev_request) == std::string("/quit")) {
-      quitting_ = true;
-      stop_source_.request_stop();
       evhttp_send_reply(ev_request, 200, nullptr, nullptr);
-      if (current_connections_ == 0) {
-        timeval tv = {};
-        Check(event_add(&quit_event_, &tv));
-      }
+      co_await Quit();
       co_return;
     }
 
@@ -128,8 +133,10 @@ class HttpServer {
   }
 
   static void OnQuit(evutil_socket_t, short, void* handle) {
+    auto http_server = reinterpret_cast<HttpServer*>(handle);
     evhttp_free(
-        std::exchange(reinterpret_cast<HttpServer*>(handle)->http_, nullptr));
+        std::exchange(http_server->http_, nullptr));
+    http_server->quit_semaphore_.resume();
   }
 
   static void ResetOnCloseCallback(evhttp_request* request) {
@@ -182,7 +189,7 @@ class HttpServer {
   int current_connections_ = 0;
   stdx::stop_source stop_source_;
   event quit_event_;
-
+  Semaphore quit_semaphore_;
   HandlerType on_request_;
 };
 

@@ -16,7 +16,14 @@
 
 namespace coro::http {
 
-template <typename HandlerType>
+// clang-format off
+template <typename T>
+concept Handler = requires (T v) {
+  { v(std::declval<Request>(), stdx::stop_token()).await_resume() } -> ResponseType;
+};
+// clang-format on
+
+template <Handler HandlerType>
 class HttpServer {
  public:
   explicit HttpServer(event_base* event_loop, HandlerType&& on_request)

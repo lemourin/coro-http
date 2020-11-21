@@ -1,6 +1,7 @@
 #ifndef CORO_HTTP_HTTP_H
 #define CORO_HTTP_HTTP_H
 
+#include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/util/wrap.h>
@@ -177,7 +178,7 @@ concept IsIntegral = std::is_integral_v<T>;
 
 template <typename T>
 concept ResponseType = requires(T v) {
-  { v.status } -> IsIntegral;
+  { v.status } -> stdx::integral;
   { v.headers } -> std::same_as<std::unordered_multimap<std::string, std::string>>;
   { v.body } -> util::GeneratorLike;
 };

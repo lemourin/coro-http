@@ -1,7 +1,6 @@
 #ifndef CORO_TASK_H
 #define CORO_TASK_H
 
-#include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 
 #include <memory>

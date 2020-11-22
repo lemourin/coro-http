@@ -1,7 +1,6 @@
 #ifndef CORO_HTTP_HTTP_H
 #define CORO_HTTP_HTTP_H
 
-#include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/util/wrap.h>
@@ -176,7 +175,7 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
 
 template <typename T>
 concept ResponseType =
-  stdx::integral<decltype(std::declval<T>().status)> &&
+  std::integral<decltype(std::declval<T>().status)> &&
   std::same_as<decltype(std::declval<T>().headers),
                std::unordered_multimap<std::string, std::string>> &&
   coro::GeneratorLike<decltype(std::declval<T>().body)>;

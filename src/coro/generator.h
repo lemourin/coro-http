@@ -40,14 +40,23 @@ class Generator {
     }
 
     iterator& operator++() {
-      generator_->promise_->handle().resume();
+      generator_->promise_->value_ = nullptr;
+      if (generator_->promise_->continuation_) {
+        std::exchange(generator_->promise_->continuation_, nullptr).resume();
+      } else {
+        generator_->promise_->handle().resume();
+      }
       return *this;
     }
 
     T& operator*() { return *generator_->promise_->value_; }
 
-    [[nodiscard]] bool await_ready() const { return true; }
-    void await_suspend(stdx::coroutine_handle<void>) {}
+    [[nodiscard]] bool await_ready() const {
+      return generator_->promise_->value_ != nullptr;
+    }
+    void await_suspend(stdx::coroutine_handle<void> continuation) {
+      generator_->promise_->continuation_ = continuation;
+    }
     iterator& await_resume() { return *this; }
 
    private:
@@ -66,6 +75,9 @@ class Generator {
     template <typename V>
     stdx::suspend_always yield_value(V&& value) {
       value_ = std::make_unique<T>(std::forward<V>(value));
+      if (continuation_) {
+        std::exchange(continuation_, nullptr).resume();
+      }
       return {};
     }
 
@@ -78,6 +90,7 @@ class Generator {
     friend class Generator;
 
     std::unique_ptr<T> value_;
+    stdx::coroutine_handle<void> continuation_;
   };
 
   iterator begin() { return iterator{this}; }

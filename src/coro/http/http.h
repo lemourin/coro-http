@@ -174,7 +174,7 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
 // clang-format off
 
 template <typename T>
-concept ResponseType = requires (T v) {
+concept ResponseLike = requires (T v) {
   { v.status } -> std::convertible_to<int>;
   { v.headers } -> std::convertible_to<std::unordered_multimap<std::string, std::string>>;
   { v.body } -> coro::GeneratorLike;
@@ -182,7 +182,7 @@ concept ResponseType = requires (T v) {
 
 template <typename T>
 concept HttpOperation = requires (T v) {
-  { v.await_resume() } -> ResponseType;
+  { v.await_resume() } -> ResponseLike;
 };
 
 template <typename T>

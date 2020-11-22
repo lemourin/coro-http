@@ -1,6 +1,7 @@
 #ifndef CORO_HTTP_HTTP_SERVER_H
 #define CORO_HTTP_HTTP_SERVER_H
 
+#include <coro/semaphore.h>
 #include <coro/stdx/stop_callback.h>
 #include <coro/stdx/stop_source.h>
 #include <coro/task.h>
@@ -162,25 +163,6 @@ class HttpServer {
   static auto Make(T* p, Callable deleter) {
     return std::unique_ptr<T, Callable>(p, std::move(deleter));
   }
-
-  class Semaphore {
-   public:
-    bool await_ready() { return resumed_; }
-    void await_suspend(stdx::coroutine_handle<void> continuation) {
-      continuation_ = continuation;
-    }
-    void await_resume() {}
-    void resume() {
-      resumed_ = true;
-      if (continuation_) {
-        continuation_.resume();
-      }
-    }
-
-   private:
-    bool resumed_ = false;
-    stdx::coroutine_handle<void> continuation_;
-  };
 
   using handler_argument_list = util::ArgumentListTypeT<HandlerType>;
   static_assert(util::TypeListLengthV<handler_argument_list> == 2);

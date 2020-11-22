@@ -174,11 +174,11 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
 // clang-format off
 
 template <typename T>
-concept ResponseType =
-  std::integral<decltype(std::declval<T>().status)> &&
-  std::same_as<decltype(std::declval<T>().headers),
-               std::unordered_multimap<std::string, std::string>> &&
-  coro::GeneratorLike<decltype(std::declval<T>().body)>;
+concept ResponseType = requires (T v) {
+  { v.status } -> std::convertible_to<int>;
+  { v.headers } -> std::convertible_to<std::unordered_multimap<std::string, std::string>>;
+  { v.body } -> coro::GeneratorLike;
+};
 
 template <typename T>
 concept HttpOperation = requires (T v) {

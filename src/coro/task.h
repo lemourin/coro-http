@@ -98,7 +98,7 @@ class BasePromiseType {
 
   ~BasePromiseType() {
     if (exception_) {
-      std::terminate();
+      std::rethrow_exception(exception_);
     }
   }
 

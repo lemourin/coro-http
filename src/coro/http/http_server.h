@@ -24,14 +24,20 @@ concept Handler = requires (T v) {
 };
 // clang-format on
 
+struct HttpServerConfig {
+  std::string address;
+  int port;
+};
+
 template <Handler HandlerType>
 class HttpServer {
  public:
-  explicit HttpServer(event_base* event_loop, HandlerType&& on_request)
+  HttpServer(event_base* event_loop, const HttpServerConfig& config,
+             HandlerType&& on_request)
       : event_loop_(event_loop),
         http_(evhttp_new(event_loop)),
         on_request_(std::move(on_request)) {
-    Check(evhttp_bind_socket(http_, "0.0.0.0", 4444));
+    Check(evhttp_bind_socket(http_, config.address.c_str(), config.port));
     evhttp_set_gencb(http_, OnHttpRequest, this);
     Check(event_assign(&quit_event_, event_loop, -1, 0, OnQuit, this));
   }

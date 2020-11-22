@@ -52,7 +52,8 @@ int main() {
 
   auto base = MakePointer(event_base_new(), event_base_free);
   coro::http::CurlHttp http(base.get());
-  coro::http::HttpServer http_server(base.get(), HttpHandler{http});
+  coro::http::HttpServer http_server(
+      base.get(), {.address = "0.0.0.0", .port = 4444}, HttpHandler{http});
   event_base_dispatch(base.get());
   return 0;
 }

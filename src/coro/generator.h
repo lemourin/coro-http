@@ -46,6 +46,10 @@ class Generator {
 
     T& operator*() { return *generator_->promise_->value_; }
 
+    [[nodiscard]] bool await_ready() const { return true; }
+    void await_suspend(stdx::coroutine_handle<void>) {}
+    iterator& await_resume() { return *this; }
+
    private:
     Generator* generator_;
   };
@@ -89,7 +93,7 @@ class Generator {
 template <typename T>
 concept GeneratorLike = requires(T v) {
   { v.begin() } -> Awaitable;
-  { v.end() } -> Awaitable;
+  v.end();
 };
 // clang-format on
 

@@ -8,9 +8,10 @@ stop_source::stop_source()
 bool stop_source::request_stop() noexcept {
   state_->stopped = true;
 
-  while (!state_->stop_callback.empty()) {
-    auto cb = *state_->stop_callback.begin();
-    state_->stop_callback.erase(state_->stop_callback.begin());
+  auto state = state_;
+  while (!state->stop_callback.empty()) {
+    auto cb = *state->stop_callback.begin();
+    state->stop_callback.erase(state->stop_callback.begin());
     (*cb)();
   }
 

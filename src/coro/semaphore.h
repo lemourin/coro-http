@@ -15,7 +15,7 @@ class Semaphore {
   void resume() {
     resumed_ = true;
     if (continuation_) {
-      continuation_.resume();
+      std::exchange(continuation_, nullptr).resume();
     }
   }
 

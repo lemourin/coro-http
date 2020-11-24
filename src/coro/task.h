@@ -8,156 +8,116 @@
 
 namespace coro {
 
-namespace internal {
-
-template <typename...>
-class BasePromiseType;
-
-template <typename...>
-class PromiseType;
-
-template <typename... T>
-class BaseTask {
- public:
-  using promise_type = PromiseType<T...>;
-
-  BaseTask(const BaseTask&) = delete;
-  BaseTask(BaseTask&& task) noexcept
-      : promise_(std::exchange(task.promise_, nullptr)) {}
-
-  BaseTask& operator=(const BaseTask&) = delete;
-  BaseTask& operator=(BaseTask&& task) noexcept {
-    promise_ = std::exchange(task.promise_, nullptr);
-    return *this;
-  }
-
-  bool await_ready() noexcept { return false; }
-
-  void await_suspend(stdx::coroutine_handle<void> continuation) {
-    promise_->continuation_ = continuation;
-  }
-
- protected:
-  explicit BaseTask(promise_type* promise) : promise_(promise) {}
-
-  template <typename...>
-  friend class internal::BasePromiseType;
-
-  promise_type* promise_;
-};
-
-}  // namespace internal
-
 template <typename... Ts>
 class Task;
 
 template <typename T>
-class Task<T> : public internal::BaseTask<T> {
+class Task<T> {
  public:
-  T await_resume();
-
- private:
-  template <typename...>
-  friend class internal::BasePromiseType;
-
-  using internal::BaseTask<T>::BaseTask;
-};
-
-template <>
-class Task<> : public internal::BaseTask<> {
- public:
-  void await_resume();
-
- private:
-  template <typename...>
-  friend class internal::BasePromiseType;
-
-  using internal::BaseTask<>::BaseTask;
-};
-
-namespace internal {
-
-template <typename... T>
-class BasePromiseType {
- public:
-  class FinalSuspend {
-   public:
-    FinalSuspend(BasePromiseType* promise) : promise_(promise) {}
-
-    bool await_ready() noexcept { return true; }
-    void await_resume() noexcept {
-      if (promise_->continuation_) {
-        promise_->continuation_.resume();
+  struct promise_type {
+    struct final_awaitable {
+      bool await_ready() noexcept { return true; }
+      auto await_suspend(auto) noexcept {}
+      void await_resume() noexcept {
+        if (promise->continuation) {
+          promise->continuation.resume();
+        }
       }
-    }
-    void await_suspend(stdx::coroutine_handle<void>) noexcept {}
 
-   private:
-    BasePromiseType* promise_;
+      promise_type* promise;
+    };
+
+    Task get_return_object() {
+      return Task(stdx::coroutine_handle<promise_type>::from_promise(*this));
+    }
+    stdx::suspend_always initial_suspend() { return {}; }
+    final_awaitable final_suspend() { return {this}; }
+    template <typename V>
+    void return_value(V&& v) {
+      value = std::make_unique<T>(std::forward<V>(v));
+    }
+    void unhandled_exception() { std::terminate(); }
+
+    stdx::coroutine_handle<void> continuation;
+    std::unique_ptr<T> value;
   };
 
-  ~BasePromiseType() {
-    if (exception_) {
-      std::rethrow_exception(exception_);
-    }
+  explicit Task(stdx::coroutine_handle<promise_type> handle)
+      : handle_(handle) {}
+
+  Task(const Task&) = delete;
+  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task& operator=(const Task&) = delete;
+  Task& operator=(Task&& task) noexcept {
+    ~Task();
+    handle_ = std::exchange(task.handle_, nullptr);
   }
 
-  Task<T...> get_return_object() {
-    return Task<T...>{static_cast<PromiseType<T...>*>(this)};
+  bool await_ready() { return false; }
+  void await_suspend(stdx::coroutine_handle<void> continuation) {
+    handle_.promise().continuation = continuation;
+    handle_.resume();
   }
-  stdx::suspend_never initial_suspend() { return {}; }
-  FinalSuspend final_suspend() noexcept { return {this}; }
-  void unhandled_exception() { exception_ = std::current_exception(); }
-
- protected:
-  std::exception_ptr exception_;
-  stdx::coroutine_handle<void> continuation_;
+  T await_resume() { return std::move(*handle_.promise().value); }
 
  private:
-  template <typename...>
-  friend class coro::internal::BaseTask;
-};
-
-template <typename T>
-class PromiseType<T> : public BasePromiseType<T> {
- public:
-  template <typename V>
-  void return_value(V&& value) {
-    value_ = std::make_unique<T>(std::forward<V>(value));
-  }
-
- private:
-  template <typename...>
-  friend class coro::Task;
-
-  std::unique_ptr<T> value_;
+  stdx::coroutine_handle<promise_type> handle_;
 };
 
 template <>
-class PromiseType<> : public BasePromiseType<> {
+class Task<> {
  public:
-  void return_void() {}
+  struct promise_type {
+    struct final_awaitable {
+      bool await_ready() noexcept { return true; }
+      auto await_suspend(auto) noexcept {}
+      void await_resume() noexcept {
+        if (promise->continuation) {
+          promise->continuation.resume();
+        }
+      }
+
+      promise_type* promise;
+    };
+
+    Task get_return_object() {
+      return Task(stdx::coroutine_handle<promise_type>::from_promise(*this),
+                  ready);
+    }
+    stdx::suspend_never initial_suspend() { return {}; }
+    final_awaitable final_suspend() { return {this}; }
+    void return_void() { *ready = true; }
+    void unhandled_exception() { std::terminate(); }
+
+    stdx::coroutine_handle<void> continuation;
+    std::shared_ptr<bool> ready = std::make_shared<bool>();
+  };
+
+  Task(stdx::coroutine_handle<promise_type> handle, std::shared_ptr<bool> ready)
+      : handle_(handle), ready_(std::move(ready)) {}
+
+  Task(const Task&) = delete;
+  Task(Task&& task) noexcept
+      : handle_(std::exchange(task.handle_, nullptr)),
+        ready_(std::move(task.ready_)) {}
+  Task& operator=(const Task&) = delete;
+  Task& operator=(Task&& task) noexcept {
+    this->~Task();
+    handle_ = std::exchange(task.handle_, nullptr);
+    ready_ = std::move(task.ready_);
+    return *this;
+  }
+
+  bool await_ready() { return *ready_; }
+  void await_suspend(stdx::coroutine_handle<void> continuation) {
+    handle_.promise().continuation = continuation;
+  }
+  void await_resume() {}
 
  private:
-  template <typename...>
-  friend class coro::Task;
+  stdx::coroutine_handle<promise_type> handle_;
+  std::shared_ptr<bool> ready_;
 };
-
-}  // namespace internal
-
-inline void Task<>::await_resume() {
-  if (promise_->exception_) {
-    std::rethrow_exception(std::exchange(promise_->exception_, nullptr));
-  }
-}
-
-template <typename T>
-T Task<T>::await_resume() {
-  if (this->promise_->exception_) {
-    std::rethrow_exception(std::exchange(this->promise_->exception_, nullptr));
-  }
-  return std::move(*this->promise_->value_);
-}
 
 // clang-format off
 template <typename T>

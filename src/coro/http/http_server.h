@@ -12,6 +12,7 @@
 #include <evhttp.h>
 
 #include <memory>
+#include <vector>
 
 #include "http.h"
 
@@ -56,6 +57,9 @@ class HttpServer {
   HttpServer& operator=(HttpServer&&) = delete;
 
   Task<> Quit() noexcept {
+    if (quitting_) {
+      co_return;
+    }
     quitting_ = true;
     stop_source_.request_stop();
     if (current_connections_ == 0) {
@@ -63,6 +67,9 @@ class HttpServer {
       Check(event_add(&quit_event_, &tv));
     }
     co_await quit_semaphore_;
+    if constexpr (requires { on_request_.OnQuit(); }) {
+      on_request_.OnQuit();
+    }
   }
 
  private:
@@ -139,7 +146,8 @@ class HttpServer {
   }
 
   static void OnHttpRequest(evhttp_request* request, void* arg) {
-    reinterpret_cast<HttpServer*>(arg)->OnHttpRequest(request);
+    auto http_server = reinterpret_cast<HttpServer*>(arg);
+    http_server->OnHttpRequest(request);
   }
 
   static void OnWriteReady(evhttp_connection*, void* arg) {

@@ -13,7 +13,7 @@ template <typename... Ts>
 struct coroutine_traits : std::coroutine_traits<Ts...> {};
 template <typename... Ts>
 struct coroutine_handle : std::coroutine_handle<Ts...> {};
-}
+}  // namespace std::experimental
 #endif
 namespace coro {
 namespace std_ns = std;
@@ -34,17 +34,16 @@ using suspend_never = coro::std_ns::suspend_never;
 using suspend_always = coro::std_ns::suspend_always;
 }  // namespace coro::stdx
 
-#define FOR_CO_AWAIT(decl_expr, container_expr, code) \
-  {                                                   \
-    auto &&___container = container_expr;             \
-    auto ___begin = std::begin(___container);         \
-    auto ___end = std::end(___container);             \
-    while (___begin != ___end) {                      \
-      co_await std::move(___begin);                   \
-      decl_expr = *___begin;                          \
-      code;                                           \
-      ++___begin;                                     \
-    }                                                 \
+#define FOR_CO_AWAIT(decl_expr, container_expr, code)  \
+  {                                                    \
+    auto &&___container = container_expr;              \
+    auto ___begin = co_await std::begin(___container); \
+    auto ___end = std::end(___container);              \
+    while (___begin != ___end) {                       \
+      decl_expr = *___begin;                           \
+      code;                                            \
+      co_await ++___begin;                             \
+    }                                                  \
   }
 
 #endif  // CORO_HTTP_COROUTINE_H

@@ -112,11 +112,6 @@ class HttpServer {
 
       reply_started = true;
       evhttp_send_reply_start(ev_request, response.status, nullptr);
-      auto guard =
-          util::MakePointer(ev_request, [](evhttp_request* ev_request) {
-            ResetOnCloseCallback(ev_request);
-            evhttp_send_reply_end(ev_request);
-          });
 
       auto buffer = util::MakePointer(evbuffer_new(), evbuffer_free);
       int size = 0;
@@ -130,12 +125,21 @@ class HttpServer {
                                              [&] { semaphore.resume(); });
         co_await semaphore;
       });
-    } catch (const coro::http::HttpException&) {
+      evhttp_send_reply_end(ev_request);
+    } catch (const std::exception& e) {
+      auto buffer = util::MakePointer(evbuffer_new(), evbuffer_free);
+      std::string error = std::string(e.what());
+      if (!error.empty() && error.back() != '\n') {
+        error += '\n';
+      }
+      evbuffer_add(buffer.get(), error.c_str(), error.length());
       if (!reply_started) {
-        ResetOnCloseCallback(ev_request);
-        evhttp_send_reply(ev_request, 500, nullptr, nullptr);
+        evhttp_send_reply(ev_request, 500, nullptr, buffer.get());
+      } else {
+        evhttp_send_reply_end(ev_request);
       }
     }
+    ResetOnCloseCallback(ev_request);
     current_connections_--;
     if (current_connections_ == 0 && quitting_) {
       timeval tv = {};

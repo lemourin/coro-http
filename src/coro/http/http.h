@@ -22,7 +22,7 @@ struct Request {
   std::optional<BodyGenerator> body;
 };
 
-template <GeneratorLike HttpBodyGenerator>
+template <GeneratorLike HttpBodyGenerator = Generator<std::string>>
 struct Response {
   int status = -1;
   std::unordered_multimap<std::string, std::string> headers;

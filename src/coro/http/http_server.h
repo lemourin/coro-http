@@ -22,7 +22,7 @@ namespace coro::http {
 // clang-format off
 template <typename T>
 concept Handler = requires (T v) {
-  { v(std::declval<Request>(), stdx::stop_token()).await_resume() } -> ResponseLike;
+  { v(std::declval<Request<>>(), stdx::stop_token()).await_resume() } -> ResponseLike;
 };
 // clang-format on
 

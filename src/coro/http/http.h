@@ -14,11 +14,12 @@ namespace coro::http {
 
 const int MAX_BUFFER_SIZE = 1u << 16u;
 
+template <typename BodyGenerator = Generator<std::string>>
 struct Request {
   std::string url;
   std::string method = "GET";
   std::unordered_multimap<std::string, std::string> headers;
-  std::optional<Generator<std::string>> body;
+  std::optional<BodyGenerator> body;
 };
 
 template <GeneratorLike HttpBodyGenerator>
@@ -197,7 +198,7 @@ concept HttpOperation = requires (T v) {
 
 template <typename T>
 concept HttpClientImpl = requires(T v) {
-  { v.Fetch(std::declval<Request>(), stdx::stop_token()) } -> HttpOperation;
+  { v.Fetch(std::declval<Request<>>(), stdx::stop_token()) } -> HttpOperation;
 };
 
 template <typename T>
@@ -212,17 +213,39 @@ template <HttpClientImpl Impl>
 class ToHttpClient : protected Impl {
  public:
   using ResponseType = decltype(
-      std::declval<Impl>().Fetch(std::declval<Request>()).await_resume());
+      std::declval<Impl>().Fetch(std::declval<Request<>>()).await_resume());
 
   using Impl::Impl;
 
-  auto Fetch(Request request,
+  auto Fetch(Request<std::string> request,
+             stdx::stop_token stop_token = stdx::stop_token()) {
+    auto headers = std::move(request.headers);
+    if (request.body) {
+      headers.insert(
+          {"Content-Length", std::to_string(request.body->length())});
+    }
+    return Fetch(
+        Request<>{.url = std::move(request.url),
+                  .method = std::move(request.method),
+                  .headers = std::move(headers),
+                  .body = request.body ? std::make_optional(ToGenerator(
+                                             std::move(*request.body)))
+                                       : std::nullopt},
+        std::move(stop_token));
+  }
+
+  auto Fetch(Request<> request,
              stdx::stop_token stop_token = stdx::stop_token()) {
     return Impl::Fetch(std::move(request), std::move(stop_token));
   }
   auto Fetch(std::string url,
              stdx::stop_token stop_token = stdx::stop_token()) {
-    return Fetch(Request{.url = std::move(url)}, std::move(stop_token));
+    return Fetch(Request<>{.url = std::move(url)}, std::move(stop_token));
+  }
+
+ private:
+  static Generator<std::string> ToGenerator(std::string value) {
+    co_yield value;
   }
 };
 

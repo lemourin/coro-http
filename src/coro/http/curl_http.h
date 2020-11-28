@@ -28,7 +28,7 @@ class CurlHandle {
 
  private:
   template <typename Owner>
-  CurlHandle(CurlHttpImpl*, Request&&, stdx::stop_token&&, Owner*);
+  CurlHandle(CurlHttpImpl*, Request<>&&, stdx::stop_token&&, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
@@ -92,7 +92,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 
 class CurlHttpOperation {
  public:
-  CurlHttpOperation(CurlHttpImpl* http, Request&&, stdx::stop_token&&);
+  CurlHttpOperation(CurlHttpImpl* http, Request<>&&, stdx::stop_token&&);
   CurlHttpOperation(const CurlHttpOperation&) = delete;
   CurlHttpOperation(CurlHttpOperation&&) = delete;
   ~CurlHttpOperation();
@@ -130,7 +130,7 @@ class CurlHttpImpl {
   CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
 
   util::WrapAwaitable<CurlHttpOperation> Fetch(
-      Request request, stdx::stop_token = stdx::stop_token());
+      Request<> request, stdx::stop_token = stdx::stop_token());
 
  private:
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,

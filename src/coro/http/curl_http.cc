@@ -152,7 +152,7 @@ void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
 }
 
 template <typename Owner>
-CurlHandle::CurlHandle(CurlHttpImpl* http, Request&& request,
+CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
                        stdx::stop_token&& stop_token, Owner* owner)
     : http_(http),
       handle_(curl_easy_init()),
@@ -255,7 +255,7 @@ void CurlHttpBodyGenerator::Resume() {
   }
 }
 
-CurlHttpOperation::CurlHttpOperation(CurlHttpImpl* http, Request&& request,
+CurlHttpOperation::CurlHttpOperation(CurlHttpImpl* http, Request<>&& request,
                                      stdx::stop_token&& stop_token)
     : handle_(http, std::move(request), std::move(stop_token), this),
       headers_ready_(),
@@ -407,7 +407,7 @@ int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
 }
 
 util::WrapAwaitable<CurlHttpOperation> CurlHttpImpl::Fetch(
-    Request request, stdx::stop_token token) {
+    Request<> request, stdx::stop_token token) {
   return util::WrapAwaitable(std::make_unique<CurlHttpOperation>(
       this, std::move(request), std::move(token)));
 }

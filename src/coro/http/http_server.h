@@ -125,8 +125,10 @@ class HttpServer {
                                              [&] { semaphore.resume(); });
         co_await semaphore;
       });
+      ResetOnCloseCallback(ev_request);
       evhttp_send_reply_end(ev_request);
     } catch (const std::exception& e) {
+      ResetOnCloseCallback(ev_request);
       auto buffer = util::MakePointer(evbuffer_new(), evbuffer_free);
       std::string error = std::string(e.what());
       if (!error.empty() && error.back() != '\n') {
@@ -139,7 +141,6 @@ class HttpServer {
         evhttp_send_reply_end(ev_request);
       }
     }
-    ResetOnCloseCallback(ev_request);
     current_connections_--;
     if (current_connections_ == 0 && quitting_) {
       timeval tv = {};

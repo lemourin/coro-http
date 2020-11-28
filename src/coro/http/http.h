@@ -95,9 +95,7 @@ HttpBodyGenerator<Impl>::Iterator::Iterator(
 template <typename Impl>
 bool HttpBodyGenerator<Impl>::Iterator::operator!=(
     const Iterator& iterator) const {
-  return (http_body_generator_->status_ == -1 ? offset_ : INT64_MAX) !=
-         (iterator.http_body_generator_->status_ == -1 ? iterator.offset_
-                                                       : INT64_MAX);
+  return offset_ != iterator.offset_;
 }
 
 template <typename Impl>

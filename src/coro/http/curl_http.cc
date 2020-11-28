@@ -228,10 +228,14 @@ CurlHttpOperation::await_resume() {
   if (exception_ptr_) {
     std::rethrow_exception(exception_ptr_);
   }
+  auto body_generator = std::make_unique<CurlHttpBodyGenerator>(
+      std::move(handle_), std::move(body_));
+  if (no_body_) {
+    body_generator->Close(status_);
+  }
   return {.status = status_,
           .headers = std::move(headers_),
-          .body = util::WrapGenerator(std::make_unique<CurlHttpBodyGenerator>(
-              std::move(handle_), std::move(body_)))};
+          .body = util::WrapGenerator(std::move(body_generator))};
 }
 
 CurlHttpImpl::CurlHttpImpl(event_base* event_loop)
@@ -279,6 +283,7 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
           operation->exception_ptr_ = std::make_exception_ptr(HttpException(
               message->data.result, curl_easy_strerror(message->data.result)));
         }
+        operation->no_body_ = true;
         operation->awaiting_coroutine_.resume();
       } else if (std::holds_alternative<CurlHttpBodyGenerator*>(
                      curl_handle->owner_)) {

@@ -20,12 +20,19 @@ struct Request {
   std::string body;
 };
 
-template <typename HttpBodyGenerator>
+template <GeneratorLike HttpBodyGenerator>
 struct Response {
   int status = -1;
   std::unordered_multimap<std::string, std::string> headers;
   HttpBodyGenerator body;
 };
+
+template <GeneratorLike HttpBodyGenerator>
+Task<std::string> GetBody(HttpBodyGenerator&& body) {
+  std::string result;
+  FOR_CO_AWAIT(const std::string& piece, body, { result += piece; });
+  co_return result;
+}
 
 class HttpException : public std::exception {
  public:
@@ -86,7 +93,9 @@ HttpBodyGenerator<Impl>::Iterator::Iterator(
 template <typename Impl>
 bool HttpBodyGenerator<Impl>::Iterator::operator!=(
     const Iterator& iterator) const {
-  return offset_ != iterator.offset_;
+  return (http_body_generator_->status_ == -1 ? offset_ : INT64_MAX) !=
+         (iterator.http_body_generator_->status_ == -1 ? iterator.offset_
+                                                       : INT64_MAX);
 }
 
 template <typename Impl>

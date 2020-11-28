@@ -15,7 +15,7 @@ class HttpHandler {
   explicit HttpHandler(HttpClient &http) : http_(http) {}
 
   coro::Task<typename HttpClient::ResponseType> operator()(
-      const coro::http::Request &request,
+      const coro::http::Request<> &request,
       const coro::stdx::stop_token &stop_token) const {
     std::unordered_multimap<std::string, std::string> headers;
     auto range_it = request.headers.find("Range");
@@ -23,7 +23,7 @@ class HttpHandler {
       headers.emplace(*range_it);
     }
     auto pipe_request =
-        coro::http::Request{.url = kUrl, .headers = std::move(headers)};
+        coro::http::Request<>{.url = kUrl, .headers = std::move(headers)};
     auto pipe = co_await http_.Fetch(std::move(pipe_request), stop_token);
     co_return typename HttpClient::ResponseType{.status = pipe.status,
                                                 .headers = pipe.headers,

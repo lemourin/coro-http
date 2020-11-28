@@ -64,4 +64,19 @@ std::string EncodeUri(std::string_view uri) {
   return ret_str;
 }
 
+std::string FormDataToString(
+    const std::initializer_list<std::pair<std::string_view, std::string_view>>&
+    params) {
+  std::string result;
+  bool first = false;
+  for (const auto& [key, value] : params) {
+    if (first) {
+      result += "&";
+    }
+    result += EncodeUri(key) + "=" + EncodeUri(value);
+    first = true;
+  }
+  return result;
+}
+
 }  // namespace coro::http

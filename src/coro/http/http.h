@@ -16,8 +16,9 @@ const int MAX_BUFFER_SIZE = 1u << 16u;
 
 struct Request {
   std::string url;
+  std::string method = "GET";
   std::unordered_multimap<std::string, std::string> headers;
-  std::string body;
+  std::optional<Generator<std::string>> body;
 };
 
 template <GeneratorLike HttpBodyGenerator>
@@ -217,7 +218,7 @@ class ToHttpClient : protected Impl {
 
   auto Fetch(Request request,
              stdx::stop_token stop_token = stdx::stop_token()) {
-    return Impl::Fetch(request, std::move(stop_token));
+    return Impl::Fetch(std::move(request), std::move(stop_token));
   }
   auto Fetch(std::string url,
              stdx::stop_token stop_token = stdx::stop_token()) {

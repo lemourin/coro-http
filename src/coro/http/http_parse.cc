@@ -54,4 +54,14 @@ std::unordered_map<std::string, std::string> ParseQuery(
   return result;
 }
 
+std::string EncodeUri(std::string_view uri) {
+  char* encoded = evhttp_encode_uri(std::string(uri).c_str());
+  if (!encoded) {
+    throw HttpException(-1, "evhttp_encode_uri failed");
+  }
+  std::string ret_str = encoded;
+  free(encoded);
+  return ret_str;
+}
+
 }  // namespace coro::http

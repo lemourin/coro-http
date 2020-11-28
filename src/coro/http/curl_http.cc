@@ -59,6 +59,11 @@ CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_READDATA, this));
+
+  Check(event_del(&handle.next_request_body_chunk_));
+  Check(event_assign(&next_request_body_chunk_, http_->event_loop_, -1, 0,
+                     OnNextRequestBodyChunkRequested, this));
 }
 
 size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
@@ -112,12 +117,47 @@ int CurlHandle::ProgressCallback(void* clientp, curl_off_t /*dltotal*/,
   return handle->stop_token_.stop_requested() ? -1 : 0;
 }
 
+size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
+                                void* userdata) {
+  auto handle = reinterpret_cast<CurlHandle*>(userdata);
+  if (!handle->request_body_it_) {
+    return CURL_READFUNC_PAUSE;
+  }
+  if (handle->request_body_it_ == std::end(*handle->request_body_)) {
+    return 0;
+  }
+  for (char c : **handle->request_body_it_) {
+    handle->buffer_.push_back(c);
+  }
+  auto it = *std::exchange(handle->request_body_it_, std::nullopt);
+  size_t sent_cnt = 0;
+  for (int i = 0; i < size * nitems && !handle->buffer_.empty(); i++) {
+    buffer[i] = handle->buffer_.front();
+    handle->buffer_.pop_front();
+    sent_cnt++;
+  }
+  if (handle->buffer_.empty()) {
+    timeval tv{};
+    Check(event_add(&handle->next_request_body_chunk_, &tv));
+  }
+  return sent_cnt;
+}
+
+void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
+                                                 void* userdata) {
+  [handle = reinterpret_cast<CurlHandle*>(userdata)]() -> Task<> {
+    handle->request_body_it_ = co_await ++*handle->request_body_it_;
+    curl_easy_pause(handle->handle_, CURLPAUSE_SEND_CONT);
+  }();
+}
+
 template <typename Owner>
-CurlHandle::CurlHandle(CurlHttpImpl* http, const Request& request,
+CurlHandle::CurlHandle(CurlHttpImpl* http, Request&& request,
                        stdx::stop_token&& stop_token, Owner* owner)
     : http_(http),
       handle_(curl_easy_init()),
       header_list_(),
+      request_body_(std::move(request.body)),
       stop_token_(std::move(stop_token)),
       owner_(owner) {
   Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
@@ -128,8 +168,19 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, const Request& request,
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_XFERINFOFUNCTION, ProgressCallback));
   Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
+  Check(curl_easy_setopt(handle_, CURLOPT_READFUNCTION, ReadCallback));
+  Check(curl_easy_setopt(handle_, CURLOPT_READDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_NOPROGRESS, 0L));
   Check(curl_easy_setopt(handle_, CURLOPT_SSL_VERIFYPEER, 0L));
+  Check(
+      curl_easy_setopt(handle_, CURLOPT_CUSTOMREQUEST, request.method.c_str()));
+  if (request_body_) {
+    curl_easy_setopt(handle_, CURLOPT_UPLOAD, 1L);
+    [this]() -> Task<> {
+      request_body_it_ = co_await request_body_->begin();
+      curl_easy_pause(handle_, CURLPAUSE_SEND_CONT);
+    }();
+  }
   for (const auto& [header_name, header_value] : request.headers) {
     std::string header_line = header_name;
     header_line += ": ";
@@ -137,6 +188,10 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, const Request& request,
     header_list_ = curl_slist_append(header_list_, header_line.c_str());
   }
   Check(curl_easy_setopt(handle_, CURLOPT_HTTPHEADER, header_list_));
+
+  Check(event_assign(&next_request_body_chunk_, http_->event_loop_, -1, 0,
+                     OnNextRequestBodyChunkRequested, this));
+
   Check(curl_multi_add_handle(http->curl_handle_, handle_));
 }
 
@@ -151,6 +206,7 @@ CurlHandle::~CurlHandle() {
     Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
     curl_easy_cleanup(handle_);
     curl_slist_free_all(header_list_);
+    event_del(&next_request_body_chunk_);
   }
 }
 
@@ -201,8 +257,7 @@ void CurlHttpBodyGenerator::Resume() {
 
 CurlHttpOperation::CurlHttpOperation(CurlHttpImpl* http, Request&& request,
                                      stdx::stop_token&& stop_token)
-    : request_(std::move(request)),
-      handle_(http, request_, std::move(stop_token), this),
+    : handle_(http, std::move(request), std::move(stop_token), this),
       headers_ready_(),
       headers_ready_event_posted_() {
   Check(event_assign(

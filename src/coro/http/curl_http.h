@@ -6,6 +6,7 @@
 #include <event2/event.h>
 #include <event2/event_struct.h>
 
+#include <deque>
 #include <variant>
 
 #include "http.h"
@@ -27,7 +28,7 @@ class CurlHandle {
 
  private:
   template <typename Owner>
-  CurlHandle(CurlHttpImpl*, const Request&, stdx::stop_token&&, Owner*);
+  CurlHandle(CurlHttpImpl*, Request&&, stdx::stop_token&&, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
@@ -39,6 +40,10 @@ class CurlHandle {
   static int ProgressCallback(void* clientp, curl_off_t dltotal,
                               curl_off_t dlnow, curl_off_t ultotal,
                               curl_off_t ulnow);
+  static size_t ReadCallback(char* buffer, size_t size, size_t nitems,
+                             void* userdata);
+  static void OnNextRequestBodyChunkRequested(evutil_socket_t, short,
+                                              void* handle);
 
   friend class CurlHttpImpl;
   friend class CurlHttpOperation;
@@ -47,8 +52,12 @@ class CurlHandle {
   CurlHttpImpl* http_;
   CURL* handle_;
   curl_slist* header_list_;
+  std::optional<Generator<std::string>> request_body_;
+  std::deque<char> buffer_;
+  std::optional<Generator<std::string>::iterator> request_body_it_;
   stdx::stop_token stop_token_;
   std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner_;
+  event next_request_body_chunk_;
 };
 
 class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
@@ -99,7 +108,6 @@ class CurlHttpOperation {
   friend class CurlHttpImpl;
   friend class CurlHandle;
 
-  Request request_;
   stdx::coroutine_handle<void> awaiting_coroutine_;
   CurlHandle handle_;
   std::exception_ptr exception_ptr_;

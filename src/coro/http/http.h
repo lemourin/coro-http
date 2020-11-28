@@ -54,24 +54,45 @@ class HttpException : public std::exception {
 template <typename Impl>
 class HttpBodyGenerator {
  public:
+  template <typename Iterator>
+  struct Awaitable {
+    [[nodiscard]] bool await_ready() const {
+      return !i.http_body_generator_->data_.empty() ||
+             i.http_body_generator_->status_ != -1 ||
+             i.http_body_generator_->exception_ptr_;
+    }
+    void await_suspend(stdx::coroutine_handle<void> handle) {
+      i.http_body_generator_->handle_ = handle;
+    }
+    Iterator await_resume() {
+      if (i.http_body_generator_->status_ != -1 ||
+          i.http_body_generator_->exception_ptr_) {
+        i.offset_ = INT64_MAX;
+      }
+      if (i.http_body_generator_->exception_ptr_) {
+        std::rethrow_exception(i.http_body_generator_->exception_ptr_);
+      }
+      return i;
+    }
+    Iterator i;
+  };
+
   class Iterator {
    public:
     Iterator(HttpBodyGenerator* http_body_generator, int64_t offset);
 
     bool operator!=(const Iterator& iterator) const;
-    Iterator& operator++();
+    Awaitable<Iterator&> operator++();
     const std::string& operator*() const;
 
-    [[nodiscard]] bool await_ready() const;
-    void await_suspend(stdx::coroutine_handle<void> handle);
-    Iterator& await_resume();
-
    private:
+    template <typename>
+    friend class Awaitable;
     HttpBodyGenerator* http_body_generator_;
     int64_t offset_;
   };
 
-  Iterator begin();
+  Awaitable<Iterator> begin();
   Iterator end();
 
  protected:
@@ -99,8 +120,7 @@ bool HttpBodyGenerator<Impl>::Iterator::operator!=(
 }
 
 template <typename Impl>
-typename HttpBodyGenerator<Impl>::Iterator&
-HttpBodyGenerator<Impl>::Iterator::operator++() {
+auto HttpBodyGenerator<Impl>::Iterator::operator++() -> Awaitable<Iterator&> {
   if (http_body_generator_->status_ != -1 ||
       http_body_generator_->exception_ptr_) {
     offset_ = INT64_MAX;
@@ -112,7 +132,7 @@ HttpBodyGenerator<Impl>::Iterator::operator++() {
     http_body_generator_->paused_ = false;
     static_cast<Impl*>(http_body_generator_)->Resume();
   }
-  return *this;
+  return Awaitable<Iterator&>{*this};
 }
 
 template <typename Impl>
@@ -121,30 +141,8 @@ const std::string& HttpBodyGenerator<Impl>::Iterator::operator*() const {
 }
 
 template <typename Impl>
-bool HttpBodyGenerator<Impl>::Iterator::await_ready() const {
-  return !http_body_generator_->data_.empty() ||
-         http_body_generator_->status_ != -1 ||
-         http_body_generator_->exception_ptr_;
-}
-
-template <typename Impl>
-void HttpBodyGenerator<Impl>::Iterator::await_suspend(
-    stdx::coroutine_handle<void> handle) {
-  http_body_generator_->handle_ = handle;
-}
-
-template <typename Impl>
-typename HttpBodyGenerator<Impl>::Iterator&
-HttpBodyGenerator<Impl>::Iterator::await_resume() {
-  if (http_body_generator_->exception_ptr_) {
-    std::rethrow_exception(http_body_generator_->exception_ptr_);
-  }
-  return *this;
-}
-
-template <typename Impl>
-typename HttpBodyGenerator<Impl>::Iterator HttpBodyGenerator<Impl>::begin() {
-  return Iterator(this, 0);
+auto HttpBodyGenerator<Impl>::begin() -> Awaitable<Iterator> {
+  return Awaitable<Iterator>{Iterator(this, 0)};
 }
 
 template <typename Impl>

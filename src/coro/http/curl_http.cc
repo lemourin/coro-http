@@ -339,7 +339,12 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
               message->data.result, curl_easy_strerror(message->data.result)));
         }
         operation->no_body_ = true;
-        operation->awaiting_coroutine_.resume();
+        Check(event_base_once(
+            operation->handle_.http_->event_loop_, -1, EV_TIMEOUT,
+            [](evutil_socket_t fd, short event, void* handle) {
+              stdx::coroutine_handle<void>::from_address(handle).resume();
+            },
+            operation->awaiting_coroutine_.address(), nullptr));
       } else if (std::holds_alternative<CurlHttpBodyGenerator*>(
                      curl_handle->owner_)) {
         auto curl_http_body_generator =

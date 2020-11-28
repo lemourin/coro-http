@@ -65,7 +65,8 @@ class HttpBodyGenerator {
       i.http_body_generator_->handle_ = handle;
     }
     Iterator await_resume() {
-      if (i.http_body_generator_->status_ != -1 ||
+      if ((i.http_body_generator_->status_ != -1 &&
+           i.http_body_generator_->data_.empty()) ||
           i.http_body_generator_->exception_ptr_) {
         i.offset_ = INT64_MAX;
       }

@@ -28,40 +28,46 @@ class Task<T> {
     };
 
     Task get_return_object() {
-      return Task(stdx::coroutine_handle<promise_type>::from_promise(*this));
+      return Task(stdx::coroutine_handle<promise_type>::from_promise(*this),
+                  value);
     }
-    stdx::suspend_always initial_suspend() { return {}; }
+    stdx::suspend_never initial_suspend() { return {}; }
     final_awaitable final_suspend() { return {this}; }
     template <typename V>
     void return_value(V&& v) {
-      value = std::make_unique<T>(std::forward<V>(v));
+      *value = std::make_unique<T>(std::forward<V>(v));
     }
     void unhandled_exception() { std::terminate(); }
 
     stdx::coroutine_handle<void> continuation;
-    std::unique_ptr<T> value;
+    std::shared_ptr<std::unique_ptr<T>> value =
+        std::make_shared<std::unique_ptr<T>>();
   };
 
-  explicit Task(stdx::coroutine_handle<promise_type> handle)
-      : handle_(handle) {}
-
   Task(const Task&) = delete;
-  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task&& task) noexcept
+      : handle_(std::exchange(task.handle_, nullptr)),
+        value_(std::move(task.value_)) {}
   Task& operator=(const Task&) = delete;
   Task& operator=(Task&& task) noexcept {
-    ~Task();
     handle_ = std::exchange(task.handle_, nullptr);
+    value_ = std::move(task.value_);
+    return *this;
   }
 
-  bool await_ready() { return false; }
+  bool await_ready() { return bool(*value_); }
   void await_suspend(stdx::coroutine_handle<void> continuation) {
     handle_.promise().continuation = continuation;
-    handle_.resume();
   }
-  T await_resume() { return std::move(*handle_.promise().value); }
+  T await_resume() { return std::move(**value_); }
 
  private:
+  Task(stdx::coroutine_handle<promise_type> handle,
+       std::shared_ptr<std::unique_ptr<T>> value)
+      : handle_(handle), value_(std::move(value)) {}
+
   stdx::coroutine_handle<promise_type> handle_;
+  std::shared_ptr<std::unique_ptr<T>> value_;
 };
 
 template <>
@@ -93,16 +99,12 @@ class Task<> {
     std::shared_ptr<bool> ready = std::make_shared<bool>();
   };
 
-  Task(stdx::coroutine_handle<promise_type> handle, std::shared_ptr<bool> ready)
-      : handle_(handle), ready_(std::move(ready)) {}
-
   Task(const Task&) = delete;
   Task(Task&& task) noexcept
       : handle_(std::exchange(task.handle_, nullptr)),
         ready_(std::move(task.ready_)) {}
   Task& operator=(const Task&) = delete;
   Task& operator=(Task&& task) noexcept {
-    this->~Task();
     handle_ = std::exchange(task.handle_, nullptr);
     ready_ = std::move(task.ready_);
     return *this;
@@ -115,6 +117,9 @@ class Task<> {
   void await_resume() {}
 
  private:
+  Task(stdx::coroutine_handle<promise_type> handle, std::shared_ptr<bool> ready)
+      : handle_(handle), ready_(std::move(ready)) {}
+
   stdx::coroutine_handle<promise_type> handle_;
   std::shared_ptr<bool> ready_;
 };

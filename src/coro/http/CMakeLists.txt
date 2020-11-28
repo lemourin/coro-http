@@ -4,10 +4,12 @@ set(coro-http-headers
     http.h
     curl_http.h
     http_server.h
+    http_parse.h
 )
 
 set(coro-http-sources
     curl_http.cc
+    http_parse.cc
 )
 
 target_sources(coro-http PRIVATE

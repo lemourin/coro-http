@@ -1,17 +1,13 @@
 #include <coro/generator.h>
 #include <coro/http/curl_http.h>
 #include <coro/http/http_server.h>
+#include <coro/util/make_pointer.h>
 
 #include <csignal>
 #include <memory>
 
 constexpr const char *kUrl =
     R"(http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)";
-
-template <typename T, typename Deleter>
-auto MakePointer(T *ptr, Deleter &&deleter) {
-  return std::unique_ptr<T, Deleter>(ptr, std::forward<Deleter>(deleter));
-}
 
 template <coro::http::HttpClient HttpClient>
 class HttpHandler {
@@ -50,7 +46,7 @@ int main() {
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-  auto base = MakePointer(event_base_new(), event_base_free);
+  auto base = coro::util::MakePointer(event_base_new(), event_base_free);
   coro::http::CurlHttp http(base.get());
   coro::http::HttpServer http_server(
       base.get(), {.address = "0.0.0.0", .port = 4444}, HttpHandler{http});

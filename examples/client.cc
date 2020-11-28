@@ -2,16 +2,12 @@
 #include <coro/http/curl_http.h>
 #include <coro/http/http_server.h>
 #include <coro/stdx/stop_source.h>
+#include <coro/util/make_pointer.h>
 #include <coro/wait_task.h>
 
 #include <csignal>
 #include <iostream>
 #include <memory>
-
-template <typename T, typename Deleter>
-auto MakePointer(T *ptr, Deleter &&deleter) {
-  return std::unique_ptr<T, Deleter>(ptr, std::forward<Deleter>(deleter));
-}
 
 class CancelRequest {
  public:
@@ -81,7 +77,7 @@ int main() {
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-  auto base = MakePointer(event_base_new(), event_base_free);
+  auto base = coro::util::MakePointer(event_base_new(), event_base_free);
   CoMain(base.get());
   event_base_dispatch(base.get());
   return 0;

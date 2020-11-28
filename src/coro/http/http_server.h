@@ -6,6 +6,7 @@
 #include <coro/stdx/stop_source.h>
 #include <coro/task.h>
 #include <coro/util/function_traits.h>
+#include <coro/util/make_pointer.h>
 #include <event2/buffer.h>
 #include <event2/event.h>
 #include <event2/http.h>
@@ -111,12 +112,13 @@ class HttpServer {
 
       reply_started = true;
       evhttp_send_reply_start(ev_request, response.status, nullptr);
-      auto guard = Make(ev_request, [](evhttp_request* ev_request) {
-        ResetOnCloseCallback(ev_request);
-        evhttp_send_reply_end(ev_request);
-      });
+      auto guard =
+          util::MakePointer(ev_request, [](evhttp_request* ev_request) {
+            ResetOnCloseCallback(ev_request);
+            evhttp_send_reply_end(ev_request);
+          });
 
-      auto buffer = Make(evbuffer_new(), evbuffer_free);
+      auto buffer = util::MakePointer(evbuffer_new(), evbuffer_free);
       int size = 0;
       FOR_CO_AWAIT(const std::string& chunk, response.body, {
         evbuffer_add(buffer.get(), chunk.c_str(), chunk.size());
@@ -171,11 +173,6 @@ class HttpServer {
     if (code != 0) {
       throw HttpException(code, "http server error");
     }
-  }
-
-  template <typename T, typename Callable>
-  static auto Make(T* p, Callable deleter) {
-    return std::unique_ptr<T, Callable>(p, std::move(deleter));
   }
 
   using handler_argument_list = util::ArgumentListTypeT<HandlerType>;

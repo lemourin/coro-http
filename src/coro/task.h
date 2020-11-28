@@ -3,8 +3,10 @@
 
 #include <coro/stdx/coroutine.h>
 
+#include <functional>
 #include <memory>
 #include <utility>
+#include <variant>
 
 namespace coro {
 
@@ -14,6 +16,9 @@ class Task;
 template <typename T>
 class Task<T> {
  public:
+  using DataType =
+      std::variant<std::monostate, std::unique_ptr<T>, std::exception_ptr>;
+
   struct promise_type {
     struct final_awaitable {
       bool await_ready() noexcept { return true; }
@@ -37,11 +42,10 @@ class Task<T> {
     void return_value(V&& v) {
       *value = std::make_unique<T>(std::forward<V>(v));
     }
-    void unhandled_exception() { std::terminate(); }
+    void unhandled_exception() { *value = std::current_exception(); }
 
     stdx::coroutine_handle<void> continuation;
-    std::shared_ptr<std::unique_ptr<T>> value =
-        std::make_shared<std::unique_ptr<T>>();
+    std::shared_ptr<DataType> value = std::make_shared<DataType>();
   };
 
   Task(const Task&) = delete;
@@ -55,24 +59,33 @@ class Task<T> {
     return *this;
   }
 
-  bool await_ready() { return bool(*value_); }
+  bool await_ready() {
+    return !std::holds_alternative<std::monostate>(*value_);
+  }
   void await_suspend(stdx::coroutine_handle<void> continuation) {
     handle_.promise().continuation = continuation;
   }
-  T await_resume() { return std::move(**value_); }
+  T await_resume() {
+    if (std::holds_alternative<std::exception_ptr>(*value_)) {
+      std::rethrow_exception(std::get<std::exception_ptr>(*value_));
+    }
+    return std::move(*std::get<std::unique_ptr<T>>(*value_));
+  }
 
  private:
   Task(stdx::coroutine_handle<promise_type> handle,
-       std::shared_ptr<std::unique_ptr<T>> value)
+       std::shared_ptr<DataType> value)
       : handle_(handle), value_(std::move(value)) {}
 
   stdx::coroutine_handle<promise_type> handle_;
-  std::shared_ptr<std::unique_ptr<T>> value_;
+  std::shared_ptr<DataType> value_;
 };
 
 template <>
 class Task<> {
  public:
+  using DataType = std::variant<std::monostate, bool, std::exception_ptr>;
+
   struct promise_type {
     struct final_awaitable {
       bool await_ready() noexcept { return true; }
@@ -88,40 +101,47 @@ class Task<> {
 
     Task get_return_object() {
       return Task(stdx::coroutine_handle<promise_type>::from_promise(*this),
-                  ready);
+                  value);
     }
     stdx::suspend_never initial_suspend() { return {}; }
     final_awaitable final_suspend() { return {this}; }
-    void return_void() { *ready = true; }
-    void unhandled_exception() { std::terminate(); }
+    void return_void() { *value = true; }
+    void unhandled_exception() { *value = std::current_exception(); }
 
     stdx::coroutine_handle<void> continuation;
-    std::shared_ptr<bool> ready = std::make_shared<bool>();
+    std::shared_ptr<DataType> value = std::make_shared<DataType>();
   };
 
   Task(const Task&) = delete;
   Task(Task&& task) noexcept
       : handle_(std::exchange(task.handle_, nullptr)),
-        ready_(std::move(task.ready_)) {}
+        value_(std::move(task.value_)) {}
   Task& operator=(const Task&) = delete;
   Task& operator=(Task&& task) noexcept {
     handle_ = std::exchange(task.handle_, nullptr);
-    ready_ = std::move(task.ready_);
+    value_ = std::move(task.value_);
     return *this;
   }
 
-  bool await_ready() { return *ready_; }
+  bool await_ready() {
+    return !std::holds_alternative<std::monostate>(*value_);
+  }
   void await_suspend(stdx::coroutine_handle<void> continuation) {
     handle_.promise().continuation = continuation;
   }
-  void await_resume() {}
+  void await_resume() {
+    if (std::holds_alternative<std::exception_ptr>(*value_)) {
+      std::rethrow_exception(std::get<std::exception_ptr>(*value_));
+    }
+  }
 
  private:
-  Task(stdx::coroutine_handle<promise_type> handle, std::shared_ptr<bool> ready)
-      : handle_(handle), ready_(std::move(ready)) {}
+  Task(stdx::coroutine_handle<promise_type> handle,
+       std::shared_ptr<DataType> value)
+      : handle_(handle), value_(std::move(value)) {}
 
   stdx::coroutine_handle<promise_type> handle_;
-  std::shared_ptr<bool> ready_;
+  std::shared_ptr<DataType> value_;
 };
 
 // clang-format off

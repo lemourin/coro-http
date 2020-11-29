@@ -344,7 +344,8 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
             [](evutil_socket_t fd, short event, void* handle) {
               stdx::coroutine_handle<void>::from_address(handle).resume();
             },
-            operation->awaiting_coroutine_.address(), nullptr));
+            std::exchange(operation->awaiting_coroutine_, nullptr).address(),
+            nullptr));
       } else if (std::holds_alternative<CurlHttpBodyGenerator*>(
                      curl_handle->owner_)) {
         auto curl_http_body_generator =

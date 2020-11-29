@@ -24,9 +24,20 @@ Uri ParseUri(std::string_view uri);
 std::unordered_map<std::string, std::string> ParseQuery(std::string_view query);
 std::string EncodeUri(std::string_view uri);
 
-std::string FormDataToString(
-    const std::initializer_list<std::pair<std::string_view, std::string_view>>&
-        params);
+template <typename List = std::initializer_list<
+              std::pair<std::string_view, std::string_view>>>
+std::string FormDataToString(const List& params) {
+  std::string result;
+  bool first = false;
+  for (const auto& [key, value] : params) {
+    if (first) {
+      result += "&";
+    }
+    result += EncodeUri(key) + "=" + EncodeUri(value);
+    first = true;
+  }
+  return result;
+}
 
 }  // namespace coro::http
 

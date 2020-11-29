@@ -3,7 +3,7 @@
 
 #if __has_include(<coroutine>)
 #include <version>
-#ifndef __cpp_impl_coroutine
+#if defined(__clang__) && !defined(__cpp_impl_coroutine)
 #define __cpp_impl_coroutine 1
 #endif
 #include <coroutine>

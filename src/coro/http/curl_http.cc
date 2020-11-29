@@ -264,7 +264,9 @@ CurlHttpOperation::CurlHttpOperation(CurlHttpImpl* http, Request<>&& request,
       &headers_ready_, http->event_loop_, -1, 0,
       [](evutil_socket_t fd, short event, void* handle) {
         auto http_operation = reinterpret_cast<CurlHttpOperation*>(handle);
-        http_operation->awaiting_coroutine_.resume();
+        if (http_operation->awaiting_coroutine_) {
+          std::exchange(http_operation->awaiting_coroutine_, nullptr).resume();
+        }
       },
       this));
 }

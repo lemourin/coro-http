@@ -21,8 +21,8 @@ namespace coro::http {
 
 // clang-format off
 template <typename T>
-concept Handler = requires (T v) {
-  { v(std::declval<Request<>>(), stdx::stop_token()).await_resume() } -> ResponseLike;
+concept Handler = requires (T v, Request<> request, stdx::stop_token stop_token) {
+  { v(std::move(request), stop_token).await_resume() } -> ResponseLike;
 };
 template <typename T>
 concept HandlerWithQuit = Handler<T> && requires (T v) {

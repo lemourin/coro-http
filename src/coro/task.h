@@ -148,9 +148,9 @@ class Task<> {
 
 // clang-format off
 template <typename T>
-concept Awaitable = requires(T v) {
+concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
   v.await_resume();
-  v.await_suspend(std::declval<stdx::coroutine_handle<void>>());
+  v.await_suspend(handle);
   { v.await_ready() } -> std::same_as<bool>;
 };
 // clang-format on

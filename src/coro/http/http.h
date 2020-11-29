@@ -7,9 +7,9 @@
 
 #include <concepts>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
-#include <optional>
 
 namespace coro::http {
 
@@ -195,8 +195,8 @@ concept HttpOperation = requires (T v) {
 };
 
 template <typename T>
-concept HttpClientImpl = requires(T v) {
-  { v.Fetch(std::declval<Request<>>(), stdx::stop_token()) } -> HttpOperation;
+concept HttpClientImpl = requires(T v, Request<> request, stdx::stop_token stop_token) {
+  { v.Fetch(std::move(request), stop_token) } -> HttpOperation;
 };
 
 template <typename T>
@@ -245,6 +245,16 @@ class ToHttpClient : protected Impl {
   static Generator<std::string> ToGenerator(std::string value) {
     co_yield value;
   }
+};
+
+struct HttpOperationStub {
+  Response<> await_resume();
+};
+
+struct HttpStub {
+  using ResponseType = Response<>;
+  HttpOperationStub Fetch(std::string, stdx::stop_token) const;
+  HttpOperationStub Fetch(Request<>, stdx::stop_token) const;
 };
 
 }  // namespace coro::http

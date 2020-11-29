@@ -24,6 +24,10 @@ template <typename T>
 concept Handler = requires (T v) {
   { v(std::declval<Request<>>(), stdx::stop_token()).await_resume() } -> ResponseLike;
 };
+template <typename T>
+concept HandlerWithQuit = Handler<T> && requires (T v) {
+  v.Quit();
+};
 // clang-format on
 
 struct HttpServerConfig {
@@ -68,7 +72,7 @@ class HttpServer {
       Check(event_add(&quit_event_, &tv));
     }
     co_await quit_semaphore_;
-    if constexpr (requires { on_request_.OnQuit(); }) {
+    if constexpr (HandlerWithQuit<HandlerType>) {
       on_request_.OnQuit();
     }
   }

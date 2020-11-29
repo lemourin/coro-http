@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <optional>
 
 namespace coro::http {
 
@@ -88,7 +89,7 @@ class HttpBodyGenerator {
 
    private:
     template <typename>
-    friend class Awaitable;
+    friend struct Awaitable;
     HttpBodyGenerator* http_body_generator_;
     int64_t offset_;
   };

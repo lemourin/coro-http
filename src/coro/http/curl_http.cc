@@ -131,7 +131,7 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
   }
   auto it = *std::exchange(handle->request_body_it_, std::nullopt);
   size_t sent_cnt = 0;
-  for (int i = 0; i < size * nitems && !handle->buffer_.empty(); i++) {
+  for (size_t i = 0; i < size * nitems && !handle->buffer_.empty(); i++) {
     buffer[i] = handle->buffer_.front();
     handle->buffer_.pop_front();
     sent_cnt++;

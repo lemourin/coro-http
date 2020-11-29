@@ -22,7 +22,8 @@ class Task<T> {
   struct promise_type {
     struct final_awaitable {
       bool await_ready() noexcept { return true; }
-      auto await_suspend(auto) noexcept {}
+      template <typename C>
+      auto await_suspend(C) noexcept {}
       void await_resume() noexcept {
         if (promise->continuation) {
           promise->continuation.resume();
@@ -89,7 +90,8 @@ class Task<> {
   struct promise_type {
     struct final_awaitable {
       bool await_ready() noexcept { return true; }
-      auto await_suspend(auto) noexcept {}
+      template <typename V>
+      auto await_suspend(V) noexcept {}
       void await_resume() noexcept {
         if (promise->continuation) {
           promise->continuation.resume();

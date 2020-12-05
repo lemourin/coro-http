@@ -5,6 +5,8 @@
 #include <event2/http.h>
 #include <event2/keyvalq_struct.h>
 
+#include <regex>
+
 namespace coro::http {
 
 namespace {
@@ -66,7 +68,7 @@ std::string EncodeUri(std::string_view uri) {
 
 std::string FormDataToString(
     const std::initializer_list<std::pair<std::string_view, std::string_view>>&
-    params) {
+        params) {
   std::string result;
   bool first = false;
   for (const auto& [key, value] : params) {
@@ -77,6 +79,19 @@ std::string FormDataToString(
     first = true;
   }
   return result;
+}
+
+Range ParseRange(std::string str) {
+  std::regex regex(R"(bytes=(\d+)-(\d*))");
+  std::smatch match;
+  if (std::regex_match(str, match, regex)) {
+    return Range{.start = std::stoll(match[1].str()),
+                 .end = match[2].str().empty()
+                            ? std::nullopt
+                            : std::make_optional(std::stoll(match[2].str()))};
+  } else {
+    return Range{};
+  }
 }
 
 }  // namespace coro::http

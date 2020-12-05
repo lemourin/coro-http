@@ -10,6 +10,11 @@
 
 namespace coro::http {
 
+struct Range {
+  int64_t start;
+  std::optional<int64_t> end;
+};
+
 struct Uri {
   std::optional<std::string> scheme;
   std::optional<std::string> userinfo;
@@ -38,6 +43,8 @@ std::string FormDataToString(const List& params) {
   }
   return result;
 }
+
+Range ParseRange(std::string);
 
 }  // namespace coro::http
 

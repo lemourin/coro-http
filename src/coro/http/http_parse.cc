@@ -11,6 +11,19 @@ namespace coro::http {
 
 namespace {
 
+const std::unordered_map<std::string, std::string> kMimeType = {
+    {"aac", "audio/aac"},           {"avi", "video/x-msvideo"},
+    {"gif", "image/gif"},           {"jpeg", "image/jpeg"},
+    {"jpg", "image/jpeg"},          {"mpeg", "video/mpeg"},
+    {"oga", "audio/ogg"},           {"ogv", "video/ogg"},
+    {"png", "image/png"},           {"svg", "image/svg+xml"},
+    {"tif", "image/tiff"},          {"tiff", "image/tiff"},
+    {"wav", "audio-x/wav"},         {"weba", "audio/webm"},
+    {"webm", "video/webm"},         {"webp", "image/webp"},
+    {"3gp", "video/3gpp"},          {"3g2", "video/3gpp2"},
+    {"mp4", "video/mp4"},           {"mkv", "video/webm"},
+    {"mpd", "application/dash+xml"}};
+
 std::optional<std::string> ToOptional(const char* str) {
   if (str) {
     return str;
@@ -105,6 +118,30 @@ Range ParseRange(std::string str) {
   } else {
     return Range{};
   }
+}
+
+std::string ToLowerCase(std::string result) {
+  for (char& c : result) {
+    c = std::tolower(c);
+  }
+  return result;
+}
+
+std::string GetExtension(std::string_view filename) {
+  auto index = filename.find_last_of(".");
+  if (index == std::string_view::npos) {
+    return "";
+  } else {
+    return std::string(filename.begin() + index + 1, filename.end());
+  }
+}
+
+std::string GetMimeType(std::string_view extension) {
+  auto it = kMimeType.find(ToLowerCase(std::string(extension)));
+  if (it == std::end(kMimeType))
+    return "application/octet-stream";
+  else
+    return it->second;
 }
 
 }  // namespace coro::http

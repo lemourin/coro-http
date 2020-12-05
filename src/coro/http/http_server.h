@@ -118,15 +118,15 @@ class HttpServer {
       evhttp_send_reply_start(ev_request, response.status, nullptr);
 
       auto buffer = util::MakePointer(evbuffer_new(), evbuffer_free);
-      int size = 0;
       FOR_CO_AWAIT(const std::string& chunk, response.body, {
         evbuffer_add(buffer.get(), chunk.c_str(), chunk.size());
-        size += chunk.size();
         Semaphore semaphore;
         evhttp_send_reply_chunk_with_cb(ev_request, buffer.get(), OnWriteReady,
                                         &semaphore);
-        stdx::stop_callback stop_callback_dl(stop_source_.get_token(),
-                                             [&] { semaphore.resume(); });
+        stdx::stop_callback stop_callback_dl1(stop_source_.get_token(),
+                                              [&] { semaphore.resume(); });
+        stdx::stop_callback stop_callback_dl2(stop_source.get_token(),
+                                              [&] { semaphore.resume(); });
         co_await semaphore;
       });
       ResetOnCloseCallback(ev_request);

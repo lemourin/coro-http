@@ -39,6 +39,10 @@ Task<std::string> GetBody(HttpBodyGenerator&& body) {
 
 class HttpException : public std::exception {
  public:
+  static constexpr int kAborted = -1;
+
+  HttpException(int status) : HttpException(status, ToString(status)) {}
+
   HttpException(int status, std::string_view message)
       : status_(status), message_(message) {}
 
@@ -48,6 +52,15 @@ class HttpException : public std::exception {
   [[nodiscard]] int status() const noexcept { return status_; }
 
  private:
+  std::string ToString(int status) {
+    switch (status) {
+      case kAborted:
+        return "Aborted.";
+      default:
+        return "Unknown.";
+    }
+  }
+
   int status_;
   std::string message_;
 };
@@ -210,8 +223,9 @@ concept HttpClient = HttpClientImpl<T> && requires(T v) {
 template <HttpClientImpl Impl>
 class ToHttpClient : protected Impl {
  public:
-  using ResponseType = decltype(
-      std::declval<Impl>().Fetch(std::declval<Request<>>()).await_resume());
+  using ResponseType = decltype(std::declval<Impl>()
+                                    .Fetch(std::declval<Request<>>())
+                                    .await_resume());
 
   using Impl::Impl;
 

@@ -26,7 +26,7 @@ concept Handler = requires (T v, Request<> request, stdx::stop_token stop_token)
 };
 template <typename T>
 concept HandlerWithQuit = Handler<T> && requires (T v) {
-  v.Quit();
+  v.OnQuit();
 };
 // clang-format on
 

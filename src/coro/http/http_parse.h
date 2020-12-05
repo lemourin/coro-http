@@ -27,6 +27,7 @@ struct Uri {
 
 Uri ParseUri(std::string_view uri);
 std::unordered_map<std::string, std::string> ParseQuery(std::string_view query);
+std::string DecodeUri(std::string_view uri);
 std::string EncodeUri(std::string_view uri);
 
 template <typename List = std::initializer_list<

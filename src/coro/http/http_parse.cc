@@ -32,6 +32,9 @@ std::optional<int> ToOptional(int value) {
 Uri ParseUri(std::string_view url_view) {
   auto uri = util::MakePointer(evhttp_uri_parse(std::string(url_view).c_str()),
                                evhttp_uri_free);
+  if (!uri) {
+    throw HttpException(-1, "evhttp_uri_parse failed");
+  }
   return Uri{.scheme = ToOptional(evhttp_uri_get_scheme(uri.get())),
              .userinfo = ToOptional(evhttp_uri_get_userinfo(uri.get())),
              .host = ToOptional(evhttp_uri_get_host(uri.get())),
@@ -54,6 +57,16 @@ std::unordered_map<std::string, std::string> ParseQuery(
   }
   evhttp_clear_headers(&keyvalq);
   return result;
+}
+
+std::string DecodeUri(std::string_view uri) {
+  char* decoded = evhttp_uridecode(std::string(uri).c_str(), 1, nullptr);
+  if (!decoded) {
+    throw HttpException(-1, "evhttp_decode_uri failed");
+  }
+  std::string ret_str = decoded;
+  free(decoded);
+  return ret_str;
 }
 
 std::string EncodeUri(std::string_view uri) {

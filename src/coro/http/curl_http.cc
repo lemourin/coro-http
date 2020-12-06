@@ -103,6 +103,9 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
     http_operation->body_ += std::string(ptr, ptr + size * nmemb);
   } else if (std::holds_alternative<CurlHttpBodyGenerator*>(handle->owner_)) {
     auto http_body_generator = std::get<CurlHttpBodyGenerator*>(handle->owner_);
+    if (!http_body_generator->data_.empty()) {
+      return CURL_WRITEFUNC_PAUSE;
+    }
     timeval tv = {};
     http_body_generator->data_ += std::string(ptr, ptr + size * nmemb);
     Check(event_add(&http_body_generator->chunk_ready_, &tv));
@@ -241,12 +244,6 @@ void CurlHttpBodyGenerator::OnBodyReady(evutil_socket_t, short, void* handle) {
 CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
   Check(event_del(&chunk_ready_));
   Check(event_del(&body_ready_));
-}
-
-void CurlHttpBodyGenerator::Pause() {
-  if (status_ == -1 && !exception_ptr_) {
-    Check(curl_easy_pause(handle_.handle_, CURLPAUSE_RECV));
-  }
 }
 
 void CurlHttpBodyGenerator::Resume() {

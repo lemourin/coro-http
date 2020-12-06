@@ -6,14 +6,13 @@
 #include <coro/util/wrap.h>
 
 #include <concepts>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
 
 namespace coro::http {
-
-const int MAX_BUFFER_SIZE = 1u << 16u;
 
 template <typename BodyGenerator = Generator<std::string>>
 struct Request {
@@ -123,7 +122,6 @@ class HttpBodyGenerator {
   std::string data_;
   int status_ = -1;
   std::exception_ptr exception_ptr_;
-  bool paused_ = false;
 };
 
 template <typename Impl>
@@ -146,10 +144,7 @@ auto HttpBodyGenerator<Impl>::Iterator::operator++() -> Awaitable<Iterator&> {
     offset_++;
   }
   http_body_generator_->data_.clear();
-  if (http_body_generator_->paused_) {
-    http_body_generator_->paused_ = false;
-    static_cast<Impl*>(http_body_generator_)->Resume();
-  }
+  static_cast<Impl*>(http_body_generator_)->Resume();
   return Awaitable<Iterator&>{*this};
 }
 
@@ -171,10 +166,6 @@ typename HttpBodyGenerator<Impl>::Iterator HttpBodyGenerator<Impl>::end() {
 template <typename Impl>
 void HttpBodyGenerator<Impl>::ReceivedData(std::string_view data) {
   data_ += data;
-  if (data_.size() >= MAX_BUFFER_SIZE && !paused_) {
-    paused_ = true;
-    static_cast<Impl*>(this)->Pause();
-  }
   if (handle_) {
     std::exchange(handle_, nullptr).resume();
   }

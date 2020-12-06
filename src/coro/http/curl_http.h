@@ -71,7 +71,6 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
   CurlHttpBodyGenerator& operator=(const CurlHttpBodyGenerator&) = delete;
   CurlHttpBodyGenerator& operator=(CurlHttpBodyGenerator&&) = delete;
 
-  void Pause();
   void Resume();
 
  private:

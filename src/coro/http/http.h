@@ -40,6 +40,7 @@ Task<std::string> GetBody(HttpBodyGenerator&& body) {
 class HttpException : public std::exception {
  public:
   static constexpr int kAborted = -1;
+  static constexpr int kNotFound = 404;
 
   HttpException(int status) : HttpException(status, ToString(status)) {}
 
@@ -56,6 +57,8 @@ class HttpException : public std::exception {
     switch (status) {
       case kAborted:
         return "Aborted.";
+      case kNotFound:
+        return "Not found.";
       default:
         return "Unknown.";
     }

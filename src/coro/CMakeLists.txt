@@ -8,6 +8,7 @@ set(coro-headers
     generator.h
     semaphore.h
     wait_task.h
+    promise.h
 )
 
 set(coro-sources

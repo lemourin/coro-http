@@ -22,6 +22,7 @@ const std::unordered_map<std::string, std::string> kMimeType = {
     {"webm", "video/webm"},         {"webp", "image/webp"},
     {"3gp", "video/3gpp"},          {"3g2", "video/3gpp2"},
     {"mp4", "video/mp4"},           {"mkv", "video/webm"},
+    {"mp3", "audio/mpeg"},          {"flac", "audio/flac"},
     {"mpd", "application/dash+xml"}};
 
 std::optional<std::string> ToOptional(const char* str) {

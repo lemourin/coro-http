@@ -248,7 +248,7 @@ CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
 
 void CurlHttpBodyGenerator::Resume() {
   if (status_ == -1 && !exception_ptr_) {
-    Check(curl_easy_pause(handle_.handle_, CURLPAUSE_RECV_CONT));
+    curl_easy_pause(handle_.handle_, CURLPAUSE_RECV_CONT);
   }
 }
 

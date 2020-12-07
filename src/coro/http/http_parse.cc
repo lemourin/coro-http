@@ -43,8 +43,10 @@ std::optional<int> ToOptional(int value) {
 }  // namespace
 
 Uri ParseUri(std::string_view url_view) {
-  auto uri = util::MakePointer(evhttp_uri_parse(std::string(url_view).c_str()),
-                               evhttp_uri_free);
+  auto uri = util::MakePointer(
+      evhttp_uri_parse_with_flags(std::string(url_view).c_str(),
+                                  EVHTTP_URI_NONCONFORMANT),
+      evhttp_uri_free);
   if (!uri) {
     throw HttpException(-1, "evhttp_uri_parse failed");
   }

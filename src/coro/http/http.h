@@ -86,6 +86,7 @@ class HttpBodyGenerator {
           i.http_body_generator_->exception_ptr_) {
         i.offset_ = INT64_MAX;
       }
+      i.data_ = std::move(i.http_body_generator_->data_);
       if (i.http_body_generator_->exception_ptr_) {
         std::rethrow_exception(i.http_body_generator_->exception_ptr_);
       }
@@ -96,7 +97,8 @@ class HttpBodyGenerator {
 
   class Iterator {
    public:
-    Iterator(HttpBodyGenerator* http_body_generator, int64_t offset);
+    Iterator(HttpBodyGenerator* http_body_generator, int64_t offset,
+             std::string data);
 
     bool operator!=(const Iterator& iterator) const;
     Awaitable<Iterator&> operator++();
@@ -107,6 +109,7 @@ class HttpBodyGenerator {
     friend struct Awaitable;
     HttpBodyGenerator* http_body_generator_;
     int64_t offset_;
+    std::string data_;
   };
 
   Awaitable<Iterator> begin();
@@ -126,8 +129,8 @@ class HttpBodyGenerator {
 
 template <typename Impl>
 HttpBodyGenerator<Impl>::Iterator::Iterator(
-    HttpBodyGenerator* http_body_generator, int64_t offset)
-    : http_body_generator_(http_body_generator), offset_(offset) {}
+    HttpBodyGenerator* http_body_generator, int64_t offset, std::string data)
+    : http_body_generator_(http_body_generator), offset_(offset), data_(data) {}
 
 template <typename Impl>
 bool HttpBodyGenerator<Impl>::Iterator::operator!=(
@@ -143,24 +146,23 @@ auto HttpBodyGenerator<Impl>::Iterator::operator++() -> Awaitable<Iterator&> {
   } else {
     offset_++;
   }
-  http_body_generator_->data_.clear();
   static_cast<Impl*>(http_body_generator_)->Resume();
   return Awaitable<Iterator&>{*this};
 }
 
 template <typename Impl>
 const std::string& HttpBodyGenerator<Impl>::Iterator::operator*() const {
-  return http_body_generator_->data_;
+  return data_;
 }
 
 template <typename Impl>
 auto HttpBodyGenerator<Impl>::begin() -> Awaitable<Iterator> {
-  return Awaitable<Iterator>{Iterator(this, 0)};
+  return Awaitable<Iterator>{Iterator(this, 0, "")};
 }
 
 template <typename Impl>
 typename HttpBodyGenerator<Impl>::Iterator HttpBodyGenerator<Impl>::end() {
-  return Iterator(this, INT64_MAX);
+  return Iterator(this, INT64_MAX, "");
 }
 
 template <typename Impl>

@@ -32,7 +32,7 @@ concept HandlerWithQuit = Handler<T> && requires (T v) {
 
 struct HttpServerConfig {
   std::string address;
-  int port;
+  uint16_t port;
 };
 
 template <Handler HandlerType>

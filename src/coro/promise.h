@@ -26,7 +26,7 @@ class Promise {
         auto shared_data = shared_data_capture;
         try {
           shared_data->result = co_await producer();
-        } catch (const std::exception& e) {
+        } catch (const std::exception&) {
           shared_data->result = std::current_exception();
         }
         while (!shared_data->awaiters.empty()) {

@@ -177,20 +177,33 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
   Check(curl_easy_setopt(handle_, CURLOPT_SSL_VERIFYPEER, 0L));
   Check(
       curl_easy_setopt(handle_, CURLOPT_CUSTOMREQUEST, request.method.c_str()));
-  if (request_body_) {
-    curl_easy_setopt(handle_, CURLOPT_UPLOAD, 1L);
-    [this]() -> Task<> {
-      request_body_it_ = co_await request_body_->begin();
-      curl_easy_pause(handle_, CURLPAUSE_SEND_CONT);
-    }();
-  }
+  std::optional<long> content_length;
   for (const auto& [header_name, header_value] : request.headers) {
     std::string header_line = header_name;
     header_line += ": ";
     header_line += header_value;
     header_list_ = curl_slist_append(header_list_, header_line.c_str());
+    if (ToLowerCase(header_name) == "content-length") {
+      content_length = std::stol(header_value);
+    }
   }
   Check(curl_easy_setopt(handle_, CURLOPT_HTTPHEADER, header_list_));
+
+  if (request_body_) {
+    if (ToLowerCase(request.method) == "post") {
+      Check(curl_easy_setopt(handle_, CURLOPT_POST, 1L));
+      if (content_length) {
+        Check(
+            curl_easy_setopt(handle_, CURLOPT_POSTFIELDSIZE, *content_length));
+      }
+    } else {
+      curl_easy_setopt(handle_, CURLOPT_UPLOAD, 1L);
+    }
+    [this]() -> Task<> {
+      request_body_it_ = co_await request_body_->begin();
+      curl_easy_pause(handle_, CURLPAUSE_SEND_CONT);
+    }();
+  }
 
   Check(event_assign(&next_request_body_chunk_, http_->event_loop_, -1, 0,
                      OnNextRequestBodyChunkRequested, this));

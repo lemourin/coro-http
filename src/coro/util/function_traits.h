@@ -21,6 +21,9 @@ FunctionTraits<Ret, Args...> MakeFunctionTraits(Ret (*)(Args...));
 template <typename Class, typename Ret, typename... Args>
 FunctionTraits<Ret, Args...> MakeFunctionTraits(Ret (Class::*)(Args...) const);
 
+template <typename Class, typename Ret, typename... Args>
+FunctionTraits<Ret, Args...> MakeFunctionTraits(Ret (Class::*)(Args...));
+
 template <typename F>
 decltype(MakeFunctionTraits(&F::operator())) MakeFunctionTraits(F&&);
 

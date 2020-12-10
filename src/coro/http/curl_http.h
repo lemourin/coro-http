@@ -1,6 +1,8 @@
 #ifndef CORO_HTTP_SRC_CORO_HTTP_CURL_HTTP_H_
 #define CORO_HTTP_SRC_CORO_HTTP_CURL_HTTP_H_
 
+#include <coro/semaphore.h>
+#include <coro/stdx/stop_callback.h>
 #include <coro/util/wrap.h>
 #include <curl/curl.h>
 #include <event2/event.h>
@@ -45,6 +47,11 @@ class CurlHandle {
   static void OnNextRequestBodyChunkRequested(evutil_socket_t, short,
                                               void* handle);
 
+  struct OnCancel {
+    void operator()() const;
+    CurlHandle* handle;
+  };
+
   friend class CurlHttpImpl;
   friend class CurlHttpOperation;
   friend class CurlHttpBodyGenerator;
@@ -58,6 +65,7 @@ class CurlHandle {
   stdx::stop_token stop_token_;
   std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner_;
   event next_request_body_chunk_;
+  coro::stdx::stop_callback<OnCancel> stop_callback_;
 };
 
 class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
@@ -145,6 +153,8 @@ class CurlHttpImpl {
   CURLM* curl_handle_;
   event_base* event_loop_;
   event timeout_event_;
+  int pending_transfers_ = 0;
+  std::optional<coro::Semaphore> done_;
 };
 
 using CurlHttp = ToHttpClient<CurlHttpImpl>;

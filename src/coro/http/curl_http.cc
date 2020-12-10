@@ -1,5 +1,7 @@
 #include "curl_http.h"
 
+#include <coro/wait_task.h>
+
 #include <sstream>
 
 namespace coro::http {
@@ -54,7 +56,8 @@ CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
       handle_(handle.handle_),
       header_list_(handle.header_list_),
       stop_token_(std::move(handle.stop_token_)),
-      owner_(handle.owner_) {
+      owner_(handle.owner_),
+      stop_callback_(stop_token_, OnCancel{this}) {
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
   Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
@@ -154,6 +157,20 @@ void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
   }();
 }
 
+void CurlHandle::OnCancel::operator()() const {
+  if (std::holds_alternative<CurlHttpOperation*>(handle->owner_)) {
+    auto operation = std::get<CurlHttpOperation*>(handle->owner_);
+    operation->exception_ptr_ = std::make_exception_ptr(InterruptedException());
+    if (operation->awaiting_coroutine_) {
+      std::exchange(operation->awaiting_coroutine_, nullptr).resume();
+    }
+  } else if (std::holds_alternative<CurlHttpBodyGenerator*>(handle->owner_)) {
+    auto generator = std::get<CurlHttpBodyGenerator*>(handle->owner_);
+    generator->exception_ptr_ = std::make_exception_ptr(InterruptedException());
+    generator->Close(generator->exception_ptr_);
+  }
+}
+
 template <typename Owner>
 CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
                        stdx::stop_token&& stop_token, Owner* owner)
@@ -162,7 +179,8 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
       header_list_(),
       request_body_(std::move(request.body)),
       stop_token_(std::move(stop_token)),
-      owner_(owner) {
+      owner_(owner),
+      stop_callback_(stop_token_, OnCancel{this}) {
   Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
   Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
@@ -209,6 +227,7 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
                      OnNextRequestBodyChunkRequested, this));
 
   Check(curl_multi_add_handle(http->curl_handle_, handle_));
+  http->pending_transfers_++;
 }
 
 template <typename NewOwner>
@@ -223,6 +242,10 @@ CurlHandle::~CurlHandle() {
     curl_easy_cleanup(handle_);
     curl_slist_free_all(header_list_);
     event_del(&next_request_body_chunk_);
+    http_->pending_transfers_--;
+    if (http_->pending_transfers_ == 0 && http_->done_) {
+      http_->done_->resume();
+    }
   }
 }
 

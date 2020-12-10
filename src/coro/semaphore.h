@@ -3,6 +3,8 @@
 
 #include <coro/stdx/coroutine.h>
 
+#include <utility>
+
 namespace coro {
 
 class Semaphore {

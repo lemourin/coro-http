@@ -9,7 +9,13 @@ namespace coro {
 
 class Semaphore {
  public:
-  bool await_ready() { return resumed_; }
+  Semaphore() = default;
+  Semaphore(const Semaphore&) = delete;
+  Semaphore(Semaphore&&) = delete;
+  Semaphore& operator=(const Semaphore&) = delete;
+  Semaphore& operator=(Semaphore&&) = delete;
+
+  bool await_ready() const { return resumed_; }
   void await_suspend(stdx::coroutine_handle<void> continuation) {
     continuation_ = continuation;
   }
@@ -23,7 +29,7 @@ class Semaphore {
 
  private:
   bool resumed_ = false;
-  stdx::coroutine_handle<void> continuation_;
+  stdx::coroutine_handle<void> continuation_ = coro::std_ns::noop_coroutine();
 };
 
 }  // namespace coro

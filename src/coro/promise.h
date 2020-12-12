@@ -15,14 +15,16 @@ template <typename T>
 class Promise {
  public:
   template <typename F>
-  explicit Promise(F producer) : producer_(std::move(producer)) {}
+  explicit Promise(F producer)
+      : shared_data_(std::make_shared<SharedData>(
+            SharedData{.producer = std::move(producer)})) {}
 
   Task<std::reference_wrapper<const T>> Get(
       coro::stdx::stop_token stop_token) const {
     auto shared_data = shared_data_;
-    if (producer_) {
+    if (shared_data->producer) {
       [shared_data_capture = shared_data,
-       producer = std::exchange(producer_, nullptr)]() -> Task<> {
+       producer = std::exchange(shared_data->producer, nullptr)]() -> Task<> {
         auto shared_data = shared_data_capture;
         try {
           shared_data->result = co_await producer();
@@ -41,6 +43,7 @@ class Promise {
   struct SharedData {
     std::unordered_set<Semaphore*> awaiters;
     std::variant<std::monostate, std::exception_ptr, T> result;
+    std::function<Task<T>()> producer;
   };
 
   static Task<std::reference_wrapper<const T>> Get(
@@ -67,8 +70,7 @@ class Promise {
     }
   }
 
-  std::shared_ptr<SharedData> shared_data_ = std::make_shared<SharedData>();
-  mutable std::function<Task<T>()> producer_;
+  std::shared_ptr<SharedData> shared_data_;
 };
 
 }  // namespace coro

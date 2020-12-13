@@ -24,10 +24,6 @@ template <typename T>
 concept Handler = requires (T v, Request<> request, stdx::stop_token stop_token) {
   { v(std::move(request), stop_token).await_resume() } -> ResponseLike;
 };
-template <typename T>
-concept HandlerWithQuit = Handler<T> && requires (T v) {
-  v.OnQuit();
-};
 // clang-format on
 
 struct HttpServerConfig {
@@ -35,14 +31,16 @@ struct HttpServerConfig {
   uint16_t port;
 };
 
-template <Handler HandlerType>
+template <Handler HandlerType, typename OnQuitT = void (*)()>
 class HttpServer {
  public:
-  HttpServer(event_base* event_loop, const HttpServerConfig& config,
-             HandlerType&& on_request)
+  HttpServer(
+      event_base* event_loop, const HttpServerConfig& config,
+      HandlerType on_request, OnQuitT on_quit = [] {})
       : event_loop_(event_loop),
         http_(evhttp_new(event_loop)),
-        on_request_(std::move(on_request)) {
+        on_request_(std::move(on_request)),
+        on_quit_(std::move(on_quit)) {
     Check(evhttp_bind_socket(http_, config.address.c_str(), config.port));
     evhttp_set_gencb(http_, OnHttpRequest, this);
     Check(event_assign(&quit_event_, event_loop, -1, 0, OnQuit, this));
@@ -72,9 +70,7 @@ class HttpServer {
       Check(event_add(&quit_event_, &tv));
     }
     co_await quit_semaphore_;
-    if constexpr (HandlerWithQuit<HandlerType>) {
-      on_request_.OnQuit();
-    }
+    on_quit_();
   }
 
  private:
@@ -199,6 +195,7 @@ class HttpServer {
   event quit_event_;
   Semaphore quit_semaphore_;
   HandlerType on_request_;
+  OnQuitT on_quit_;
 };
 
 }  // namespace coro::http

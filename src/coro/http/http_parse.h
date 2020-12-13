@@ -49,6 +49,8 @@ Range ParseRange(std::string);
 std::string ToLowerCase(std::string);
 std::string GetExtension(std::string_view filename);
 std::string GetMimeType(std::string_view extension);
+std::string ToBase64(std::string_view);
+std::string FromBase64(std::string_view);
 
 }  // namespace coro::http
 

@@ -92,6 +92,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
   CurlHandle handle_;
   event chunk_ready_;
   event body_ready_;
+  bool body_ready_fired_ = false;
   int status_ = -1;
   std::exception_ptr exception_ptr_;
   std::string data_;

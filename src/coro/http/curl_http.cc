@@ -264,6 +264,12 @@ void CurlHttpBodyGenerator::OnChunkReady(evutil_socket_t, short, void* handle) {
       reinterpret_cast<CurlHttpBodyGenerator*>(handle);
   std::string data = std::move(curl_http_body_generator->data_);
   curl_http_body_generator->data_.clear();
+  if (curl_http_body_generator->status_ != -1 &&
+      !curl_http_body_generator->body_ready_fired_) {
+    timeval tv = {};
+    curl_http_body_generator->body_ready_fired_ = true;
+    Check(event_add(&curl_http_body_generator->body_ready_, &tv));
+  }
   curl_http_body_generator->ReceivedData(std::move(data));
 }
 
@@ -392,8 +398,12 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
               HttpException(message->data.result,
                             curl_easy_strerror(message->data.result)));
         }
-        timeval tv = {};
-        event_add(&curl_http_body_generator->body_ready_, &tv);
+        if (!event_pending(&curl_http_body_generator->chunk_ready_, EV_TIMEOUT,
+                           nullptr)) {
+          timeval tv = {};
+          curl_http_body_generator->body_ready_fired_ = true;
+          event_add(&curl_http_body_generator->body_ready_, &tv);
+        }
       }
     }
   } while (message != nullptr);

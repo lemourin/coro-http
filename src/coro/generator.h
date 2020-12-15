@@ -306,7 +306,7 @@ class [[nodiscard]] Generator {
 
   void swap(Generator& other) noexcept {
     using std::swap;
-    swap(coroutine_, other.m_coroutine);
+    swap(coroutine_, other.coroutine_);
   }
 
  private:

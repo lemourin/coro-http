@@ -20,7 +20,9 @@ class any_invocable_impl : public any_invocable<ReturnType(ArgType...)> {
  public:
   explicit any_invocable_impl(Functor f) : f_(std::move(f)) {}
 
-  ReturnType operator()(ArgType... args) final { return f_(args...); }
+  ReturnType operator()(ArgType... args) final {
+    return f_(std::move(args)...);
+  }
 
  private:
   Functor f_;
@@ -32,7 +34,9 @@ class any_invocable_ptr_impl : public any_invocable<ReturnType(ArgType...)> {
   explicit any_invocable_ptr_impl(std::unique_ptr<Functor> f)
       : f_(std::move(f)) {}
 
-  ReturnType operator()(ArgType... args) final { return (*f_)(args...); }
+  ReturnType operator()(ArgType... args) final {
+    return (*f_)(std::move(args)...);
+  }
 
  private:
   std::unique_ptr<Functor> f_;
@@ -57,7 +61,7 @@ class any_invocable<ReturnType(ArgType...)> {
             internal::any_invocable_ptr_impl<T, ReturnType, ArgType...>>(
             std::move(functor))) {}
 
-  ReturnType operator()(ArgType... args) { return (*f_)(args...); }
+  ReturnType operator()(ArgType... args) { return (*f_)(std::move(args)...); }
 
  private:
   std::unique_ptr<internal::any_invocable<ReturnType(ArgType...)>> f_;

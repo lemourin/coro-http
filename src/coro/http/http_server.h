@@ -102,7 +102,8 @@ class HttpServer {
     bool reply_started = false;
     current_connections_++;
     try {
-      auto response = co_await on_request_(request, stop_source.get_token());
+      auto response =
+          co_await on_request_(std::move(request), stop_source.get_token());
 
       evkeyvalq* response_headers =
           evhttp_request_get_output_headers(ev_request);

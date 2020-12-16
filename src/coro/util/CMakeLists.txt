@@ -6,6 +6,7 @@ set(coro-util-headers
     wrap.h
     make_pointer.h
     for_each.h
+    lru_cache.h
 )
 
 set_target_properties(coro-util PROPERTIES LINKER_LANGUAGE CXX)

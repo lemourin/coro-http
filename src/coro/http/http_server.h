@@ -134,6 +134,7 @@ class HttpServer {
       if (!reply_started) {
         evhttp_send_reply(ev_request, 500, nullptr, buffer.get());
       } else {
+        evhttp_send_reply_chunk(ev_request, buffer.get());
         evhttp_send_reply_end(ev_request);
       }
     }

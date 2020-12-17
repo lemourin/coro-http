@@ -39,7 +39,7 @@ class Task<T> {
                   value);
     }
     stdx::suspend_never initial_suspend() { return {}; }
-    final_awaitable final_suspend() { return {this}; }
+    final_awaitable final_suspend() noexcept { return {this}; }
     template <typename V>
     void return_value(V&& v) {
       *value = std::make_unique<T>(std::forward<V>(v));
@@ -107,7 +107,7 @@ class Task<> {
                   value);
     }
     stdx::suspend_never initial_suspend() { return {}; }
-    final_awaitable final_suspend() { return {this}; }
+    final_awaitable final_suspend() noexcept { return {this}; }
     void return_void() { *value = true; }
     void unhandled_exception() { *value = std::current_exception(); }
 

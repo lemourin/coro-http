@@ -2,6 +2,9 @@ if(WIN32)
     set(CMAKE_USE_SCHANNEL ON CACHE BOOL "build curl with native windows ssl library")
 endif()
 
+if(ANDROID)
+    set(CMAKE_USE_OPENSSL OFF CACHE BOOL "build curl with openssl")
+endif()
 add_subdirectory(curl)
 
 set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "build libevent without OpenSSL")

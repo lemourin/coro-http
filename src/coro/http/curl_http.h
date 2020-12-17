@@ -52,13 +52,29 @@ class CurlHandle {
     CurlHandle* handle;
   };
 
+  struct CurlHandleDeleter {
+    void operator()(CURL* handle) const {
+      if (handle) {
+        curl_easy_cleanup(handle);
+      }
+    }
+  };
+
+  struct CurlListDeleter {
+    void operator()(curl_slist* list) const {
+      if (list) {
+        curl_slist_free_all(list);
+      }
+    }
+  };
+
   friend class CurlHttpImpl;
   friend class CurlHttpOperation;
   friend class CurlHttpBodyGenerator;
 
   CurlHttpImpl* http_;
-  CURL* handle_;
-  curl_slist* header_list_;
+  std::unique_ptr<CURL, CurlHandleDeleter> handle_;
+  std::unique_ptr<curl_slist, CurlListDeleter> header_list_;
   std::optional<Generator<std::string>> request_body_;
   std::deque<char> buffer_;
   std::optional<Generator<std::string>::iterator> request_body_it_;
@@ -151,11 +167,17 @@ class CurlHttpImpl {
   friend class CurlHttpBodyGenerator;
   friend class CurlHandle;
 
-  CURLM* curl_handle_;
+  struct CurlMultiDeleter {
+    void operator()(CURLM* handle) const {
+      if (handle) {
+        curl_multi_cleanup(handle);
+      }
+    }
+  };
+
+  std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle_;
   event_base* event_loop_;
   event timeout_event_;
-  int pending_transfers_ = 0;
-  std::optional<coro::Semaphore> done_;
 };
 
 using CurlHttp = ToHttpClient<CurlHttpImpl>;

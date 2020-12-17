@@ -41,17 +41,12 @@ class HttpServer {
         http_(evhttp_new(event_loop)),
         on_request_(std::move(on_request)),
         on_quit_(std::move(on_quit)) {
-    Check(evhttp_bind_socket(http_, config.address.c_str(), config.port));
-    evhttp_set_gencb(http_, OnHttpRequest, this);
+    Check(evhttp_bind_socket(http_.get(), config.address.c_str(), config.port));
+    evhttp_set_gencb(http_.get(), OnHttpRequest, this);
     Check(event_assign(&quit_event_, event_loop, -1, 0, OnQuit, this));
   }
 
-  ~HttpServer() {
-    if (http_) {
-      evhttp_free(http_);
-    }
-    Check(event_del(&quit_event_));
-  }
+  ~HttpServer() { Check(event_del(&quit_event_)); }
 
   HttpServer(const HttpServer&) = delete;
   HttpServer(HttpServer&&) = delete;
@@ -85,7 +80,7 @@ class HttpServer {
       co_return;
     }
 
-    request_type request{.url = evhttp_request_get_uri(ev_request)};
+    RequestType request{.url = evhttp_request_get_uri(ev_request)};
     stdx::stop_source stop_source;
     stdx::stop_callback stop_callback(stop_source_.get_token(),
                                       [&] { stop_source.request_stop(); });
@@ -164,7 +159,7 @@ class HttpServer {
 
   static void OnQuit(evutil_socket_t, short, void* handle) {
     auto http_server = reinterpret_cast<HttpServer*>(handle);
-    evhttp_free(std::exchange(http_server->http_, nullptr));
+    evhttp_free(http_server->http_.release());
     http_server->quit_semaphore_.resume();
   }
 
@@ -181,15 +176,23 @@ class HttpServer {
     }
   }
 
-  using handler_argument_list = util::ArgumentListTypeT<HandlerType>;
-  static_assert(util::TypeListLengthV<handler_argument_list> == 2);
+  using HandlerArgumentList = util::ArgumentListTypeT<HandlerType>;
+  static_assert(util::TypeListLengthV<HandlerArgumentList> == 2);
 
-  using request_type =
-      std::remove_cvref_t<util::TypeAtT<handler_argument_list, 0>>;
-  using response_type = util::ReturnType<HandlerType>;
+  using RequestType =
+      std::remove_cvref_t<util::TypeAtT<HandlerArgumentList, 0>>;
+  using ResponseType = util::ReturnType<HandlerType>;
+
+  struct EvHttpDeleter {
+    void operator()(evhttp* http) const {
+      if (http) {
+        evhttp_free(http);
+      }
+    }
+  };
 
   event_base* event_loop_;
-  evhttp* http_;
+  std::unique_ptr<evhttp, EvHttpDeleter> http_;
   bool quitting_ = false;
   int current_connections_ = 0;
   stdx::stop_source stop_source_;

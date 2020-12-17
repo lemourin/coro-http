@@ -53,16 +53,16 @@ std::string TrimWhitespace(std::string_view str) {
 
 CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
     : http_(std::exchange(handle.http_, nullptr)),
-      handle_(handle.handle_),
-      header_list_(handle.header_list_),
+      handle_(std::move(handle.handle_)),
+      header_list_(std::move(handle.header_list_)),
       stop_token_(std::move(handle.stop_token_)),
       owner_(handle.owner_),
       stop_callback_(stop_token_, OnCancel{this}) {
-  Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_READDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFODATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
 
   Check(event_del(&handle.next_request_body_chunk_));
   Check(event_assign(&next_request_body_chunk_, http_->event_loop_, -1, 0,
@@ -151,9 +151,10 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
 
 void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
                                                  void* userdata) {
-  [handle = reinterpret_cast<CurlHandle*>(userdata)]() -> Task<> {
+  [handle_capture = reinterpret_cast<CurlHandle*>(userdata)]() -> Task<> {
+    auto handle = handle_capture;
     handle->request_body_it_ = co_await ++*handle->request_body_it_;
-    curl_easy_pause(handle->handle_, CURLPAUSE_SEND_CONT);
+    curl_easy_pause(handle->handle_.get(), CURLPAUSE_SEND_CONT);
   }();
 }
 
@@ -181,53 +182,56 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
       stop_token_(std::move(stop_token)),
       owner_(owner),
       stop_callback_(stop_token_, OnCancel{this}) {
-  Check(curl_easy_setopt(handle_, CURLOPT_URL, request.url.data()));
-  Check(curl_easy_setopt(handle_, CURLOPT_PRIVATE, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, WriteCallback));
-  Check(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_HEADERFUNCTION, HeaderCallback));
-  Check(curl_easy_setopt(handle_, CURLOPT_HEADERDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFOFUNCTION, ProgressCallback));
-  Check(curl_easy_setopt(handle_, CURLOPT_XFERINFODATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_READFUNCTION, ReadCallback));
-  Check(curl_easy_setopt(handle_, CURLOPT_READDATA, this));
-  Check(curl_easy_setopt(handle_, CURLOPT_NOPROGRESS, 0L));
-  Check(curl_easy_setopt(handle_, CURLOPT_SSL_VERIFYPEER, 0L));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_URL, request.url.data()));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEFUNCTION, WriteCallback));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
   Check(
-      curl_easy_setopt(handle_, CURLOPT_CUSTOMREQUEST, request.method.c_str()));
+      curl_easy_setopt(handle_.get(), CURLOPT_HEADERFUNCTION, HeaderCallback));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFOFUNCTION,
+                         ProgressCallback));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFODATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_READFUNCTION, ReadCallback));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_NOPROGRESS, 0L));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_SSL_VERIFYPEER, 0L));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_CUSTOMREQUEST,
+                         request.method.c_str()));
   std::optional<long> content_length;
+  curl_slist* header_list = nullptr;
   for (const auto& [header_name, header_value] : request.headers) {
     std::string header_line = header_name;
     header_line += ": ";
     header_line += header_value;
-    header_list_ = curl_slist_append(header_list_, header_line.c_str());
+    header_list = curl_slist_append(header_list, header_line.c_str());
     if (ToLowerCase(header_name) == "content-length") {
       content_length = std::stol(header_value);
     }
   }
-  Check(curl_easy_setopt(handle_, CURLOPT_HTTPHEADER, header_list_));
+  header_list_ = std::unique_ptr<curl_slist, CurlListDeleter>(header_list);
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_HTTPHEADER, header_list));
 
   if (request_body_) {
     if (ToLowerCase(request.method) == "post") {
-      Check(curl_easy_setopt(handle_, CURLOPT_POST, 1L));
+      Check(curl_easy_setopt(handle_.get(), CURLOPT_POST, 1L));
       if (content_length) {
-        Check(
-            curl_easy_setopt(handle_, CURLOPT_POSTFIELDSIZE, *content_length));
+        Check(curl_easy_setopt(handle_.get(), CURLOPT_POSTFIELDSIZE,
+                               *content_length));
       }
     } else {
-      curl_easy_setopt(handle_, CURLOPT_UPLOAD, 1L);
+      curl_easy_setopt(handle_.get(), CURLOPT_UPLOAD, 1L);
     }
     [this]() -> Task<> {
       request_body_it_ = co_await request_body_->begin();
-      curl_easy_pause(handle_, CURLPAUSE_SEND_CONT);
+      curl_easy_pause(handle_.get(), CURLPAUSE_SEND_CONT);
     }();
   }
 
   Check(event_assign(&next_request_body_chunk_, http_->event_loop_, -1, 0,
                      OnNextRequestBodyChunkRequested, this));
 
-  Check(curl_multi_add_handle(http->curl_handle_, handle_));
-  http->pending_transfers_++;
+  Check(curl_multi_add_handle(http->curl_handle_.get(), handle_.get()));
 }
 
 template <typename NewOwner>
@@ -238,14 +242,8 @@ CurlHandle::CurlHandle(CurlHandle&& handle, NewOwner* owner)
 
 CurlHandle::~CurlHandle() {
   if (http_) {
-    Check(curl_multi_remove_handle(http_->curl_handle_, handle_));
-    curl_easy_cleanup(handle_);
-    curl_slist_free_all(header_list_);
+    Check(curl_multi_remove_handle(http_->curl_handle_.get(), handle_.get()));
     event_del(&next_request_body_chunk_);
-    http_->pending_transfers_--;
-    if (http_->pending_transfers_ == 0 && http_->done_) {
-      http_->done_->resume();
-    }
   }
 }
 
@@ -290,7 +288,7 @@ CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
 
 void CurlHttpBodyGenerator::Resume() {
   if (status_ == -1 && !exception_ptr_) {
-    curl_easy_pause(handle_.handle_, CURLPAUSE_RECV_CONT);
+    curl_easy_pause(handle_.handle_.get(), CURLPAUSE_RECV_CONT);
   }
 }
 
@@ -346,18 +344,16 @@ CurlHttpImpl::CurlHttpImpl(event_base* event_loop)
                                        &running_handles));
         ProcessEvents(handle);
       },
-      curl_handle_);
-  Check(
-      curl_multi_setopt(curl_handle_, CURLMOPT_SOCKETFUNCTION, SocketCallback));
-  Check(curl_multi_setopt(curl_handle_, CURLMOPT_TIMERFUNCTION, TimerCallback));
-  Check(curl_multi_setopt(curl_handle_, CURLMOPT_SOCKETDATA, this));
-  Check(curl_multi_setopt(curl_handle_, CURLMOPT_TIMERDATA, this));
+      curl_handle_.get());
+  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETFUNCTION,
+                          SocketCallback));
+  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERFUNCTION,
+                          TimerCallback));
+  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, this));
+  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
 }
 
-CurlHttpImpl::~CurlHttpImpl() {
-  Check(event_del(&timeout_event_));
-  Check(curl_multi_cleanup(curl_handle_));
-}
+CurlHttpImpl::~CurlHttpImpl() { Check(event_del(&timeout_event_)); }
 
 void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
   CURLMsg* message;
@@ -432,14 +428,14 @@ int CurlHttpImpl::SocketCallback(CURL*, curl_socket_t socket, int what,
     auto data = reinterpret_cast<SocketData*>(socketp);
     if (!data) {
       data = new SocketData;
-      Check(curl_multi_assign(http->curl_handle_, socket, data));
+      Check(curl_multi_assign(http->curl_handle_.get(), socket, data));
     } else {
       Check(event_del(&data->socket_event));
     }
     Check(event_assign(&data->socket_event, http->event_loop_, socket,
                        ((what & CURL_POLL_IN) ? EV_READ : 0) |
                            ((what & CURL_POLL_OUT) ? EV_WRITE : 0) | EV_PERSIST,
-                       SocketEvent, http->curl_handle_));
+                       SocketEvent, http->curl_handle_.get()));
     Check(event_add(&data->socket_event, nullptr));
   }
   return 0;

@@ -1,6 +1,7 @@
 #ifndef CORO_TASK_H
 #define CORO_TASK_H
 
+#include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 
 #include <functional>
@@ -151,7 +152,7 @@ template <typename T>
 concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
   v.await_resume();
   v.await_suspend(handle);
-  { v.await_ready() } -> std::same_as<bool>;
+  { v.await_ready() } -> stdx::same_as<bool>;
 };
 // clang-format on
 

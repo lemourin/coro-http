@@ -5,6 +5,7 @@ set(stdx-headers
     stop_source.h
     stop_token.h
     coroutine.h
+    concepts.h
     any_invocable.h
 )
 

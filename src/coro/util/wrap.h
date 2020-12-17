@@ -2,10 +2,10 @@
 #define CORO_CLOUDSTORAGE_WRAP_H
 
 #include <coro/generator.h>
+#include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 #include <coro/task.h>
 
-#include <concepts>
 #include <memory>
 
 namespace coro::util {

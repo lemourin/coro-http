@@ -1,16 +1,17 @@
 #ifndef CORO_HTTP_HTTP_H
 #define CORO_HTTP_HTTP_H
 
+#include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/util/wrap.h>
 
-#include <concepts>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace coro::http {
 
@@ -198,13 +199,13 @@ template <typename T>
 concept HeaderCollection = requires(T v) {
   std::begin(v);
   std::end(v);
-  { std::get<0>(*std::begin(v)) } -> std::convertible_to<std::string>;
-  { std::get<1>(*std::begin(v)) } -> std::convertible_to<std::string>;
+  { std::get<0>(*std::begin(v)) } -> stdx::convertible_to<std::string>;
+  { std::get<1>(*std::begin(v)) } -> stdx::convertible_to<std::string>;
 };
 
 template <typename T>
 concept ResponseLike = requires (T v) {
-  { v.status } -> std::convertible_to<int>;
+  { v.status } -> stdx::convertible_to<int>;
   { v.headers } -> HeaderCollection;
   { v.body } -> coro::GeneratorLike;
 };

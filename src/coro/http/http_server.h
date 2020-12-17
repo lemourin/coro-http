@@ -90,7 +90,7 @@ class HttpServer {
     evkeyvalq* ev_headers = evhttp_request_get_input_headers(ev_request);
     evkeyval* header = ev_headers ? ev_headers->tqh_first : nullptr;
     while (header != nullptr) {
-      request.headers.emplace(header->key, header->value);
+      request.headers.emplace_back(header->key, header->value);
       header = header->next.tqe_next;
     }
 

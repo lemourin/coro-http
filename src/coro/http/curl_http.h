@@ -138,7 +138,7 @@ class CurlHttpOperation {
   event headers_ready_;
   bool headers_ready_event_posted_;
   int status_ = -1;
-  std::unordered_multimap<std::string, std::string> headers_;
+  std::vector<std::pair<std::string, std::string>> headers_;
   std::string body_;
   bool no_body_ = false;
 };

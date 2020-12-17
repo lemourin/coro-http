@@ -52,6 +52,17 @@ std::string GetMimeType(std::string_view extension);
 std::string ToBase64(std::string_view);
 std::string FromBase64(std::string_view);
 
+template <typename Collection>
+std::optional<std::string> GetHeader(const Collection& collection,
+                                     std::string requested_header) {
+  for (const auto& [header, value] : collection) {
+    if (ToLowerCase(header) == ToLowerCase(requested_header)) {
+      return value;
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace coro::http
 
 #endif  // CORO_CLOUDSTORAGE_HTTP_PARSE_H

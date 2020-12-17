@@ -79,9 +79,9 @@ size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
   std::string_view view(buffer, size * nitems);
   auto index = view.find_first_of(":");
   if (index != std::string::npos) {
-    http_operation->headers_.insert(std::make_pair(
+    http_operation->headers_.emplace_back(
         ToLowerCase(std::string(view.begin(), view.begin() + index)),
-        TrimWhitespace(std::string(view.begin() + index + 1, view.end()))));
+        TrimWhitespace(std::string(view.begin() + index + 1, view.end())));
   } else if (view.starts_with("HTTP")) {
     std::istringstream stream{std::string(view)};
     std::string http_version;

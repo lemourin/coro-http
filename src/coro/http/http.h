@@ -18,14 +18,14 @@ template <typename BodyGenerator = Generator<std::string>>
 struct Request {
   std::string url;
   std::string method = "GET";
-  std::unordered_multimap<std::string, std::string> headers;
+  std::vector<std::pair<std::string, std::string>> headers;
   std::optional<BodyGenerator> body;
 };
 
 template <GeneratorLike HttpBodyGenerator = Generator<std::string>>
 struct Response {
   int status = -1;
-  std::unordered_multimap<std::string, std::string> headers;
+  std::vector<std::pair<std::string, std::string>> headers;
   HttpBodyGenerator body;
 };
 
@@ -195,9 +195,17 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
 // clang-format off
 
 template <typename T>
+concept HeaderCollection = requires(T v) {
+  std::begin(v);
+  std::end(v);
+  { std::get<0>(*std::begin(v)) } -> std::convertible_to<std::string>;
+  { std::get<1>(*std::begin(v)) } -> std::convertible_to<std::string>;
+};
+
+template <typename T>
 concept ResponseLike = requires (T v) {
   { v.status } -> std::convertible_to<int>;
-  { v.headers } -> std::convertible_to<std::unordered_multimap<std::string, std::string>>;
+  { v.headers } -> HeaderCollection;
   { v.body } -> coro::GeneratorLike;
 };
 
@@ -232,8 +240,8 @@ class ToHttpClient : protected Impl {
              stdx::stop_token stop_token = stdx::stop_token()) {
     auto headers = std::move(request.headers);
     if (request.body) {
-      headers.insert(
-          {"Content-Length", std::to_string(request.body->length())});
+      headers.emplace_back("Content-Length",
+                           std::to_string(request.body->length()));
     }
     return Fetch(
         Request<>{.url = std::move(request.url),

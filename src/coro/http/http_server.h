@@ -224,6 +224,8 @@ class HttpServer {
         return "COPY";
       case EVHTTP_REQ_MOVE:
         return "MOVE";
+      default:
+        return "UNKNOWN";
     }
   }
 

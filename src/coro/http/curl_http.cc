@@ -222,9 +222,10 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
     } else {
       curl_easy_setopt(handle_.get(), CURLOPT_UPLOAD, 1L);
     }
-    [this]() -> Task<> {
-      request_body_it_ = co_await request_body_->begin();
-      curl_easy_pause(handle_.get(), CURLPAUSE_SEND_CONT);
+    [d_capture = this]() -> Task<> {
+      auto d = d_capture;
+      d->request_body_it_ = co_await d->request_body_->begin();
+      curl_easy_pause(d->handle_.get(), CURLPAUSE_SEND_CONT);
     }();
   }
 

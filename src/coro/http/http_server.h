@@ -81,7 +81,9 @@ class HttpServer {
       co_return;
     }
 
-    RequestType request{.url = evhttp_request_get_uri(ev_request)};
+    RequestType request{
+        .url = evhttp_request_get_uri(ev_request),
+        .method = ToString(evhttp_request_get_command(ev_request))};
     stdx::stop_source stop_source;
     stdx::stop_callback stop_callback(stop_source_.get_token(),
                                       [&] { stop_source.request_stop(); });
@@ -177,7 +179,6 @@ class HttpServer {
                           [buffer](evbuffer_cb_entry* cb_entry) {
                             evbuffer_remove_cb_entry(buffer, cb_entry);
                           });
-    std::cerr << "GENERATING BODY " << size << "\n";
     while (size > 0) {
       co_await data.semaphore;
       if (stop_token.stop_requested()) {
@@ -186,6 +187,43 @@ class HttpServer {
       data.semaphore = Semaphore();
       std::cerr << data.info->n_added << "\n";
       size -= data.info->n_added;
+    }
+  }
+
+  static std::string ToString(evhttp_cmd_type type) {
+    switch (type) {
+      case EVHTTP_REQ_GET:
+        return "GET";
+      case EVHTTP_REQ_POST:
+        return "POST";
+      case EVHTTP_REQ_HEAD:
+        return "HEAD";
+      case EVHTTP_REQ_PUT:
+        return "PUT";
+      case EVHTTP_REQ_DELETE:
+        return "DELETE";
+      case EVHTTP_REQ_OPTIONS:
+        return "OPTIONS";
+      case EVHTTP_REQ_TRACE:
+        return "TRACE";
+      case EVHTTP_REQ_CONNECT:
+        return "CONNECT";
+      case EVHTTP_REQ_PATCH:
+        return "PATCH";
+      case EVHTTP_REQ_PROPFIND:
+        return "PROPFIND";
+      case EVHTTP_REQ_PROPPATCH:
+        return "PROPPATCH";
+      case EVHTTP_REQ_MKCOL:
+        return "MKCOL";
+      case EVHTTP_REQ_LOCK:
+        return "LOCK";
+      case EVHTTP_REQ_UNLOCK:
+        return "UNLOCK";
+      case EVHTTP_REQ_COPY:
+        return "COPY";
+      case EVHTTP_REQ_MOVE:
+        return "MOVE";
     }
   }
 

@@ -1,6 +1,7 @@
 #ifndef CORO_HTTP_HTTP_SERVER_H
 #define CORO_HTTP_HTTP_SERVER_H
 
+#include <coro/http/http_parse.h>
 #include <coro/semaphore.h>
 #include <coro/stdx/stop_callback.h>
 #include <coro/stdx/stop_source.h>
@@ -97,6 +98,19 @@ class HttpServer {
     bool reply_started = false;
     current_connections_++;
     try {
+      stdx::stop_source body_stop_source;
+      stdx::stop_callback body_stop_callback(
+          stop_source.get_token(), [&] { body_stop_source.request_stop(); });
+      auto body_size = http::GetHeader(request.headers, "Content-Length");
+      if (body_size) {
+        auto input_buffer = evhttp_request_get_input_buffer(ev_request);
+        if (input_buffer) {
+          request.body =
+              GenerateRequestBody(input_buffer, std::stoll(*body_size),
+                                  body_stop_source.get_token());
+        }
+      }
+
       auto response =
           co_await on_request_(std::move(request), stop_source.get_token());
 
@@ -145,6 +159,36 @@ class HttpServer {
     }
   }
 
+  Generator<std::string> GenerateRequestBody(
+      evbuffer* buffer, int64_t size, stdx::stop_token stop_token) const {
+    size_t initial_length = evbuffer_get_length(buffer);
+    size -= initial_length;
+    std::string chunk(initial_length, 0);
+    if (evbuffer_copyout(buffer, chunk.data(), initial_length) !=
+        initial_length) {
+      Check(HttpException::kUnknown);
+    }
+    co_yield chunk;
+    EvBufferData data;
+    stdx::stop_callback stop_callback(stop_token,
+                                      [&] { data.semaphore.resume(); });
+    auto cb_entry =
+        util::MakePointer(evbuffer_add_cb(buffer, EvBufferCallback, &data),
+                          [buffer](evbuffer_cb_entry* cb_entry) {
+                            evbuffer_remove_cb_entry(buffer, cb_entry);
+                          });
+    std::cerr << "GENERATING BODY " << size << "\n";
+    while (size > 0) {
+      co_await data.semaphore;
+      if (stop_token.stop_requested()) {
+        throw InterruptedException();
+      }
+      data.semaphore = Semaphore();
+      std::cerr << data.info->n_added << "\n";
+      size -= data.info->n_added;
+    }
+  }
+
   static void OnConnectionClose(evhttp_connection*, void* arg) {
     reinterpret_cast<stdx::stop_source*>(arg)->request_stop();
   }
@@ -171,11 +215,23 @@ class HttpServer {
     }
   }
 
+  static void EvBufferCallback(evbuffer*, const evbuffer_cb_info* info,
+                               void* arg) {
+    auto ev_buffer_data = reinterpret_cast<EvBufferData*>(arg);
+    ev_buffer_data->info = info;
+    ev_buffer_data->semaphore.resume();
+  }
+
   static void Check(int code) {
     if (code != 0) {
       throw HttpException(code, "http server error");
     }
   }
+
+  struct EvBufferData {
+    Semaphore semaphore;
+    const evbuffer_cb_info* info;
+  };
 
   using HandlerArgumentList = util::ArgumentListTypeT<HandlerType>;
   static_assert(util::TypeListLengthV<HandlerArgumentList> == 2);

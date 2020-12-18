@@ -11,9 +11,16 @@ class Semaphore {
  public:
   Semaphore() = default;
   Semaphore(const Semaphore&) = delete;
-  Semaphore(Semaphore&&) = delete;
+  Semaphore(Semaphore&& semaphore)
+      : resumed_(semaphore.resumed_),
+        continuation_(std::exchange(semaphore.continuation_, nullptr)) {}
+
   Semaphore& operator=(const Semaphore&) = delete;
-  Semaphore& operator=(Semaphore&&) = delete;
+  Semaphore& operator=(Semaphore&& semaphore) {
+    resumed_ = semaphore.resumed_;
+    continuation_ = std::exchange(semaphore.continuation_, nullptr);
+    return *this;
+  }
 
   bool await_ready() const { return resumed_; }
   void await_suspend(stdx::coroutine_handle<void> continuation) {

@@ -41,6 +41,7 @@ class HttpException : public std::exception {
  public:
   static constexpr int kAborted = -1;
   static constexpr int kMalformedResponse = -2;
+  static constexpr int kUnknown = -3;
   static constexpr int kNotFound = 404;
 
   HttpException(int status) : HttpException(status, ToString(status)) {}

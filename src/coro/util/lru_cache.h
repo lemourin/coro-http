@@ -6,9 +6,9 @@
 #include <coro/stdx/stop_token.h>
 #include <coro/task.h>
 
+#include <set>
 #include <unordered_map>
 #include <utility>
-#include <set>
 
 namespace coro::util {
 
@@ -74,10 +74,11 @@ class LRUCache {
           [d_capture = this, key_capture = key,
            stop_token = stop_source_.get_token()]() -> Task<Value> {
             auto d = d_capture;
-            auto key = key_capture;
-            auto result = co_await d->factory_(key, std::move(stop_token));
-            d->pending_cleanup_queue_.push_back(key);
-            co_return result;
+            auto key = std::move(key_capture);
+            auto guard = util::MakePointer(d, [&key](Data* d) {
+              d->pending_cleanup_queue_.emplace_back(key);
+            });
+            co_return co_await d->factory_(key, std::move(stop_token));
           });
       promise_it = pending_.insert({key, std::move(promise)}).first;
       co_return co_await promise_it->second.Get(std::move(stop_token));

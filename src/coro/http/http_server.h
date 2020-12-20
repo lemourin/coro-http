@@ -45,6 +45,9 @@ class HttpServer {
     Check(evhttp_bind_socket(http_.get(), config.address.c_str(), config.port));
     evhttp_set_gencb(http_.get(), OnHttpRequest, this);
     Check(event_assign(&quit_event_, event_loop, -1, 0, OnQuit, this));
+    evhttp_set_allowed_methods(
+        http_.get(), EVHTTP_REQ_PROPFIND | EVHTTP_REQ_GET | EVHTTP_REQ_POST |
+                         EVHTTP_REQ_OPTIONS | EVHTTP_REQ_HEAD);
   }
 
   ~HttpServer() { Check(event_del(&quit_event_)); }

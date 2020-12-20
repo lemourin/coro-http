@@ -15,10 +15,35 @@
 
 namespace coro::http {
 
+enum class Method {
+  kGet,
+  kPost,
+  kOptions,
+  kHead,
+  kPropfind,
+};
+
+inline const char* MethodToString(Method method) {
+  switch (method) {
+    case Method::kGet:
+      return "GET";
+    case Method::kPost:
+      return "POST";
+    case Method::kHead:
+      return "HEAD";
+    case Method::kOptions:
+      return "OPTIONS";
+    case Method::kPropfind:
+      return "PROPFIND";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 template <typename BodyGenerator = Generator<std::string>>
 struct Request {
   std::string url;
-  std::string method = "GET";
+  Method method = Method::kGet;
   std::vector<std::pair<std::string, std::string>> headers;
   std::optional<BodyGenerator> body;
 };
@@ -42,6 +67,7 @@ class HttpException : public std::exception {
   static constexpr int kAborted = -1;
   static constexpr int kMalformedResponse = -2;
   static constexpr int kUnknown = -3;
+  static constexpr int kInvalidMethod = -4;
   static constexpr int kNotFound = 404;
 
   HttpException(int status) : HttpException(status, ToString(status)) {}
@@ -63,6 +89,8 @@ class HttpException : public std::exception {
         return "Not found.";
       case kMalformedResponse:
         return "Malformed response.";
+      case kInvalidMethod:
+        return "Invalid method.";
       default:
         return "Unknown.";
     }

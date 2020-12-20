@@ -84,25 +84,25 @@ class HttpServer {
       co_return;
     }
 
-    RequestType request{
-        .url = evhttp_request_get_uri(ev_request),
-        .method = ToString(evhttp_request_get_command(ev_request))};
-    stdx::stop_source stop_source;
-    stdx::stop_callback stop_callback(stop_source_.get_token(),
-                                      [&] { stop_source.request_stop(); });
-    evhttp_connection_set_closecb(evhttp_request_get_connection(ev_request),
-                                  OnConnectionClose, &stop_source);
-
-    evkeyvalq* ev_headers = evhttp_request_get_input_headers(ev_request);
-    evkeyval* header = ev_headers ? ev_headers->tqh_first : nullptr;
-    while (header != nullptr) {
-      request.headers.emplace_back(header->key, header->value);
-      header = header->next.tqe_next;
-    }
-
     bool reply_started = false;
     current_connections_++;
     try {
+      RequestType request{
+          .url = evhttp_request_get_uri(ev_request),
+          .method = ToMethod(evhttp_request_get_command(ev_request))};
+      stdx::stop_source stop_source;
+      stdx::stop_callback stop_callback(stop_source_.get_token(),
+                                        [&] { stop_source.request_stop(); });
+      evhttp_connection_set_closecb(evhttp_request_get_connection(ev_request),
+                                    OnConnectionClose, &stop_source);
+
+      evkeyvalq* ev_headers = evhttp_request_get_input_headers(ev_request);
+      evkeyval* header = ev_headers ? ev_headers->tqh_first : nullptr;
+      while (header != nullptr) {
+        request.headers.emplace_back(header->key, header->value);
+        header = header->next.tqe_next;
+      }
+
       stdx::stop_source body_stop_source;
       stdx::stop_callback body_stop_callback(
           stop_source.get_token(), [&] { body_stop_source.request_stop(); });
@@ -193,42 +193,20 @@ class HttpServer {
     }
   }
 
-  static std::string ToString(evhttp_cmd_type type) {
+  static http::Method ToMethod(evhttp_cmd_type type) {
     switch (type) {
       case EVHTTP_REQ_GET:
-        return "GET";
+        return http::Method::kGet;
       case EVHTTP_REQ_POST:
-        return "POST";
+        return http::Method::kPost;
       case EVHTTP_REQ_HEAD:
-        return "HEAD";
-      case EVHTTP_REQ_PUT:
-        return "PUT";
-      case EVHTTP_REQ_DELETE:
-        return "DELETE";
+        return http::Method::kHead;
       case EVHTTP_REQ_OPTIONS:
-        return "OPTIONS";
-      case EVHTTP_REQ_TRACE:
-        return "TRACE";
-      case EVHTTP_REQ_CONNECT:
-        return "CONNECT";
-      case EVHTTP_REQ_PATCH:
-        return "PATCH";
+        return http::Method::kOptions;
       case EVHTTP_REQ_PROPFIND:
-        return "PROPFIND";
-      case EVHTTP_REQ_PROPPATCH:
-        return "PROPPATCH";
-      case EVHTTP_REQ_MKCOL:
-        return "MKCOL";
-      case EVHTTP_REQ_LOCK:
-        return "LOCK";
-      case EVHTTP_REQ_UNLOCK:
-        return "UNLOCK";
-      case EVHTTP_REQ_COPY:
-        return "COPY";
-      case EVHTTP_REQ_MOVE:
-        return "MOVE";
+        return http::Method::kPropfind;
       default:
-        return "UNKNOWN";
+        throw http::HttpException(http::HttpException::kInvalidMethod);
     }
   }
 

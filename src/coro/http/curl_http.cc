@@ -197,7 +197,7 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
   Check(curl_easy_setopt(handle_.get(), CURLOPT_NOPROGRESS, 0L));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_SSL_VERIFYPEER, 0L));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_CUSTOMREQUEST,
-                         request.method.c_str()));
+                         MethodToString(request.method)));
   std::optional<long> content_length;
   curl_slist* header_list = nullptr;
   for (const auto& [header_name, header_value] : request.headers) {
@@ -213,7 +213,7 @@ CurlHandle::CurlHandle(CurlHttpImpl* http, Request<>&& request,
   Check(curl_easy_setopt(handle_.get(), CURLOPT_HTTPHEADER, header_list));
 
   if (request_body_) {
-    if (ToLowerCase(request.method) == "post") {
+    if (request.method == Method::kPost) {
       Check(curl_easy_setopt(handle_.get(), CURLOPT_POST, 1L));
       if (content_length) {
         Check(curl_easy_setopt(handle_.get(), CURLOPT_POSTFIELDSIZE,

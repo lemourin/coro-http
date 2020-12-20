@@ -30,7 +30,7 @@ class CurlHandle {
 
  private:
   template <typename Owner>
-  CurlHandle(CurlHttpImpl*, Request<>&&, stdx::stop_token&&, Owner*);
+  CurlHandle(const CurlHttpImpl*, Request<>&&, stdx::stop_token&&, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
@@ -72,7 +72,7 @@ class CurlHandle {
   friend class CurlHttpOperation;
   friend class CurlHttpBodyGenerator;
 
-  CurlHttpImpl* http_;
+  const CurlHttpImpl* http_;
   std::unique_ptr<CURL, CurlHandleDeleter> handle_;
   std::unique_ptr<curl_slist, CurlListDeleter> header_list_;
   std::optional<Generator<std::string>> request_body_;
@@ -116,7 +116,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 
 class CurlHttpOperation {
  public:
-  CurlHttpOperation(CurlHttpImpl* http, Request<>&&, stdx::stop_token&&);
+  CurlHttpOperation(const CurlHttpImpl* http, Request<>&&, stdx::stop_token&&);
   CurlHttpOperation(const CurlHttpOperation&) = delete;
   CurlHttpOperation(CurlHttpOperation&&) = delete;
   ~CurlHttpOperation();
@@ -154,7 +154,7 @@ class CurlHttpImpl {
   CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
 
   util::WrapAwaitable<CurlHttpOperation> Fetch(
-      Request<> request, stdx::stop_token = stdx::stop_token());
+      Request<> request, stdx::stop_token = stdx::stop_token()) const;
 
  private:
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,

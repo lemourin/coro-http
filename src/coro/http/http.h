@@ -267,7 +267,7 @@ class ToHttpClient : protected Impl {
   using Impl::Impl;
 
   auto Fetch(Request<std::string> request,
-             stdx::stop_token stop_token = stdx::stop_token()) {
+             stdx::stop_token stop_token = stdx::stop_token()) const {
     auto headers = std::move(request.headers);
     if (request.body) {
       headers.emplace_back("Content-Length",
@@ -284,11 +284,11 @@ class ToHttpClient : protected Impl {
   }
 
   auto Fetch(Request<> request,
-             stdx::stop_token stop_token = stdx::stop_token()) {
+             stdx::stop_token stop_token = stdx::stop_token()) const {
     return Impl::Fetch(std::move(request), std::move(stop_token));
   }
   auto Fetch(std::string url,
-             stdx::stop_token stop_token = stdx::stop_token()) {
+             stdx::stop_token stop_token = stdx::stop_token()) const {
     return Fetch(Request<>{.url = std::move(url)}, std::move(stop_token));
   }
 

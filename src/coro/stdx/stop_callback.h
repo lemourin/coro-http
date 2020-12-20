@@ -9,9 +9,8 @@ template <typename C>
 class stop_callback : private internal::base_stop_callback {
  public:
   template <typename Callable>
-  stop_callback(stop_token&& stop_token, Callable&& callable)
-      : stop_token_(std::move(stop_token)),
-        callable_(std::forward<Callable>(callable)) {
+  stop_callback(stop_token stop_token, Callable callable)
+      : stop_token_(std::move(stop_token)), callable_(std::move(callable)) {
     if (stop_token_.stop_possible()) {
       if (stop_token_.stop_requested()) {
         callable_();
@@ -20,11 +19,6 @@ class stop_callback : private internal::base_stop_callback {
       }
     }
   }
-
-  template <typename Callable>
-  stop_callback(const stop_token& stop_token, Callable&& callable)
-      : stop_callback(stdx::stop_token{stop_token},
-                      std::forward<Callable>(callable)) {}
 
   ~stop_callback() {
     if (stop_token_.stop_possible()) {

@@ -18,7 +18,7 @@ class InterruptedException : public std::exception {
 
 class WaitTask {
  public:
-  WaitTask(event_base* event_loop, int msec, stdx::stop_token&&);
+  WaitTask(event_base* event_loop, int msec, stdx::stop_token);
 
   WaitTask(const WaitTask&) = delete;
   WaitTask(WaitTask&&) = delete;

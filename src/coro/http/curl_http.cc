@@ -173,8 +173,8 @@ void CurlHandle::OnCancel::operator()() const {
 }
 
 template <typename Owner>
-CurlHandle::CurlHandle(const CurlHttpImpl* http, Request<>&& request,
-                       stdx::stop_token&& stop_token, Owner* owner)
+CurlHandle::CurlHandle(const CurlHttpImpl* http, Request<> request,
+                       stdx::stop_token stop_token, Owner* owner)
     : http_(http),
       handle_(curl_easy_init()),
       header_list_(),
@@ -248,8 +248,8 @@ CurlHandle::~CurlHandle() {
   }
 }
 
-CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle&& handle,
-                                             std::string&& initial_chunk)
+CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle handle,
+                                             std::string initial_chunk)
     : handle_(std::move(handle), this) {
   Check(event_assign(&chunk_ready_, handle_.http_->event_loop_, -1, 0,
                      OnChunkReady, this));
@@ -294,8 +294,8 @@ void CurlHttpBodyGenerator::Resume() {
 }
 
 CurlHttpOperation::CurlHttpOperation(const CurlHttpImpl* http,
-                                     Request<>&& request,
-                                     stdx::stop_token&& stop_token)
+                                     Request<> request,
+                                     stdx::stop_token stop_token)
     : handle_(http, std::move(request), std::move(stop_token), this),
       headers_ready_(),
       headers_ready_event_posted_() {

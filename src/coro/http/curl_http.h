@@ -30,7 +30,7 @@ class CurlHandle {
 
  private:
   template <typename Owner>
-  CurlHandle(const CurlHttpImpl*, Request<>&&, stdx::stop_token&&, Owner*);
+  CurlHandle(const CurlHttpImpl*, Request<>, stdx::stop_token, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
@@ -86,7 +86,7 @@ class CurlHandle {
 
 class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
  public:
-  CurlHttpBodyGenerator(CurlHandle&& handle, std::string&& initial_chunk);
+  CurlHttpBodyGenerator(CurlHandle handle, std::string initial_chunk);
 
   CurlHttpBodyGenerator(const CurlHttpBodyGenerator&) = delete;
   CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) = delete;
@@ -116,7 +116,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 
 class CurlHttpOperation {
  public:
-  CurlHttpOperation(const CurlHttpImpl* http, Request<>&&, stdx::stop_token&&);
+  CurlHttpOperation(const CurlHttpImpl* http, Request<>, stdx::stop_token);
   CurlHttpOperation(const CurlHttpOperation&) = delete;
   CurlHttpOperation(CurlHttpOperation&&) = delete;
   ~CurlHttpOperation();

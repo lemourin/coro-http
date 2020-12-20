@@ -56,7 +56,7 @@ struct Response {
 };
 
 template <GeneratorLike HttpBodyGenerator>
-Task<std::string> GetBody(HttpBodyGenerator&& body) {
+Task<std::string> GetBody(HttpBodyGenerator body) {
   std::string result;
   FOR_CO_AWAIT(const std::string& piece, body, { result += piece; });
   co_return result;

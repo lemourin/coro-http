@@ -312,7 +312,9 @@ CurlHttpOperation::CurlHttpOperation(const CurlHttpImpl* http,
 
 CurlHttpOperation::~CurlHttpOperation() { Check(event_del(&headers_ready_)); }
 
-bool CurlHttpOperation::await_ready() { return false; }
+bool CurlHttpOperation::await_ready() {
+  return exception_ptr_ || status_ != -1;
+}
 
 void CurlHttpOperation::await_suspend(
     stdx::coroutine_handle<void> awaiting_coroutine) {

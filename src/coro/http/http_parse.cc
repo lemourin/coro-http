@@ -96,6 +96,24 @@ std::string EncodeUri(std::string_view uri) {
   return ret_str;
 }
 
+std::string EncodeUriPath(std::string_view uri) {
+  std::string result;
+  size_t it = 0;
+  while (it < uri.size()) {
+    auto next = uri.find_first_of('/', it);
+    result += EncodeUri(std::string_view(
+        uri.begin() + it,
+        uri.begin() + (next == std::string_view::npos ? uri.size() : next)));
+    if (next == std::string_view::npos) {
+      break;
+    } else {
+      result += '/';
+      it = next + 1;
+    }
+  }
+  return result;
+}
+
 std::string FormDataToString(
     const std::initializer_list<std::pair<std::string_view, std::string_view>>&
         params) {

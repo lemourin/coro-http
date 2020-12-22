@@ -29,6 +29,7 @@ Uri ParseUri(std::string_view uri);
 std::unordered_map<std::string, std::string> ParseQuery(std::string_view query);
 std::string DecodeUri(std::string_view uri);
 std::string EncodeUri(std::string_view uri);
+std::string EncodeUriPath(std::string_view uri);
 
 template <typename List = std::initializer_list<
               std::pair<std::string_view, std::string_view>>>

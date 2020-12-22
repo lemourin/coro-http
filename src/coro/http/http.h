@@ -68,6 +68,7 @@ class HttpException : public std::exception {
   static constexpr int kMalformedResponse = -2;
   static constexpr int kUnknown = -3;
   static constexpr int kInvalidMethod = -4;
+  static constexpr int kBadRequest = 400;
   static constexpr int kNotFound = 404;
 
   HttpException(int status) : HttpException(status, ToString(status)) {}
@@ -91,6 +92,8 @@ class HttpException : public std::exception {
         return "Malformed response.";
       case kInvalidMethod:
         return "Invalid method.";
+      case kBadRequest:
+        return "Bad request.";
       default:
         return "Unknown.";
     }

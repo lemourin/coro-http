@@ -3,8 +3,8 @@
 
 #include <coro/semaphore.h>
 #include <coro/stdx/stop_callback.h>
+#include <coro/util/event_loop.h>
 #include <coro/util/make_pointer.h>
-#include <coro/wait_task.h>
 
 #include <unordered_set>
 #include <utility>
@@ -66,7 +66,7 @@ class Promise {
                    shared_data->result)) {
       std::rethrow_exception(std::get<std::exception_ptr>(shared_data->result));
     } else {
-      throw coro::InterruptedException();
+      throw coro::util::InterruptedException();
     }
   }
 

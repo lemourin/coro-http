@@ -1,20 +1,12 @@
 add_library(coro-http)
 
-set(coro-http-headers
+target_sources(coro-http PRIVATE
     http.h
     curl_http.h
     http_server.h
     http_parse.h
-)
-
-set(coro-http-sources
     curl_http.cc
     http_parse.cc
-)
-
-target_sources(coro-http PRIVATE
-    ${coro-http-headers}
-    ${coro-http-sources}
 )
 
 target_link_libraries(coro-http PUBLIC libcurl event_core event_extra coro)

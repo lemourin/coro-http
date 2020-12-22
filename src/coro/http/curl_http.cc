@@ -1,12 +1,14 @@
 #include "curl_http.h"
 
-#include <coro/wait_task.h>
+#include <coro/util/event_loop.h>
 
 #include <sstream>
 
 namespace coro::http {
 
 namespace {
+
+using ::coro::util::InterruptedException;
 
 struct SocketData {
   event socket_event = {};

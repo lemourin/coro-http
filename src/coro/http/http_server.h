@@ -185,7 +185,7 @@ class HttpServer {
     while (size > 0) {
       co_await data.semaphore;
       if (stop_token.stop_requested()) {
-        throw InterruptedException();
+        throw coro::util::InterruptedException();
       }
       data.semaphore = Semaphore();
       std::cerr << data.info->n_added << "\n";

@@ -3,19 +3,12 @@ add_subdirectory(util)
 
 add_library(coro OBJECT)
 
-set(coro-headers
+target_sources(coro PRIVATE
     task.h
     generator.h
     semaphore.h
-    wait_task.h
     promise.h
 )
-
-set(coro-sources
-    wait_task.cc
-)
-
-target_sources(coro PRIVATE ${coro-headers} ${coro-sources})
 
 target_link_libraries(coro PUBLIC coro-util event_core stdx)
 target_include_directories(coro PUBLIC ..)

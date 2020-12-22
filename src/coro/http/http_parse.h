@@ -1,8 +1,6 @@
 #ifndef CORO_CLOUDSTORAGE_HTTP_PARSE_H
 #define CORO_CLOUDSTORAGE_HTTP_PARSE_H
 
-#include <event2/http.h>
-
 #include <optional>
 #include <string>
 #include <string_view>

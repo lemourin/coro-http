@@ -2,8 +2,8 @@
 #include <coro/http/curl_http.h>
 #include <coro/http/http_server.h>
 #include <coro/stdx/stop_source.h>
+#include <coro/util/event_loop.h>
 #include <coro/util/make_pointer.h>
-#include <coro/wait_task.h>
 
 #include <csignal>
 #include <iostream>

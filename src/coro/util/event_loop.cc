@@ -1,9 +1,9 @@
-#include "wait_task.h"
+#include "event_loop.h"
 
-namespace coro {
+namespace coro::util {
 
-WaitTask::WaitTask(event_base *event_loop, int msec,
-                   stdx::stop_token stop_token)
+EventLoop::WaitTask::WaitTask(event_base *event_loop, int msec,
+                              stdx::stop_token stop_token)
     : stop_token_(std::move(stop_token)),
       stop_callback_(stop_token_, OnCancel{this}) {
   if (!interrupted_) {
@@ -21,18 +21,18 @@ WaitTask::WaitTask(event_base *event_loop, int msec,
   }
 }
 
-WaitTask::~WaitTask() {
+EventLoop::WaitTask::~WaitTask() {
   if (event_.ev_base) {
     event_del(&event_);
   }
 }
 
-WaitTask Wait(event_base *event_loop, int msec,
-              stdx::stop_token stop_token) noexcept {
-  return WaitTask(event_loop, msec, std::move(stop_token));
+EventLoop::WaitTask EventLoop::Wait(int msec,
+                                    stdx::stop_token stop_token) const {
+  return WaitTask(event_loop_, msec, std::move(stop_token));
 }
 
-void WaitTask::OnCancel::operator()() const {
+void EventLoop::WaitTask::OnCancel::operator()() const {
   task->interrupted_ = true;
   if (task->event_.ev_base) {
     event_del(&task->event_);
@@ -42,4 +42,4 @@ void WaitTask::OnCancel::operator()() const {
   }
 }
 
-}  // namespace coro
+}  // namespace coro::util

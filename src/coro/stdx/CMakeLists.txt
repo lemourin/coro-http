@@ -16,6 +16,7 @@ set(stdx-sources
 
 target_sources(stdx PRIVATE ${stdx-headers} ${stdx-sources})
 target_compile_features(stdx PUBLIC cxx_std_20)
+target_include_directories(stdx PUBLIC ../../)
 
 include(CheckCXXCompilerFlag)
 

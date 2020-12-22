@@ -1,9 +1,9 @@
 #ifndef CORO_CLOUDSTORAGE_PROMISE_H
 #define CORO_CLOUDSTORAGE_PROMISE_H
 
+#include <coro/interrupted_exception.h>
 #include <coro/semaphore.h>
 #include <coro/stdx/stop_callback.h>
-#include <coro/util/event_loop.h>
 #include <coro/util/make_pointer.h>
 
 #include <unordered_set>
@@ -66,7 +66,7 @@ class Promise {
                    shared_data->result)) {
       std::rethrow_exception(std::get<std::exception_ptr>(shared_data->result));
     } else {
-      throw coro::util::InterruptedException();
+      throw InterruptedException();
     }
   }
 

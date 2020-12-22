@@ -8,6 +8,7 @@ target_sources(coro PRIVATE
     generator.h
     semaphore.h
     promise.h
+    interrupted_exception.h
 )
 
 target_link_libraries(coro PUBLIC coro-util event_core stdx)

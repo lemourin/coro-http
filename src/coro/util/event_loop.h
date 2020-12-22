@@ -1,6 +1,7 @@
 #ifndef CORO_HTTP_WAIT_TASK_H
 #define CORO_HTTP_WAIT_TASK_H
 
+#include <coro/interrupted_exception.h>
 #include <coro/stdx/stop_callback.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/task.h>
@@ -8,13 +9,6 @@
 #include <event2/event_struct.h>
 
 namespace coro::util {
-
-class InterruptedException : public std::exception {
- public:
-  [[nodiscard]] const char* what() const noexcept override {
-    return "interrupted";
-  }
-};
 
 class EventLoop {
  public:

@@ -32,16 +32,14 @@ struct HttpServerConfig {
   uint16_t port;
 };
 
-template <Handler HandlerType, typename OnQuitT = void (*)()>
+template <Handler HandlerType>
 class HttpServer {
  public:
-  HttpServer(
-      event_base* event_loop, const HttpServerConfig& config,
-      HandlerType on_request, OnQuitT on_quit = [] {})
+  HttpServer(event_base* event_loop, const HttpServerConfig& config,
+             HandlerType on_request)
       : event_loop_(event_loop),
         http_(evhttp_new(event_loop)),
-        on_request_(std::move(on_request)),
-        on_quit_(std::move(on_quit)) {
+        on_request_(std::move(on_request)) {
     Check(evhttp_bind_socket(http_.get(), config.address.c_str(), config.port));
     evhttp_set_gencb(http_.get(), OnHttpRequest, this);
     Check(event_assign(&quit_event_, event_loop, -1, 0, OnQuit, this));
@@ -69,18 +67,12 @@ class HttpServer {
       Check(event_add(&quit_event_, &tv));
     }
     co_await quit_semaphore_;
-    on_quit_();
   }
 
  private:
   Task<> OnHttpRequest(evhttp_request* ev_request) noexcept {
     if (quitting_) {
       evhttp_send_reply(ev_request, 500, nullptr, nullptr);
-      co_return;
-    }
-    if (evhttp_request_get_uri(ev_request) == std::string("/quit")) {
-      evhttp_send_reply(ev_request, 200, nullptr, nullptr);
-      co_await Quit();
       co_return;
     }
 
@@ -277,7 +269,6 @@ class HttpServer {
   event quit_event_;
   Semaphore quit_semaphore_;
   HandlerType on_request_;
-  OnQuitT on_quit_;
 };
 
 }  // namespace coro::http

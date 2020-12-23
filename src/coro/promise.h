@@ -19,13 +19,17 @@ class Promise {
       : shared_data_(std::make_shared<SharedData>(
             SharedData{.producer = std::move(producer)})) {}
 
+  Promise(const Promise&) = delete;
+  Promise(Promise&&) = default;
+  Promise& operator=(const Promise&) = delete;
+  Promise& operator=(Promise&&) = default;
+
   Task<std::reference_wrapper<const T>> Get(
       coro::stdx::stop_token stop_token) const {
     auto shared_data = shared_data_;
     if (shared_data->producer) {
-      [shared_data_capture = shared_data,
-       producer = std::exchange(shared_data->producer, nullptr)]() -> Task<> {
-        auto shared_data = shared_data_capture;
+      Invoke([shared_data, producer = std::exchange(shared_data->producer,
+                                                    nullptr)]() -> Task<> {
         try {
           shared_data->result = co_await producer();
         } catch (const std::exception&) {
@@ -34,7 +38,7 @@ class Promise {
         while (!shared_data->awaiters.empty()) {
           (*shared_data->awaiters.begin())->resume();
         }
-      }();
+      });
     }
     return Get(shared_data, std::move(stop_token));
   }

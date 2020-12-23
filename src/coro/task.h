@@ -156,6 +156,11 @@ concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
 };
 // clang-format on
 
+template <typename F, typename... Args>
+Task<> Invoke(F func, Args&&... args) {
+  co_await func(std::forward<Args>(args)...);
+}
+
 }  // namespace coro
 
 #endif  // CORO_TASK_H

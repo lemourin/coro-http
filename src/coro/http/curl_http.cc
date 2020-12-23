@@ -151,11 +151,10 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
 
 void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
                                                  void* userdata) {
-  [handle_capture = reinterpret_cast<CurlHandle*>(userdata)]() -> Task<> {
-    auto handle = handle_capture;
+  Invoke([handle = reinterpret_cast<CurlHandle*>(userdata)]() -> Task<> {
     handle->request_body_it_ = co_await ++*handle->request_body_it_;
     curl_easy_pause(handle->handle_.get(), CURLPAUSE_SEND_CONT);
-  }();
+  });
 }
 
 void CurlHandle::OnCancel::operator()() const {
@@ -222,11 +221,10 @@ CurlHandle::CurlHandle(const CurlHttpImpl* http, Request<> request,
     } else {
       curl_easy_setopt(handle_.get(), CURLOPT_UPLOAD, 1L);
     }
-    [d_capture = this]() -> Task<> {
-      auto d = d_capture;
-      d->request_body_it_ = co_await d->request_body_->begin();
-      curl_easy_pause(d->handle_.get(), CURLPAUSE_SEND_CONT);
-    }();
+    Invoke([this]() -> Task<> {
+      request_body_it_ = co_await request_body_->begin();
+      curl_easy_pause(handle_.get(), CURLPAUSE_SEND_CONT);
+    });
   }
 
   Check(event_assign(&next_request_body_chunk_, http_->event_loop_, -1, 0,

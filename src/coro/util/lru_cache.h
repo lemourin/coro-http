@@ -71,10 +71,8 @@ class LRUCache {
         co_return co_await promise_it->second.Get(std::move(stop_token));
       }
       auto promise = Promise<Value>(
-          [d_capture = this, key_capture = key,
+          [d = this, key,
            stop_token = stop_source_.get_token()]() -> Task<Value> {
-            auto d = d_capture;
-            auto key = std::move(key_capture);
             auto guard = util::MakePointer(d, [&key](Data* d) {
               d->pending_cleanup_queue_.emplace_back(key);
             });

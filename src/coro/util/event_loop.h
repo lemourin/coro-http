@@ -26,7 +26,9 @@ class EventLoop {
 
     ~WaitTask();
 
-    bool await_ready() { return !event_pending(&event_, EV_TIMEOUT, nullptr); }
+    bool await_ready() {
+      return interrupted_ || !event_pending(&event_, EV_TIMEOUT, nullptr);
+    }
     void await_suspend(stdx::coroutine_handle<void> handle) {
       handle_ = handle;
     }

@@ -28,6 +28,12 @@ class LRUCache {
     return d_->Get(std::move(key), std::move(stop_token));
   }
 
+  void Invalidate(const Key& key) const { d_->Invalidate(key); }
+
+  std::optional<Value> GetCached(const Key& key) const {
+    return d_->GetCached(key);
+  }
+
  private:
   class Data {
    public:
@@ -43,28 +49,38 @@ class LRUCache {
       }
     }
 
-    void Insert(const Key& key, Value value) {
-      while (map_.size() >= size_) {
-        auto to_erase = std::move(*queue_.begin());
-        queue_.erase(queue_.begin());
-        last_access_.erase(to_erase);
-        map_.erase(to_erase);
+    std::optional<Value> GetCached(const Key& key) const {
+      auto it = map_.find(key);
+      if (it == map_.end()) {
+        return std::nullopt;
       }
-      map_.insert({key, std::move(value)});
+      return it->second;
     }
 
-    void RegisterAccess(const Key& key) {
+    void Invalidate(const Key& key) {
+      queue_.erase(key);
+      last_access_.erase(key);
+      map_.erase(key);
+    }
+
+    void Insert(Key key, Value value) {
+      while (map_.size() >= size_) {
+        Invalidate(*queue_.begin());
+      }
+      map_.insert({std::move(key), std::move(value)});
+    }
+
+    void RegisterAccess(Key key) {
       queue_.erase(key);
       last_access_[key] = time_++;
-      queue_.insert(key);
+      queue_.insert(std::move(key));
       HandlePendingCleanupQueue();
     }
 
     Task<Value> Get(Key key, stdx::stop_token stop_token = stdx::stop_token()) {
       RegisterAccess(key);
-      auto it = map_.find(key);
-      if (it != std::end(map_)) {
-        co_return it->second;
+      if (auto result = GetCached(key)) {
+        co_return std::move(*result);
       }
       auto promise_it = pending_.find(key);
       if (promise_it != std::end(pending_)) {
@@ -76,7 +92,9 @@ class LRUCache {
             auto guard = util::MakePointer(d, [&key](Data* d) {
               d->pending_cleanup_queue_.emplace_back(key);
             });
-            co_return co_await d->factory_(key, std::move(stop_token));
+            auto result = co_await d->factory_(key, std::move(stop_token));
+            d->Insert(std::move(key), result);
+            co_return std::move(result);
           });
       promise_it = pending_.insert({key, std::move(promise)}).first;
       co_return co_await promise_it->second.Get(std::move(stop_token));

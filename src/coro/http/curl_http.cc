@@ -30,13 +30,6 @@ void Check(int code) {
   }
 }
 
-std::string ToLowerCase(std::string str) {
-  for (char& c : str) {
-    c = static_cast<char>(std::tolower(c));
-  }
-  return str;
-}
-
 std::string TrimWhitespace(std::string_view str) {
   int it1 = 0;
   while (it1 < static_cast<int>(str.size()) && std::isspace(str[it1])) {

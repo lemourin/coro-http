@@ -1,6 +1,7 @@
 #ifndef CORO_HTTP_HTTP_H
 #define CORO_HTTP_HTTP_H
 
+#include <coro/http/http_parse.h>
 #include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 #include <coro/stdx/stop_token.h>
@@ -46,6 +47,11 @@ struct Request {
   Method method = Method::kGet;
   std::vector<std::pair<std::string, std::string>> headers;
   std::optional<BodyGenerator> body;
+
+  friend bool operator==(const Request& r1, const Request& r2) {
+    return std::tie(r1.url, r1.method, r1.headers, r1.body) ==
+           std::tie(r2.url, r2.method, r2.headers, r2.body);
+  }
 };
 
 template <GeneratorLike HttpBodyGenerator = Generator<std::string>>
@@ -273,7 +279,7 @@ class ToHttpClient : protected Impl {
   auto Fetch(Request<std::string> request,
              stdx::stop_token stop_token = stdx::stop_token()) const {
     auto headers = std::move(request.headers);
-    if (request.body) {
+    if (request.body && !GetHeader(headers, "Content-Length")) {
       headers.emplace_back("Content-Length",
                            std::to_string(request.body->length()));
     }
@@ -313,5 +319,19 @@ struct HttpStub {
 };
 
 }  // namespace coro::http
+
+namespace std {
+template <>
+struct hash<coro::http::Request<std::string>> {
+  static size_t CombineHash(size_t lhs, size_t rhs) {
+    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
+    return lhs;
+  }
+  size_t operator()(const coro::http::Request<std::string>& r) const {
+    return CombineHash(std::hash<std::string>{}(r.url),
+                       std::hash<std::optional<std::string>>{}(r.body));
+  }
+};
+}  // namespace std
 
 #endif  // CORO_HTTP_HTTP_H

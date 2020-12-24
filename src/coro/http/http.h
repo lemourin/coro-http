@@ -263,9 +263,10 @@ concept HttpClient = HttpClientImpl<T> && requires(T v) {
 template <HttpClientImpl Impl>
 class ToHttpClient : protected Impl {
  public:
-  using ResponseType = decltype(std::declval<Impl>()
-                                    .Fetch(std::declval<Request<>>())
-                                    .await_resume());
+  using ResponseType = decltype(
+      std::declval<Impl>()
+          .Fetch(std::declval<Request<>>(), std::declval<stdx::stop_token>())
+          .await_resume());
 
   using Impl::Impl;
 

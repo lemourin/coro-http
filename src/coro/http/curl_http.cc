@@ -53,6 +53,7 @@ std::string TrimWhitespace(std::string_view str) {
 
 CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
     : http_(std::exchange(handle.http_, nullptr)),
+      event_loop_(handle.event_loop_),
       handle_(std::move(handle.handle_)),
       header_list_(std::move(handle.header_list_)),
       stop_token_(std::move(handle.stop_token_)),
@@ -65,7 +66,7 @@ CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
   Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
 
   Check(event_del(&handle.next_request_body_chunk_));
-  Check(event_assign(&next_request_body_chunk_, http_->event_loop_, -1, 0,
+  Check(event_assign(&next_request_body_chunk_, event_loop_, -1, 0,
                      OnNextRequestBodyChunkRequested, this));
 }
 
@@ -172,9 +173,10 @@ void CurlHandle::OnCancel::operator()() const {
 }
 
 template <typename Owner>
-CurlHandle::CurlHandle(const CurlHttpImpl* http, Request<> request,
+CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
                        stdx::stop_token stop_token, Owner* owner)
     : http_(http),
+      event_loop_(event_loop),
       handle_(curl_easy_init()),
       header_list_(),
       request_body_(std::move(request.body)),
@@ -227,10 +229,10 @@ CurlHandle::CurlHandle(const CurlHttpImpl* http, Request<> request,
     });
   }
 
-  Check(event_assign(&next_request_body_chunk_, http_->event_loop_, -1, 0,
+  Check(event_assign(&next_request_body_chunk_, event_loop, -1, 0,
                      OnNextRequestBodyChunkRequested, this));
 
-  Check(curl_multi_add_handle(http->curl_handle_.get(), handle_.get()));
+  Check(curl_multi_add_handle(http, handle_.get()));
 }
 
 template <typename NewOwner>
@@ -241,7 +243,7 @@ CurlHandle::CurlHandle(CurlHandle&& handle, NewOwner* owner)
 
 CurlHandle::~CurlHandle() {
   if (http_) {
-    Check(curl_multi_remove_handle(http_->curl_handle_.get(), handle_.get()));
+    Check(curl_multi_remove_handle(http_, handle_.get()));
     event_del(&next_request_body_chunk_);
   }
 }
@@ -249,10 +251,10 @@ CurlHandle::~CurlHandle() {
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle handle,
                                              std::string initial_chunk)
     : handle_(std::move(handle), this) {
-  Check(event_assign(&chunk_ready_, handle_.http_->event_loop_, -1, 0,
-                     OnChunkReady, this));
-  Check(event_assign(&body_ready_, handle_.http_->event_loop_, -1, 0,
-                     OnBodyReady, this));
+  Check(event_assign(&chunk_ready_, handle_.event_loop_, -1, 0, OnChunkReady,
+                     this));
+  Check(event_assign(&body_ready_, handle_.event_loop_, -1, 0, OnBodyReady,
+                     this));
   ReceivedData(std::move(initial_chunk));
 }
 
@@ -291,14 +293,15 @@ void CurlHttpBodyGenerator::Resume() {
   }
 }
 
-CurlHttpOperation::CurlHttpOperation(const CurlHttpImpl* http,
+CurlHttpOperation::CurlHttpOperation(CURLM* http, event_base* event_loop,
                                      Request<> request,
                                      stdx::stop_token stop_token)
-    : handle_(http, std::move(request), std::move(stop_token), this),
+    : handle_(http, event_loop, std::move(request), std::move(stop_token),
+              this),
       headers_ready_(),
       headers_ready_event_posted_() {
   Check(event_assign(
-      &headers_ready_, http->event_loop_, -1, 0,
+      &headers_ready_, event_loop, -1, 0,
       [](evutil_socket_t fd, short event, void* handle) {
         auto http_operation = reinterpret_cast<CurlHttpOperation*>(handle);
         if (http_operation->awaiting_coroutine_) {
@@ -334,28 +337,29 @@ CurlHttpOperation::await_resume() {
           .body = util::WrapGenerator(std::move(body_generator))};
 }
 
-CurlHttpImpl::CurlHttpImpl(event_base* event_loop)
-    : curl_handle_(curl_multi_init()),
-      event_loop_(event_loop),
-      timeout_event_() {
+CurlHttpImpl::Data::Data(event_base* event_loop)
+    : curl_handle(curl_multi_init()), event_loop(event_loop), timeout_event() {
   event_assign(
-      &timeout_event_, event_loop, -1, 0,
+      &timeout_event, event_loop, -1, 0,
       [](evutil_socket_t fd, short event, void* handle) {
         int running_handles;
         Check(curl_multi_socket_action(handle, CURL_SOCKET_TIMEOUT, 0,
                                        &running_handles));
         ProcessEvents(handle);
       },
-      curl_handle_.get());
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETFUNCTION,
+      curl_handle.get());
+  Check(curl_multi_setopt(curl_handle.get(), CURLMOPT_SOCKETFUNCTION,
                           SocketCallback));
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERFUNCTION,
+  Check(curl_multi_setopt(curl_handle.get(), CURLMOPT_TIMERFUNCTION,
                           TimerCallback));
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, this));
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
+  Check(curl_multi_setopt(curl_handle.get(), CURLMOPT_SOCKETDATA, this));
+  Check(curl_multi_setopt(curl_handle.get(), CURLMOPT_TIMERDATA, this));
 }
 
-CurlHttpImpl::~CurlHttpImpl() { Check(event_del(&timeout_event_)); }
+CurlHttpImpl::Data::~Data() { Check(event_del(&timeout_event)); }
+
+CurlHttpImpl::CurlHttpImpl(event_base* event_loop)
+    : d_(std::make_unique<Data>(event_loop)) {}
 
 void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
   CURLMsg* message;
@@ -379,7 +383,7 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
         }
         operation->no_body_ = true;
         Check(event_base_once(
-            operation->handle_.http_->event_loop_, -1, EV_TIMEOUT,
+            operation->handle_.event_loop_, -1, EV_TIMEOUT,
             [](evutil_socket_t fd, short event, void* handle) {
               stdx::coroutine_handle<void>::from_address(handle).resume();
             },
@@ -419,7 +423,7 @@ void CurlHttpImpl::SocketEvent(evutil_socket_t fd, short event, void* handle) {
 
 int CurlHttpImpl::SocketCallback(CURL*, curl_socket_t socket, int what,
                                  void* userp, void* socketp) {
-  auto http = reinterpret_cast<CurlHttpImpl*>(userp);
+  auto http = reinterpret_cast<Data*>(userp);
   if (what == CURL_POLL_REMOVE) {
     auto data = reinterpret_cast<SocketData*>(socketp);
     if (data) {
@@ -430,27 +434,27 @@ int CurlHttpImpl::SocketCallback(CURL*, curl_socket_t socket, int what,
     auto data = reinterpret_cast<SocketData*>(socketp);
     if (!data) {
       data = new SocketData;
-      Check(curl_multi_assign(http->curl_handle_.get(), socket, data));
+      Check(curl_multi_assign(http->curl_handle.get(), socket, data));
     } else {
       Check(event_del(&data->socket_event));
     }
-    Check(event_assign(&data->socket_event, http->event_loop_, socket,
+    Check(event_assign(&data->socket_event, http->event_loop, socket,
                        ((what & CURL_POLL_IN) ? EV_READ : 0) |
                            ((what & CURL_POLL_OUT) ? EV_WRITE : 0) | EV_PERSIST,
-                       SocketEvent, http->curl_handle_.get()));
+                       SocketEvent, http->curl_handle.get()));
     Check(event_add(&data->socket_event, nullptr));
   }
   return 0;
 }
 
 int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
-  auto http = reinterpret_cast<CurlHttpImpl*>(userp);
+  auto http = reinterpret_cast<Data*>(userp);
   if (timeout_ms == -1) {
-    Check(event_del(&http->timeout_event_));
+    Check(event_del(&http->timeout_event));
   } else {
     timeval tv = {.tv_sec = timeout_ms / 1000,
                   .tv_usec = timeout_ms % 1000 * 1000};
-    Check(event_add(&http->timeout_event_, &tv));
+    Check(event_add(&http->timeout_event, &tv));
   }
   return 0;
 }
@@ -458,7 +462,8 @@ int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
 util::WrapAwaitable<CurlHttpOperation> CurlHttpImpl::Fetch(
     Request<> request, stdx::stop_token token) const {
   return util::WrapAwaitable(std::make_unique<CurlHttpOperation>(
-      this, std::move(request), std::move(token)));
+      d_->curl_handle.get(), d_->event_loop, std::move(request),
+      std::move(token)));
 }
 
 }  // namespace coro::http

@@ -30,7 +30,8 @@ class CurlHandle {
 
  private:
   template <typename Owner>
-  CurlHandle(const CurlHttpImpl*, Request<>, stdx::stop_token, Owner*);
+  CurlHandle(CURLM* http, event_base* event_loop, Request<>, stdx::stop_token,
+             Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle&&, NewOwner*);
@@ -72,7 +73,8 @@ class CurlHandle {
   friend class CurlHttpOperation;
   friend class CurlHttpBodyGenerator;
 
-  const CurlHttpImpl* http_;
+  CURLM* http_;
+  event_base* event_loop_;
   std::unique_ptr<CURL, CurlHandleDeleter> handle_;
   std::unique_ptr<curl_slist, CurlListDeleter> header_list_;
   std::optional<Generator<std::string>> request_body_;
@@ -116,7 +118,8 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 
 class CurlHttpOperation {
  public:
-  CurlHttpOperation(const CurlHttpImpl* http, Request<>, stdx::stop_token);
+  CurlHttpOperation(CURLM* http, event_base* event_loop, Request<>,
+                    stdx::stop_token);
   CurlHttpOperation(const CurlHttpOperation&) = delete;
   CurlHttpOperation(CurlHttpOperation&&) = delete;
   ~CurlHttpOperation();
@@ -146,12 +149,6 @@ class CurlHttpOperation {
 class CurlHttpImpl {
  public:
   explicit CurlHttpImpl(event_base* event_loop);
-  CurlHttpImpl(const CurlHttpImpl&) = delete;
-  CurlHttpImpl(CurlHttpImpl&&) = delete;
-  ~CurlHttpImpl();
-
-  CurlHttpImpl& operator=(const CurlHttpImpl&) = delete;
-  CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
 
   util::WrapAwaitable<CurlHttpOperation> Fetch(
       Request<> request, stdx::stop_token = stdx::stop_token()) const;
@@ -175,9 +172,16 @@ class CurlHttpImpl {
     }
   };
 
-  std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle_;
-  event_base* event_loop_;
-  event timeout_event_;
+  struct Data {
+    explicit Data(event_base* event_loop);
+    ~Data();
+
+    std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle;
+    event_base* event_loop;
+    event timeout_event;
+  };
+
+  std::unique_ptr<Data> d_;
 };
 
 using CurlHttp = ToHttpClient<CurlHttpImpl>;

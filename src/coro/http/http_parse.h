@@ -62,6 +62,19 @@ std::optional<std::string> GetHeader(const Collection& collection,
   return std::nullopt;
 }
 
+template <typename Container>
+bool HasHeader(const Container& container, std::string_view key,
+               std::string_view value) {
+  for (const auto& [ckey, cvalue] : container) {
+    if (ToLowerCase(ckey) == ToLowerCase(std::string(key))) {
+      if (cvalue.find(value) != std::string::npos) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace coro::http
 
 #endif  // CORO_CLOUDSTORAGE_HTTP_PARSE_H

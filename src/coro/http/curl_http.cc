@@ -54,6 +54,13 @@ event MoveEvent(event* source, void* userdata) {
   return target;
 }
 
+void MoveAssignEvent(event* target, event* source, void* userdata) {
+  if (target->ev_base) {
+    event_del(target);
+  }
+  *target = MoveEvent(source, userdata);
+}
+
 }  // namespace
 
 size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
@@ -142,6 +149,9 @@ void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
 }
 
 void CurlHandle::OnCancel::operator()() const {
+  if (handle->http_) {
+    return;
+  }
   if (std::holds_alternative<CurlHttpOperation*>(handle->owner_)) {
     auto operation = std::get<CurlHttpOperation*>(handle->owner_);
     operation->exception_ptr_ = std::make_exception_ptr(InterruptedException());
@@ -224,7 +234,7 @@ CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
       handle_(std::move(handle.handle_)),
       header_list_(std::move(handle.header_list_)),
       request_body_(std::move(handle.request_body_)),
-      request_body_it_(std::move(handle.request_body_it_)),
+      request_body_it_(handle.request_body_it_),
       stop_token_(std::move(handle.stop_token_)),
       owner_(handle.owner_),
       next_request_body_chunk_(
@@ -250,6 +260,25 @@ CurlHandle::~CurlHandle() {
   }
 }
 
+CurlHandle& CurlHandle::operator=(CurlHandle&& handle) noexcept {
+  http_ = std::exchange(handle.http_, nullptr);
+  event_loop_ = handle.event_loop_;
+  handle_ = std::move(handle.handle_);
+  header_list_ = std::move(handle.header_list_);
+  request_body_ = std::move(handle.request_body_);
+  request_body_it_ = handle.request_body_it_;
+  stop_token_ = std::move(handle.stop_token_);
+  owner_ = handle.owner_;
+  MoveAssignEvent(&next_request_body_chunk_, &handle.next_request_body_chunk_,
+                  this);
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFODATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
+  return *this;
+}
+
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(
     CurlHttpBodyGenerator&& other) noexcept
     : HttpBodyGenerator(std::move(other)),
@@ -269,6 +298,19 @@ CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle handle,
   Check(event_assign(&body_ready_, handle_.event_loop_, -1, 0, OnBodyReady,
                      this));
   ReceivedData(std::move(initial_chunk));
+}
+
+CurlHttpBodyGenerator& CurlHttpBodyGenerator::operator=(
+    CurlHttpBodyGenerator&& other) noexcept {
+  static_cast<HttpBodyGenerator&>(*this) = std::move(other);
+  handle_ = CurlHandle(std::move(other.handle_), this);
+  MoveAssignEvent(&chunk_ready_, &other.chunk_ready_, this);
+  MoveAssignEvent(&body_ready_, &other.body_ready_, this);
+  body_ready_fired_ = other.body_ready_fired_;
+  status_ = other.status_;
+  exception_ptr_ = other.exception_ptr_;
+  data_ = std::move(other.data_);
+  return *this;
 }
 
 void CurlHttpBodyGenerator::OnChunkReady(evutil_socket_t, short, void* handle) {
@@ -385,6 +427,15 @@ CurlHttpImpl::CurlHttpImpl(CurlHttpImpl&& other) noexcept
       timeout_event_(MoveEvent(&other.timeout_event_, curl_handle_.get())) {
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, this));
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
+}
+
+CurlHttpImpl& CurlHttpImpl::operator=(CurlHttpImpl&& other) noexcept {
+  curl_handle_ = std::move(other.curl_handle_);
+  event_loop_ = other.event_loop_;
+  timeout_event_ = MoveEvent(&other.timeout_event_, curl_handle_.get());
+  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, this));
+  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
+  return *this;
 }
 
 CurlHttpImpl::~CurlHttpImpl() {

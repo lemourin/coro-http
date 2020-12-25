@@ -25,7 +25,7 @@ class CurlHandle {
   ~CurlHandle();
 
   CurlHandle& operator=(const CurlHandle&) = delete;
-  CurlHandle& operator=(CurlHandle&&) = delete;
+  CurlHandle& operator=(CurlHandle&&) noexcept;
 
  private:
   template <typename Owner>
@@ -94,7 +94,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
   ~CurlHttpBodyGenerator();
 
   CurlHttpBodyGenerator& operator=(const CurlHttpBodyGenerator&) = delete;
-  CurlHttpBodyGenerator& operator=(CurlHttpBodyGenerator&&) = delete;
+  CurlHttpBodyGenerator& operator=(CurlHttpBodyGenerator&&) noexcept;
 
   void Resume();
 
@@ -155,7 +155,7 @@ class CurlHttpImpl {
   CurlHttpImpl(CurlHttpImpl&&) noexcept;
 
   CurlHttpImpl& operator=(const CurlHttpImpl&) = delete;
-  CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
+  CurlHttpImpl& operator=(CurlHttpImpl&&) noexcept;
 
   ~CurlHttpImpl();
 

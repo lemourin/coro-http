@@ -6,8 +6,10 @@
 #include <coro/stdx/stop_callback.h>
 #include <coro/util/make_pointer.h>
 
+#include <functional>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 
 namespace coro {
 

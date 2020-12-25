@@ -208,7 +208,7 @@ class HttpServer {
 
   static void OnHttpRequest(evhttp_request* request, void* arg) {
     auto http_server = reinterpret_cast<HttpServer*>(arg);
-    http_server->OnHttpRequest(request);
+    Invoke(http_server->OnHttpRequest(request));
   }
 
   static void OnWriteReady(evhttp_connection*, void* arg) {

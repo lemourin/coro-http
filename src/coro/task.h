@@ -4,10 +4,8 @@
 #include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 
-#include <functional>
 #include <memory>
 #include <utility>
-#include <variant>
 
 namespace coro {
 
@@ -101,65 +99,56 @@ class Task<T> {
 template <>
 class Task<> {
  public:
-  using DataType = std::variant<std::monostate, bool, std::exception_ptr>;
-
   struct promise_type {
     struct final_awaitable {
-      bool await_ready() noexcept { return true; }
-      template <typename V>
-      auto await_suspend(V) noexcept {}
-      void await_resume() noexcept {
-        if (promise->continuation) {
-          promise->continuation.resume();
-        }
+      bool await_ready() noexcept { return false; }
+      auto await_suspend(stdx::coroutine_handle<promise_type> coro) noexcept {
+        return coro.promise().continuation;
       }
-
-      promise_type* promise;
+      void await_resume() noexcept {}
     };
 
     Task get_return_object() {
-      return Task(stdx::coroutine_handle<promise_type>::from_promise(*this),
-                  value);
+      return Task(stdx::coroutine_handle<promise_type>::from_promise(*this));
     }
     stdx::suspend_never initial_suspend() { return {}; }
-    final_awaitable final_suspend() noexcept { return {this}; }
-    void return_void() { *value = true; }
-    void unhandled_exception() { *value = std::current_exception(); }
+    final_awaitable final_suspend() noexcept { return {}; }
+    void return_void() { done = true; }
+    void unhandled_exception() { exception = std::current_exception(); }
 
-    stdx::coroutine_handle<void> continuation;
-    std::shared_ptr<DataType> value = std::make_shared<DataType>();
+    stdx::coroutine_handle<void> continuation = coro::std_ns::noop_coroutine();
+    std::exception_ptr exception;
+    bool done = false;
   };
 
   Task(const Task&) = delete;
-  Task(Task&& task) noexcept
-      : handle_(std::exchange(task.handle_, nullptr)),
-        value_(std::move(task.value_)) {}
+  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  ~Task() {
+    if (handle_) {
+      handle_.destroy();
+    }
+  }
   Task& operator=(const Task&) = delete;
   Task& operator=(Task&& task) noexcept {
     handle_ = std::exchange(task.handle_, nullptr);
-    value_ = std::move(task.value_);
     return *this;
   }
 
-  bool await_ready() {
-    return !std::holds_alternative<std::monostate>(*value_);
-  }
+  bool await_ready() { return handle_.promise().done; }
   void await_suspend(stdx::coroutine_handle<void> continuation) {
     handle_.promise().continuation = continuation;
   }
   void await_resume() {
-    if (std::holds_alternative<std::exception_ptr>(*value_)) {
-      std::rethrow_exception(std::get<std::exception_ptr>(*value_));
+    if (handle_.promise().exception) {
+      std::rethrow_exception(handle_.promise().exception);
     }
   }
 
  private:
-  Task(stdx::coroutine_handle<promise_type> handle,
-       std::shared_ptr<DataType> value)
-      : handle_(handle), value_(std::move(value)) {}
+  explicit Task(stdx::coroutine_handle<promise_type> handle)
+      : handle_(handle) {}
 
   stdx::coroutine_handle<promise_type> handle_;
-  std::shared_ptr<DataType> value_;
 };
 
 // clang-format off
@@ -171,8 +160,20 @@ concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
 };
 // clang-format on
 
+struct RunTask {
+  struct promise_type {
+    auto get_return_object() { return RunTask(); }
+    stdx::suspend_never initial_suspend() { return {}; }
+    stdx::suspend_never final_suspend() noexcept { return {}; }
+    void return_void() {}
+    void unhandled_exception() { std::terminate(); }
+  };
+};
+
+inline RunTask Invoke(Task<> task) { co_await task; }
+
 template <typename F, typename... Args>
-Task<> Invoke(F func, Args&&... args) {
+RunTask Invoke(F func, Args&&... args) {
   co_await func(std::forward<Args>(args)...);
 }
 

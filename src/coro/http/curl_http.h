@@ -82,7 +82,7 @@ class CurlHandle {
   stdx::stop_token stop_token_;
   std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner_;
   event next_request_body_chunk_;
-  coro::stdx::stop_callback<OnCancel> stop_callback_;
+  std::unique_ptr<stdx::stop_callback<OnCancel>> stop_callback_;
 };
 
 class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {

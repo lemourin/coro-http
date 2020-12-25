@@ -149,9 +149,6 @@ void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
 }
 
 void CurlHandle::OnCancel::operator()() const {
-  if (!handle->http_) {
-    return;
-  }
   if (std::holds_alternative<CurlHttpOperation*>(handle->owner_)) {
     auto operation = std::get<CurlHttpOperation*>(handle->owner_);
     operation->exception_ptr_ = std::make_exception_ptr(InterruptedException());
@@ -175,7 +172,8 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
       request_body_(std::move(request.body)),
       stop_token_(std::move(stop_token)),
       owner_(owner),
-      stop_callback_(stop_token_, OnCancel{this}) {
+      stop_callback_(std::make_unique<stdx::stop_callback<OnCancel>>(
+          stop_token_, OnCancel{this})) {
   Check(curl_easy_setopt(handle_.get(), CURLOPT_URL, request.url.data()));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEFUNCTION, WriteCallback));
@@ -239,7 +237,8 @@ CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
       owner_(handle.owner_),
       next_request_body_chunk_(
           MoveEvent(&handle.next_request_body_chunk_, this)),
-      stop_callback_(stop_token_, OnCancel{this}) {
+      stop_callback_(std::make_unique<stdx::stop_callback<OnCancel>>(
+          stop_token_, OnCancel{this})) {
   Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
@@ -269,6 +268,8 @@ CurlHandle& CurlHandle::operator=(CurlHandle&& handle) noexcept {
   request_body_it_ = handle.request_body_it_;
   stop_token_ = std::move(handle.stop_token_);
   owner_ = handle.owner_;
+  stop_callback_ = std::make_unique<stdx::stop_callback<OnCancel>>(
+      stop_token_, OnCancel{this});
   MoveAssignEvent(&next_request_body_chunk_, &handle.next_request_body_chunk_,
                   this);
   Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));

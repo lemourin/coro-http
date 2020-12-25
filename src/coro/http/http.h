@@ -145,6 +145,7 @@ class HttpBodyGenerator {
     bool operator!=(const Iterator& iterator) const;
     Awaitable<Iterator&> operator++();
     const std::string& operator*() const;
+    std::string& operator*();
 
    private:
     template <typename>
@@ -194,6 +195,11 @@ auto HttpBodyGenerator<Impl>::Iterator::operator++() -> Awaitable<Iterator&> {
 
 template <typename Impl>
 const std::string& HttpBodyGenerator<Impl>::Iterator::operator*() const {
+  return data_;
+}
+
+template <typename Impl>
+std::string& HttpBodyGenerator<Impl>::Iterator::operator*() {
   return data_;
 }
 

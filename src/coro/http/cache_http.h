@@ -57,7 +57,7 @@ class CacheHttpImpl {
 
   template <GeneratorLike T>
   static Generator<std::string> ConvertGenerator(T generator) {
-    FOR_CO_AWAIT(auto d, generator, { co_yield std::move(d); });
+    FOR_CO_AWAIT(auto& d, generator, { co_yield std::move(d); });
   }
 
   static Generator<std::string> ToGenerator(std::string string) {

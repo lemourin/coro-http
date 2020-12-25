@@ -149,7 +149,7 @@ void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
 }
 
 void CurlHandle::OnCancel::operator()() const {
-  if (handle->http_) {
+  if (!handle->http_) {
     return;
   }
   if (std::holds_alternative<CurlHttpOperation*>(handle->owner_)) {

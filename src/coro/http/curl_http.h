@@ -3,7 +3,6 @@
 
 #include <coro/semaphore.h>
 #include <coro/stdx/stop_callback.h>
-#include <coro/util/wrap.h>
 #include <curl/curl.h>
 #include <event2/event.h>
 #include <event2/event_struct.h>
@@ -121,7 +120,7 @@ class CurlHttpOperation {
   CurlHttpOperation(CURLM* http, event_base* event_loop, Request<>,
                     stdx::stop_token);
   CurlHttpOperation(const CurlHttpOperation&) = delete;
-  CurlHttpOperation(CurlHttpOperation&&) = delete;
+  CurlHttpOperation(CurlHttpOperation&&) noexcept;
   ~CurlHttpOperation();
 
   CurlHttpOperation& operator=(const CurlHttpOperation&) = delete;
@@ -132,6 +131,8 @@ class CurlHttpOperation {
   Response<CurlHttpBodyGenerator> await_resume();
 
  private:
+  static void OnHeadersReady(evutil_socket_t fd, short event, void* handle);
+
   friend class CurlHttpImpl;
   friend class CurlHandle;
 
@@ -150,8 +151,8 @@ class CurlHttpImpl {
  public:
   explicit CurlHttpImpl(event_base* event_loop);
 
-  util::WrapAwaitable<CurlHttpOperation> Fetch(
-      Request<> request, stdx::stop_token = stdx::stop_token()) const;
+  CurlHttpOperation Fetch(Request<> request,
+                          stdx::stop_token = stdx::stop_token()) const;
 
  private:
   static int SocketCallback(CURL* handle, curl_socket_t socket, int what,

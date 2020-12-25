@@ -34,7 +34,7 @@ class CurlHandle {
              Owner*);
 
   template <typename NewOwner>
-  CurlHandle(CurlHandle&&, NewOwner*);
+  CurlHandle(CurlHandle, NewOwner*);
 
   static size_t WriteCallback(char* ptr, size_t size, size_t nmemb,
                               void* userdata);
@@ -91,7 +91,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
   CurlHttpBodyGenerator(CurlHandle handle, std::string initial_chunk);
 
   CurlHttpBodyGenerator(const CurlHttpBodyGenerator&) = delete;
-  CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) = delete;
+  CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) noexcept;
   ~CurlHttpBodyGenerator();
 
   CurlHttpBodyGenerator& operator=(const CurlHttpBodyGenerator&) = delete;
@@ -129,7 +129,7 @@ class CurlHttpOperation {
 
   bool await_ready();
   void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine);
-  Response<util::WrapGenerator<CurlHttpBodyGenerator>> await_resume();
+  Response<CurlHttpBodyGenerator> await_resume();
 
  private:
   friend class CurlHttpImpl;

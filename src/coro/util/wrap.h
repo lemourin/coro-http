@@ -26,19 +26,6 @@ class WrapAwaitable {
   std::unique_ptr<T> awaitable_;
 };
 
-template <GeneratorLike T>
-class WrapGenerator {
- public:
-  explicit WrapGenerator(std::unique_ptr<T>&& generator)
-      : generator_(std::move(generator)) {}
-
-  auto begin() { return generator_->begin(); }
-  auto end() { return generator_->end(); }
-
- private:
-  std::unique_ptr<T> generator_;
-};
-
 }  // namespace coro::util
 
 #endif  // CORO_CLOUDSTORAGE_WRAP_H

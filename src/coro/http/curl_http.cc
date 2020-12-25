@@ -44,25 +44,6 @@ std::string TrimWhitespace(std::string_view str) {
 
 }  // namespace
 
-CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
-    : http_(std::exchange(handle.http_, nullptr)),
-      event_loop_(handle.event_loop_),
-      handle_(std::move(handle.handle_)),
-      header_list_(std::move(handle.header_list_)),
-      stop_token_(std::move(handle.stop_token_)),
-      owner_(handle.owner_),
-      stop_callback_(stop_token_, OnCancel{this}) {
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFODATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
-
-  Check(event_del(&handle.next_request_body_chunk_));
-  Check(event_assign(&next_request_body_chunk_, event_loop_, -1, 0,
-                     OnNextRequestBodyChunkRequested, this));
-}
-
 size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
                                   void* userdata) {
   auto handle = reinterpret_cast<CurlHandle*>(userdata);
@@ -94,8 +75,7 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
     auto http_operation = std::get<CurlHttpOperation*>(handle->owner_);
     if (!http_operation->headers_ready_event_posted_) {
       http_operation->headers_ready_event_posted_ = true;
-      timeval tv = {};
-      Check(event_add(&http_operation->headers_ready_, &tv));
+      evuser_trigger(&http_operation->headers_ready_);
     }
     http_operation->body_ += std::string(ptr, ptr + size * nmemb);
   } else if (std::holds_alternative<CurlHttpBodyGenerator*>(handle->owner_)) {
@@ -103,9 +83,8 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
     if (!http_body_generator->data_.empty()) {
       return CURL_WRITEFUNC_PAUSE;
     }
-    timeval tv = {};
     http_body_generator->data_ += std::string(ptr, ptr + size * nmemb);
-    Check(event_add(&http_body_generator->chunk_ready_, &tv));
+    evuser_trigger(&http_body_generator->chunk_ready_);
   }
   return size * nmemb;
 }
@@ -137,8 +116,7 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
     sent_cnt++;
   }
   if (handle->buffer_.empty()) {
-    timeval tv{};
-    Check(event_add(&handle->next_request_body_chunk_, &tv));
+    evuser_trigger(&handle->next_request_body_chunk_);
   }
   return sent_cnt;
 }
@@ -228,8 +206,31 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
   Check(curl_multi_add_handle(http, handle_.get()));
 }
 
+CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
+    : http_(std::exchange(handle.http_, nullptr)),
+      event_loop_(handle.event_loop_),
+      handle_(std::move(handle.handle_)),
+      header_list_(std::move(handle.header_list_)),
+      stop_token_(std::move(handle.stop_token_)),
+      owner_(handle.owner_),
+      stop_callback_(stop_token_, OnCancel{this}) {
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFODATA, this));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
+
+  bool pending = evuser_pending(&handle.next_request_body_chunk_, nullptr);
+  Check(event_del(&handle.next_request_body_chunk_));
+  Check(event_assign(&next_request_body_chunk_, event_loop_, -1, 0,
+                     OnNextRequestBodyChunkRequested, this));
+  if (pending) {
+    evuser_trigger(&next_request_body_chunk_);
+  }
+}
+
 template <typename NewOwner>
-CurlHandle::CurlHandle(CurlHandle&& handle, NewOwner* owner)
+CurlHandle::CurlHandle(CurlHandle handle, NewOwner* owner)
     : CurlHandle(std::move(handle)) {
   owner_ = owner;
 }
@@ -238,6 +239,32 @@ CurlHandle::~CurlHandle() {
   if (http_) {
     Check(curl_multi_remove_handle(http_, handle_.get()));
     event_del(&next_request_body_chunk_);
+  }
+}
+
+CurlHttpBodyGenerator::CurlHttpBodyGenerator(
+    CurlHttpBodyGenerator&& other) noexcept
+    : HttpBodyGenerator(std::move(other)),
+      handle_(std::move(other.handle_), this),
+      body_ready_fired_(other.body_ready_fired_),
+      status_(other.status_),
+      exception_ptr_(other.exception_ptr_),
+      data_(std::move(other.data_)) {
+  bool chunk_ready_pending = evuser_pending(&other.chunk_ready_, nullptr);
+  bool body_ready_pending = evuser_pending(&other.body_ready_, nullptr);
+  event_del(&other.chunk_ready_);
+  event_del(&other.body_ready_);
+
+  Check(event_assign(&chunk_ready_, handle_.event_loop_, -1, 0, OnChunkReady,
+                     this));
+  Check(event_assign(&body_ready_, handle_.event_loop_, -1, 0, OnBodyReady,
+                     this));
+
+  if (chunk_ready_pending) {
+    evuser_trigger(&chunk_ready_);
+  }
+  if (body_ready_pending) {
+    evuser_trigger(&body_ready_);
   }
 }
 
@@ -258,9 +285,8 @@ void CurlHttpBodyGenerator::OnChunkReady(evutil_socket_t, short, void* handle) {
   curl_http_body_generator->data_.clear();
   if (curl_http_body_generator->status_ != -1 &&
       !curl_http_body_generator->body_ready_fired_) {
-    timeval tv = {};
     curl_http_body_generator->body_ready_fired_ = true;
-    Check(event_add(&curl_http_body_generator->body_ready_, &tv));
+    evuser_trigger(&curl_http_body_generator->body_ready_);
   }
   curl_http_body_generator->ReceivedData(std::move(data));
 }
@@ -276,8 +302,10 @@ void CurlHttpBodyGenerator::OnBodyReady(evutil_socket_t, short, void* handle) {
 }
 
 CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
-  Check(event_del(&chunk_ready_));
-  Check(event_del(&body_ready_));
+  if (chunk_ready_.ev_base) {
+    Check(event_del(&chunk_ready_));
+    Check(event_del(&body_ready_));
+  }
 }
 
 void CurlHttpBodyGenerator::Resume() {
@@ -315,19 +343,17 @@ void CurlHttpOperation::await_suspend(
   awaiting_coroutine_ = awaiting_coroutine;
 }
 
-Response<util::WrapGenerator<CurlHttpBodyGenerator>>
-CurlHttpOperation::await_resume() {
+Response<CurlHttpBodyGenerator> CurlHttpOperation::await_resume() {
   if (exception_ptr_) {
     std::rethrow_exception(exception_ptr_);
   }
-  auto body_generator = std::make_unique<CurlHttpBodyGenerator>(
-      std::move(handle_), std::move(body_));
+  CurlHttpBodyGenerator body_generator(std::move(handle_), std::move(body_));
   if (no_body_) {
-    body_generator->Close(status_);
+    body_generator.Close(status_);
   }
   return {.status = status_,
           .headers = std::move(headers_),
-          .body = util::WrapGenerator(std::move(body_generator))};
+          .body = std::move(body_generator)};
 }
 
 CurlHttpImpl::Data::Data(event_base* event_loop)
@@ -393,11 +419,9 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
               HttpException(message->data.result,
                             curl_easy_strerror(message->data.result)));
         }
-        if (!event_pending(&curl_http_body_generator->chunk_ready_, EV_TIMEOUT,
-                           nullptr)) {
-          timeval tv = {};
+        if (!evuser_pending(&curl_http_body_generator->chunk_ready_, nullptr)) {
           curl_http_body_generator->body_ready_fired_ = true;
-          event_add(&curl_http_body_generator->body_ready_, &tv);
+          evuser_trigger(&curl_http_body_generator->body_ready_);
         }
       }
     }

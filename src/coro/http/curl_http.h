@@ -151,6 +151,14 @@ class CurlHttpImpl {
  public:
   explicit CurlHttpImpl(event_base* event_loop);
 
+  CurlHttpImpl(const CurlHttpImpl&) = delete;
+  CurlHttpImpl(CurlHttpImpl&&) noexcept;
+
+  CurlHttpImpl& operator=(const CurlHttpImpl&) = delete;
+  CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
+
+  ~CurlHttpImpl();
+
   CurlHttpOperation Fetch(Request<> request,
                           stdx::stop_token = stdx::stop_token()) const;
 
@@ -159,6 +167,7 @@ class CurlHttpImpl {
                             void* userp, void* socketp);
   static int TimerCallback(CURLM* handle, long timeout_ms, void* userp);
   static void SocketEvent(evutil_socket_t fd, short event, void* multi_handle);
+  static void TimeoutEvent(evutil_socket_t fd, short event, void* handle);
   static void ProcessEvents(CURLM* handle);
 
   friend class CurlHttpOperation;
@@ -173,16 +182,9 @@ class CurlHttpImpl {
     }
   };
 
-  struct Data {
-    explicit Data(event_base* event_loop);
-    ~Data();
-
-    std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle;
-    event_base* event_loop;
-    event timeout_event;
-  };
-
-  std::unique_ptr<Data> d_;
+  std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle_;
+  event_base* event_loop_;
+  event timeout_event_;
 };
 
 using CurlHttp = ToHttpClient<CurlHttpImpl>;

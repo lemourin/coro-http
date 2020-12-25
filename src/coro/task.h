@@ -13,7 +13,7 @@ template <typename... Ts>
 class Task;
 
 template <typename T>
-class Task<T> {
+class [[nodiscard]] Task<T> {
  public:
   struct promise_type {
     struct final_awaitable {
@@ -97,7 +97,7 @@ class Task<T> {
 };
 
 template <>
-class Task<> {
+class [[nodiscard]] Task<> {
  public:
   struct promise_type {
     struct final_awaitable {
@@ -134,7 +134,9 @@ class Task<> {
     return *this;
   }
 
-  bool await_ready() { return handle_.promise().done; }
+  bool await_ready() {
+    return handle_.promise().done || handle_.promise().exception;
+  }
   void await_suspend(stdx::coroutine_handle<void> continuation) {
     handle_.promise().continuation = continuation;
   }

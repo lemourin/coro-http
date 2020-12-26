@@ -5,6 +5,7 @@
 #include <event2/http.h>
 #include <event2/keyvalq_struct.h>
 
+#include <cmath>
 #include <regex>
 
 namespace coro::http {

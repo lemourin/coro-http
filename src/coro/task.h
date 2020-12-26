@@ -5,6 +5,7 @@
 #include <coro/stdx/coroutine.h>
 
 #include <memory>
+#include <tuple>
 #include <utility>
 
 namespace coro {
@@ -177,6 +178,11 @@ inline RunTask Invoke(Task<> task) { co_await task; }
 template <typename F, typename... Args>
 RunTask Invoke(F func, Args&&... args) {
   co_await func(std::forward<Args>(args)...);
+}
+
+template <typename... T>
+Task<std::tuple<T...>> WhenAll(Task<T>... tasks) {
+  co_return std::make_tuple((co_await tasks)...);
 }
 
 }  // namespace coro

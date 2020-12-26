@@ -1,6 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_HTTP_PARSE_H
 #define CORO_CLOUDSTORAGE_HTTP_PARSE_H
 
+#include <ctime>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +29,9 @@ std::unordered_map<std::string, std::string> ParseQuery(std::string_view query);
 std::string DecodeUri(std::string_view uri);
 std::string EncodeUri(std::string_view uri);
 std::string EncodeUriPath(std::string_view uri);
+
+time_t timegm(const std::tm&);
+std::tm gmtime(time_t time);
 
 template <typename List = std::initializer_list<
               std::pair<std::string_view, std::string_view>>>

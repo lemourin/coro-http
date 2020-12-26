@@ -43,29 +43,6 @@ std::optional<int> ToOptional(int value) {
   }
 }
 
-time_t timegm(const std::tm& t) {
-  const int month_count = 12;
-  const int days[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
-  int year = 1900 + t.tm_year + t.tm_mon / month_count;
-  time_t result = (year - 1970) * 365 + days[t.tm_mon % month_count];
-
-  result += (year - 1968) / 4;
-  result -= (year - 1900) / 100;
-  result += (year - 1600) / 400;
-  if ((year % 4) == 0 && ((year % 100) != 0 || (year % 400) == 0) &&
-      (t.tm_mon % month_count) < 2)
-    result--;
-  result += t.tm_mday - 1;
-  result *= 24;
-  result += t.tm_hour;
-  result *= 60;
-  result += t.tm_min;
-  result *= 60;
-  result += t.tm_sec;
-  if (t.tm_isdst == 1) result -= 3600;
-  return result;
-}
-
 }  // namespace
 
 Uri ParseUri(std::string_view url_view) {
@@ -126,8 +103,7 @@ std::string EncodeUriPath(std::string_view uri) {
   while (it < uri.size()) {
     auto next = uri.find_first_of('/', it);
     result += EncodeUri(std::string_view(
-        uri.begin() + it,
-        uri.begin() + (next == std::string_view::npos ? uri.size() : next)));
+        uri.data() + it, (next == std::string::npos ? uri.size() : next) - it));
     if (next == std::string_view::npos) {
       break;
     } else {
@@ -230,6 +206,60 @@ std::string FromBase64(std::string_view in) {
     }
   }
   return out;
+}
+
+std::tm gmtime(time_t time) {
+  auto leap_year = [](int year) {
+    return !(year % 4) && ((year % 100) || !(year % 400));
+  };
+  auto year_size = [&](int year) { return leap_year(year) ? 366 : 365; };
+
+  const int ytab[2][12] = {{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+                           {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}};
+  auto year = 1970;
+  auto dayclock = time % (24 * 60 * 60);
+  auto dayno = time / (24 * 60 * 60);
+  std::tm tmbuf = {};
+
+  tmbuf.tm_sec = dayclock % 60;
+  tmbuf.tm_min = (dayclock % 3600) / 60;
+  tmbuf.tm_hour = static_cast<int>(dayclock / 3600);
+  tmbuf.tm_wday = (dayno + 4) % 7;
+  while (dayno >= year_size(year)) {
+    dayno -= year_size(year);
+    year++;
+  }
+  tmbuf.tm_year = year - 1900;
+  tmbuf.tm_yday = static_cast<int>(dayno);
+  while (dayno >= ytab[leap_year(year)][tmbuf.tm_mon]) {
+    dayno -= ytab[leap_year(year)][tmbuf.tm_mon];
+    tmbuf.tm_mon++;
+  }
+  tmbuf.tm_mday = static_cast<int>(dayno + 1);
+  return tmbuf;
+}
+
+time_t timegm(const std::tm& t) {
+  const int month_count = 12;
+  const int days[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  int year = 1900 + t.tm_year + t.tm_mon / month_count;
+  time_t result = (year - 1970) * 365 + days[t.tm_mon % month_count];
+
+  result += (year - 1968) / 4;
+  result -= (year - 1900) / 100;
+  result += (year - 1600) / 400;
+  if ((year % 4) == 0 && ((year % 100) != 0 || (year % 400) == 0) &&
+      (t.tm_mon % month_count) < 2)
+    result--;
+  result += t.tm_mday - 1;
+  result *= 24;
+  result += t.tm_hour;
+  result *= 60;
+  result += t.tm_min;
+  result *= 60;
+  result += t.tm_sec;
+  if (t.tm_isdst == 1) result -= 3600;
+  return result;
 }
 
 int64_t ParseTime(std::string_view str) {

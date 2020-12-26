@@ -42,6 +42,29 @@ std::optional<int> ToOptional(int value) {
   }
 }
 
+time_t timegm(const std::tm& t) {
+  const int month_count = 12;
+  const int days[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  int year = 1900 + t.tm_year + t.tm_mon / month_count;
+  time_t result = (year - 1970) * 365 + days[t.tm_mon % month_count];
+
+  result += (year - 1968) / 4;
+  result -= (year - 1900) / 100;
+  result += (year - 1600) / 400;
+  if ((year % 4) == 0 && ((year % 100) != 0 || (year % 400) == 0) &&
+      (t.tm_mon % month_count) < 2)
+    result--;
+  result += t.tm_mday - 1;
+  result *= 24;
+  result += t.tm_hour;
+  result *= 60;
+  result += t.tm_min;
+  result *= 60;
+  result += t.tm_sec;
+  if (t.tm_isdst == 1) result -= 3600;
+  return result;
+}
+
 }  // namespace
 
 Uri ParseUri(std::string_view url_view) {
@@ -206,6 +229,29 @@ std::string FromBase64(std::string_view in) {
     }
   }
   return out;
+}
+
+int64_t ParseTime(std::string_view str) {
+  const uint32_t SIZE = 6;
+  char buffer[SIZE + 1] = {};
+  float sec;
+  std::tm time = {};
+  if (sscanf(std::string(str).c_str(), "%d-%d-%dT%d:%d:%f%6s", &time.tm_year,
+             &time.tm_mon, &time.tm_mday, &time.tm_hour, &time.tm_min, &sec,
+             buffer) == 7) {
+    time.tm_year -= 1900;
+    time.tm_mon--;
+    time.tm_sec = std::lround(sec);
+    if (buffer != std::string("Z")) {
+      int offset_hour, offset_minute;
+      if (sscanf(buffer, "%d:%d", &offset_hour, &offset_minute) == 2) {
+        time.tm_hour -= offset_hour;
+        time.tm_min -= offset_minute;
+      }
+    }
+    return timegm(time);
+  }
+  throw std::invalid_argument("can't parse time");
 }
 
 }  // namespace coro::http

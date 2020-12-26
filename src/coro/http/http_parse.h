@@ -50,6 +50,7 @@ std::string GetExtension(std::string_view filename);
 std::string GetMimeType(std::string_view extension);
 std::string ToBase64(std::string_view);
 std::string FromBase64(std::string_view);
+int64_t ParseTime(std::string_view);
 
 template <typename Collection>
 std::optional<std::string> GetHeader(const Collection& collection,

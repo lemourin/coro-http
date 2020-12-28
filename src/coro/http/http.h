@@ -64,7 +64,7 @@ struct Response {
 template <GeneratorLike HttpBodyGenerator>
 Task<std::string> GetBody(HttpBodyGenerator body) {
   std::string result;
-  FOR_CO_AWAIT(const std::string& piece, body, { result += piece; });
+  FOR_CO_AWAIT(const std::string& piece, body) { result += piece; }
   co_return result;
 }
 
@@ -275,10 +275,10 @@ concept HttpClient = HttpClientImpl<T> && requires(T v) {
 template <HttpClientImpl Impl>
 class ToHttpClient : protected Impl {
  public:
-  using ResponseType = decltype(
-      std::declval<Impl>()
-          .Fetch(std::declval<Request<>>(), std::declval<stdx::stop_token>())
-          .await_resume());
+  using ResponseType = decltype(std::declval<Impl>()
+                                    .Fetch(std::declval<Request<>>(),
+                                           std::declval<stdx::stop_token>())
+                                    .await_resume());
 
   using Impl::Impl;
 

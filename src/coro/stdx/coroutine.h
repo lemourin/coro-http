@@ -34,16 +34,13 @@ using suspend_never = coro::std_ns::suspend_never;
 using suspend_always = coro::std_ns::suspend_always;
 }  // namespace coro::stdx
 
-#define FOR_CO_AWAIT(decl_expr, container_expr, code)  \
-  {                                                    \
-    auto &&___container = container_expr;              \
-    auto ___begin = co_await std::begin(___container); \
-    auto ___end = std::end(___container);              \
-    while (___begin != ___end) {                       \
-      decl_expr = *___begin;                           \
-      code;                                            \
-      co_await ++___begin;                             \
-    }                                                  \
-  }
+#define FOR_CO_AWAIT(decl_expr, container_expr)                              \
+  if (auto &&coro_container = container_expr; false) {                       \
+  } else if (auto coro_begin = co_await std::begin(coro_container); false) { \
+  } else if (auto coro_end = std::end(coro_container); false) {              \
+  } else                                                                     \
+    for (; coro_begin != coro_end; co_await ++coro_begin, 0)                 \
+      if (decl_expr = *coro_begin; false) {                                  \
+      } else
 
 #endif  // CORO_HTTP_COROUTINE_H

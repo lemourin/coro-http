@@ -56,7 +56,7 @@ class [[nodiscard]] Task<T> {
       type = Type::kException;
     }
 
-    stdx::coroutine_handle<void> continuation = coro::std_ns::noop_coroutine();
+    stdx::coroutine_handle<void> continuation = stdx::noop_coroutine();
     union {
       T value;
       std::exception_ptr exception;
@@ -117,7 +117,7 @@ class [[nodiscard]] Task<> {
     void return_void() { done = true; }
     void unhandled_exception() { exception = std::current_exception(); }
 
-    stdx::coroutine_handle<void> continuation = coro::std_ns::noop_coroutine();
+    stdx::coroutine_handle<void> continuation = stdx::noop_coroutine();
     std::exception_ptr exception;
     bool done = false;
   };

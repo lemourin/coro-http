@@ -36,7 +36,7 @@ class Semaphore {
 
  private:
   bool resumed_ = false;
-  stdx::coroutine_handle<void> continuation_ = coro::std_ns::noop_coroutine();
+  stdx::coroutine_handle<void> continuation_ = stdx::noop_coroutine();
 };
 
 }  // namespace coro

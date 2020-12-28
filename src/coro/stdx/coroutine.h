@@ -9,10 +9,8 @@
 #include <coroutine>
 #if defined(__clang__)
 namespace std::experimental {
-template <typename... Ts>
-struct coroutine_traits : std::coroutine_traits<Ts...> {};
-template <typename... Ts>
-struct coroutine_handle : std::coroutine_handle<Ts...> {};
+using std::coroutine_handle;
+using std::coroutine_traits;
 }  // namespace std::experimental
 #endif
 namespace coro {
@@ -28,10 +26,10 @@ namespace std_ns = std::experimental;
 #endif
 
 namespace coro::stdx {
-template <typename... Ts>
-using coroutine_handle = coro::std_ns::coroutine_handle<Ts...>;
-using suspend_never = coro::std_ns::suspend_never;
-using suspend_always = coro::std_ns::suspend_always;
+using coro::std_ns::coroutine_handle;
+using coro::std_ns::noop_coroutine;
+using coro::std_ns::suspend_always;
+using coro::std_ns::suspend_never;
 }  // namespace coro::stdx
 
 #define FOR_CO_AWAIT(decl_expr, container_expr)                              \

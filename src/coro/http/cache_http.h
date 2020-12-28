@@ -12,14 +12,12 @@ namespace coro::http {
 template <HttpClient Http>
 class CacheHttpImpl {
  public:
-  using Response = Response<>;
-
   CacheHttpImpl(Http http, int cache_size = 1024, int max_staleness_ms = 10000)
       : http_(std::make_unique<Http>(std::move(http))),
         cache_(cache_size, Factory{http_.get()}),
         max_staleness_ms_(max_staleness_ms) {}
 
-  Task<Response> Fetch(Request<> request, stdx::stop_token stop_token) const {
+  Task<Response<>> Fetch(Request<> request, stdx::stop_token stop_token) const {
     if (!IsCacheable(request)) {
       co_return ConvertResponse(
           co_await http_->Fetch(std::move(request), std::move(stop_token)));
@@ -64,13 +62,13 @@ class CacheHttpImpl {
     co_yield std::move(string);
   }
 
-  static Response ConvertResponse(typename Http::ResponseType response) {
+  static Response<> ConvertResponse(typename Http::ResponseType response) {
     return {.status = response.status,
             .headers = std::move(response.headers),
             .body = ConvertGenerator(std::move(response.body))};
   }
 
-  static Response ConvertResponse(CacheableResponse response) {
+  static Response<> ConvertResponse(CacheableResponse response) {
     return {.status = response.status,
             .headers = std::move(response.headers),
             .body = ToGenerator(std::move(response.body))};
@@ -103,9 +101,8 @@ class CacheHttpImpl {
   }
 
   static int64_t GetTime() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::system_clock::now().time_since_epoch())
-        .count();
+    return std::chrono::system_clock::now().time_since_epoch() /
+           std::chrono::milliseconds(1);
   }
 
   std::unique_ptr<Http> http_;

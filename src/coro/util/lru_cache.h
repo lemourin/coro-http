@@ -1,7 +1,7 @@
 #ifndef CORO_CLOUDSTORAGE_LRU_CACHE_H
 #define CORO_CLOUDSTORAGE_LRU_CACHE_H
 
-#include <coro/promise.h>
+#include <coro/shared_promise.h>
 #include <coro/stdx/stop_source.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/task.h>
@@ -86,7 +86,7 @@ class LRUCache {
       if (promise_it != std::end(pending_)) {
         co_return co_await promise_it->second.Get(std::move(stop_token));
       }
-      auto promise = Promise<Value>(
+      auto promise = SharedPromise<Value>(
           [d = this, key,
            stop_token = stop_source_.get_token()]() -> Task<Value> {
             auto guard = util::MakePointer(d, [&key](Data* d) {
@@ -112,7 +112,7 @@ class LRUCache {
     Factory factory_;
     int time_ = 0;
     std::unordered_map<Key, Value> map_;
-    std::unordered_map<Key, Promise<Value>> pending_;
+    std::unordered_map<Key, SharedPromise<Value>> pending_;
     std::unordered_map<Key, int> last_access_;
     std::set<Key, Compare> queue_;
     stdx::stop_source stop_source_;

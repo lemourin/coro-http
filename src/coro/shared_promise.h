@@ -1,5 +1,5 @@
-#ifndef CORO_CLOUDSTORAGE_PROMISE_H
-#define CORO_CLOUDSTORAGE_PROMISE_H
+#ifndef CORO_CLOUDSTORAGE_SHARED_PROMISE_H
+#define CORO_CLOUDSTORAGE_SHARED_PROMISE_H
 
 #include <coro/interrupted_exception.h>
 #include <coro/semaphore.h>
@@ -14,17 +14,17 @@
 namespace coro {
 
 template <typename T>
-class Promise {
+class SharedPromise {
  public:
   template <typename F>
-  explicit Promise(F producer)
+  explicit SharedPromise(F producer)
       : shared_data_(std::make_shared<SharedData>(
             SharedData{.producer = std::move(producer)})) {}
 
-  Promise(const Promise&) = delete;
-  Promise(Promise&&) = default;
-  Promise& operator=(const Promise&) = delete;
-  Promise& operator=(Promise&&) = default;
+  SharedPromise(const SharedPromise&) = delete;
+  SharedPromise(SharedPromise&&) = default;
+  SharedPromise& operator=(const SharedPromise&) = delete;
+  SharedPromise& operator=(SharedPromise&&) = default;
 
   Task<std::reference_wrapper<const T>> Get(
       coro::stdx::stop_token stop_token) const {
@@ -81,4 +81,4 @@ class Promise {
 
 }  // namespace coro
 
-#endif  // CORO_CLOUDSTORAGE_PROMISE_H
+#endif  // CORO_CLOUDSTORAGE_SHARED_PROMISE_H

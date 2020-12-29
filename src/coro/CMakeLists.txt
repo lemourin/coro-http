@@ -7,7 +7,7 @@ target_sources(coro PRIVATE
     task.h
     generator.h
     semaphore.h
-    promise.h
+    shared_promise.h
     interrupted_exception.h
 )
 

@@ -1,7 +1,7 @@
 #ifndef CORO_HTTP_SRC_CORO_HTTP_CURL_HTTP_H_
 #define CORO_HTTP_SRC_CORO_HTTP_CURL_HTTP_H_
 
-#include <coro/semaphore.h>
+#include <coro/promise.h>
 #include <coro/stdx/stop_callback.h>
 #include <curl/curl.h>
 #include <event2/event.h>

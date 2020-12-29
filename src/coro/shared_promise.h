@@ -2,7 +2,7 @@
 #define CORO_CLOUDSTORAGE_SHARED_PROMISE_H
 
 #include <coro/interrupted_exception.h>
-#include <coro/semaphore.h>
+#include <coro/promise.h>
 #include <coro/stdx/stop_callback.h>
 #include <coro/util/make_pointer.h>
 
@@ -38,7 +38,7 @@ class SharedPromise {
           shared_data->result = std::current_exception();
         }
         while (!shared_data->awaiters.empty()) {
-          (*shared_data->awaiters.begin())->resume();
+          (*shared_data->awaiters.begin())->SetValue();
         }
       });
     }
@@ -47,7 +47,7 @@ class SharedPromise {
 
  private:
   struct SharedData {
-    std::unordered_set<Semaphore*> awaiters;
+    std::unordered_set<Promise<void>*> awaiters;
     std::variant<std::monostate, std::exception_ptr, T> result;
     std::function<Task<T>()> producer;
   };
@@ -56,23 +56,20 @@ class SharedPromise {
       std::shared_ptr<SharedData> shared_data,
       coro::stdx::stop_token stop_token) {
     if (std::holds_alternative<std::monostate>(shared_data->result)) {
-      Semaphore semaphore;
+      Promise<void> semaphore;
       shared_data->awaiters.insert(&semaphore);
       auto guard = coro::util::MakePointer(
-          &semaphore, [shared_data](Semaphore* semaphore) {
+          &semaphore, [shared_data](Promise<void>* semaphore) {
             shared_data->awaiters.erase(semaphore);
           });
-      coro::stdx::stop_callback stop_callback(stop_token,
-                                              [&] { semaphore.resume(); });
+      coro::stdx::stop_callback stop_callback(
+          stop_token, [&] { semaphore.SetException(InterruptedException()); });
       co_await semaphore;
     }
     if (std::holds_alternative<T>(shared_data->result)) {
       co_return std::get<T>(shared_data->result);
-    } else if (std::holds_alternative<std::exception_ptr>(
-                   shared_data->result)) {
-      std::rethrow_exception(std::get<std::exception_ptr>(shared_data->result));
     } else {
-      throw InterruptedException();
+      std::rethrow_exception(std::get<std::exception_ptr>(shared_data->result));
     }
   }
 

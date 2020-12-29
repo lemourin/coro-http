@@ -2,7 +2,7 @@
 #define CORO_HTTP_HTTP_SERVER_H
 
 #include <coro/http/http_parse.h>
-#include <coro/semaphore.h>
+#include <coro/promise.h>
 #include <coro/stdx/stop_callback.h>
 #include <coro/stdx/stop_source.h>
 #include <coro/task.h>
@@ -123,13 +123,15 @@ class HttpServer {
       auto buffer = util::MakePointer(evbuffer_new(), evbuffer_free);
       FOR_CO_AWAIT(const std::string& chunk, response.body) {
         evbuffer_add(buffer.get(), chunk.c_str(), chunk.size());
-        Semaphore semaphore;
+        Promise<void> semaphore;
         evhttp_send_reply_chunk_with_cb(ev_request, buffer.get(), OnWriteReady,
                                         &semaphore);
-        stdx::stop_callback stop_callback_dl1(stop_source_.get_token(),
-                                              [&] { semaphore.resume(); });
-        stdx::stop_callback stop_callback_dl2(stop_source.get_token(),
-                                              [&] { semaphore.resume(); });
+        stdx::stop_callback stop_callback_dl1(stop_source_.get_token(), [&] {
+          semaphore.SetException(InterruptedException());
+        });
+        stdx::stop_callback stop_callback_dl2(stop_source.get_token(), [&] {
+          semaphore.SetException(InterruptedException());
+        });
         co_await semaphore;
       }
       ResetOnCloseCallback(ev_request);
@@ -166,22 +168,19 @@ class HttpServer {
       Check(HttpException::kUnknown);
     }
     co_yield chunk;
-    EvBufferData data;
-    stdx::stop_callback stop_callback(stop_token,
-                                      [&] { data.semaphore.resume(); });
+    Promise<const evbuffer_cb_info*> data;
+    stdx::stop_callback stop_callback(
+        stop_token, [&] { data.SetException(InterruptedException()); });
     auto cb_entry =
         util::MakePointer(evbuffer_add_cb(buffer, EvBufferCallback, &data),
                           [buffer](evbuffer_cb_entry* cb_entry) {
                             evbuffer_remove_cb_entry(buffer, cb_entry);
                           });
     while (size > 0) {
-      co_await data.semaphore;
-      if (stop_token.stop_requested()) {
-        throw InterruptedException();
-      }
-      data.semaphore = Semaphore();
-      std::cerr << data.info->n_added << "\n";
-      size -= data.info->n_added;
+      const evbuffer_cb_info* info = co_await data;
+      data = Promise<const evbuffer_cb_info*>();
+      std::cerr << info->n_added << "\n";
+      size -= info->n_added;
     }
   }
 
@@ -212,13 +211,13 @@ class HttpServer {
   }
 
   static void OnWriteReady(evhttp_connection*, void* arg) {
-    reinterpret_cast<Semaphore*>(arg)->resume();
+    reinterpret_cast<Promise<void>*>(arg)->SetValue();
   }
 
   static void OnQuit(evutil_socket_t, short, void* handle) {
     auto http_server = reinterpret_cast<HttpServer*>(handle);
     evhttp_free(http_server->http_.release());
-    http_server->quit_semaphore_.resume();
+    http_server->quit_semaphore_.SetValue();
   }
 
   static void ResetOnCloseCallback(evhttp_request* request) {
@@ -230,9 +229,7 @@ class HttpServer {
 
   static void EvBufferCallback(evbuffer*, const evbuffer_cb_info* info,
                                void* arg) {
-    auto ev_buffer_data = reinterpret_cast<EvBufferData*>(arg);
-    ev_buffer_data->info = info;
-    ev_buffer_data->semaphore.resume();
+    reinterpret_cast<Promise<const evbuffer_cb_info*>*>(arg)->SetValue(info);
   }
 
   static void Check(int code) {
@@ -240,11 +237,6 @@ class HttpServer {
       throw HttpException(code, "http server error");
     }
   }
-
-  struct EvBufferData {
-    Semaphore semaphore;
-    const evbuffer_cb_info* info;
-  };
 
   using HandlerArgumentList = util::ArgumentListTypeT<HandlerType>;
   static_assert(util::TypeListLengthV<HandlerArgumentList> == 2);
@@ -267,7 +259,7 @@ class HttpServer {
   int current_connections_ = 0;
   stdx::stop_source stop_source_;
   event quit_event_;
-  Semaphore quit_semaphore_;
+  Promise<void> quit_semaphore_;
   HandlerType on_request_;
 };
 

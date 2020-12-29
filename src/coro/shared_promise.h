@@ -13,13 +13,13 @@
 
 namespace coro {
 
-template <typename T>
+template <typename F>
 class SharedPromise {
  public:
+  using T = decltype(std::declval<F>()().await_resume());
   using TaskT = std::conditional_t<std::is_same_v<void, T>, Task<>,
                                    Task<std::reference_wrapper<const T>>>;
 
-  template <typename F>
   explicit SharedPromise(F producer)
       : shared_data_(std::make_shared<SharedData>(
             SharedData{.producer = std::move(producer)})) {}
@@ -32,22 +32,23 @@ class SharedPromise {
   TaskT Get(coro::stdx::stop_token stop_token) const {
     auto shared_data = shared_data_;
     if (shared_data->producer) {
-      Invoke([shared_data, producer = std::exchange(shared_data->producer,
-                                                    nullptr)]() -> Task<> {
-        try {
-          if constexpr (std::is_same_v<void, T>) {
-            co_await producer();
-            shared_data->result = std::monostate();
-          } else {
-            shared_data->result = co_await producer();
-          }
-        } catch (const std::exception&) {
-          shared_data->result = std::current_exception();
-        }
-        while (!shared_data->awaiters.empty()) {
-          (*shared_data->awaiters.begin())->SetValue();
-        }
-      });
+      Invoke(
+          [shared_data, producer = *std::exchange(shared_data->producer,
+                                                  std::nullopt)]() -> Task<> {
+            try {
+              if constexpr (std::is_same_v<void, T>) {
+                co_await producer();
+                shared_data->result = std::monostate();
+              } else {
+                shared_data->result = co_await producer();
+              }
+            } catch (const std::exception&) {
+              shared_data->result = std::current_exception();
+            }
+            while (!shared_data->awaiters.empty()) {
+              (*shared_data->awaiters.begin())->SetValue();
+            }
+          });
     }
     return Get(shared_data, std::move(stop_token));
   }
@@ -59,9 +60,7 @@ class SharedPromise {
     std::variant<NotReady, std::exception_ptr,
                  std::conditional_t<std::is_same_v<T, void>, std::monostate, T>>
         result;
-    std::function<
-        std::conditional_t<std::is_same_v<T, void>, Task<>, Task<T>>()>
-        producer;
+    std::optional<F> producer;
   };
 
   static TaskT Get(std::shared_ptr<SharedData> shared_data,

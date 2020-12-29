@@ -86,21 +86,27 @@ class LRUCache {
       if (promise_it != std::end(pending_)) {
         co_return co_await promise_it->second.Get(std::move(stop_token));
       }
-      auto promise = SharedPromise<Value>(
-          [d = this, key,
-           stop_token = stop_source_.get_token()]() -> Task<Value> {
-            auto guard = util::MakePointer(d, [&key](Data* d) {
-              d->pending_cleanup_queue_.emplace_back(key);
-            });
-            auto result = co_await d->factory_(key, std::move(stop_token));
-            d->Insert(std::move(key), result);
-            co_return std::move(result);
-          });
+      auto promise = SharedPromise(ProduceValue{
+          .d = this, .key = key, .stop_token = stop_source_.get_token()});
       promise_it = pending_.insert({key, std::move(promise)}).first;
       co_return co_await promise_it->second.Get(std::move(stop_token));
     }
 
    private:
+    struct ProduceValue {
+      Task<Value> operator()() const {
+        auto guard = util::MakePointer(d, [this](Data* d) {
+          d->pending_cleanup_queue_.emplace_back(key);
+        });
+        auto result = co_await d->factory_(key, std::move(stop_token));
+        d->Insert(std::move(key), result);
+        co_return std::move(result);
+      }
+      Data* d;
+      Key key;
+      stdx::stop_token stop_token;
+    };
+
     struct Compare {
       bool operator()(const Key& k1, const Key& k2) const {
         return d->last_access_[k1] < d->last_access_[k2];
@@ -112,7 +118,7 @@ class LRUCache {
     Factory factory_;
     int time_ = 0;
     std::unordered_map<Key, Value> map_;
-    std::unordered_map<Key, SharedPromise<Value>> pending_;
+    std::unordered_map<Key, SharedPromise<ProduceValue>> pending_;
     std::unordered_map<Key, int> last_access_;
     std::set<Key, Compare> queue_;
     stdx::stop_source stop_source_;

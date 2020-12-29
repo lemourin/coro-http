@@ -1,6 +1,7 @@
 #ifndef CORO_TASK_H
 #define CORO_TASK_H
 
+#include <coro/interrupted_exception.h>
 #include <coro/stdx/concepts.h>
 #include <coro/stdx/coroutine.h>
 
@@ -65,7 +66,7 @@ class [[nodiscard]] Task<T> {
   };
 
   Task(const Task&) = delete;
-  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task && task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
   ~Task() {
     if (handle_) {
       handle_.destroy();
@@ -123,7 +124,7 @@ class [[nodiscard]] Task<> {
   };
 
   Task(const Task&) = delete;
-  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task && task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
   ~Task() {
     if (handle_) {
       handle_.destroy();
@@ -173,7 +174,12 @@ struct RunTask {
   };
 };
 
-inline RunTask Invoke(Task<> task) { co_await task; }
+inline RunTask Invoke(Task<> task) {
+  try {
+    co_await task;
+  } catch (const InterruptedException&) {
+  }
+}
 
 template <typename F, typename... Args>
 RunTask Invoke(F func, Args&&... args) {

@@ -16,6 +16,9 @@ namespace coro {
 template <typename T>
 class SharedPromise {
  public:
+  using TaskT = std::conditional_t<std::is_same_v<void, T>, Task<>,
+                                   Task<std::reference_wrapper<const T>>>;
+
   template <typename F>
   explicit SharedPromise(F producer)
       : shared_data_(std::make_shared<SharedData>(
@@ -26,14 +29,18 @@ class SharedPromise {
   SharedPromise& operator=(const SharedPromise&) = delete;
   SharedPromise& operator=(SharedPromise&&) = default;
 
-  Task<std::reference_wrapper<const T>> Get(
-      coro::stdx::stop_token stop_token) const {
+  TaskT Get(coro::stdx::stop_token stop_token) const {
     auto shared_data = shared_data_;
     if (shared_data->producer) {
       Invoke([shared_data, producer = std::exchange(shared_data->producer,
                                                     nullptr)]() -> Task<> {
         try {
-          shared_data->result = co_await producer();
+          if constexpr (std::is_same_v<void, T>) {
+            co_await producer();
+            shared_data->result = std::monostate();
+          } else {
+            shared_data->result = co_await producer();
+          }
         } catch (const std::exception&) {
           shared_data->result = std::current_exception();
         }
@@ -46,16 +53,20 @@ class SharedPromise {
   }
 
  private:
+  struct NotReady {};
   struct SharedData {
     std::unordered_set<Promise<void>*> awaiters;
-    std::variant<std::monostate, std::exception_ptr, T> result;
-    std::function<Task<T>()> producer;
+    std::variant<NotReady, std::exception_ptr,
+                 std::conditional_t<std::is_same_v<T, void>, std::monostate, T>>
+        result;
+    std::function<
+        std::conditional_t<std::is_same_v<T, void>, Task<>, Task<T>>()>
+        producer;
   };
 
-  static Task<std::reference_wrapper<const T>> Get(
-      std::shared_ptr<SharedData> shared_data,
-      coro::stdx::stop_token stop_token) {
-    if (std::holds_alternative<std::monostate>(shared_data->result)) {
+  static TaskT Get(std::shared_ptr<SharedData> shared_data,
+                   coro::stdx::stop_token stop_token) {
+    if (std::holds_alternative<NotReady>(shared_data->result)) {
       Promise<void> semaphore;
       shared_data->awaiters.insert(&semaphore);
       auto guard = coro::util::MakePointer(
@@ -66,10 +77,11 @@ class SharedPromise {
           stop_token, [&] { semaphore.SetException(InterruptedException()); });
       co_await semaphore;
     }
-    if (std::holds_alternative<T>(shared_data->result)) {
-      co_return std::get<T>(shared_data->result);
-    } else {
+    if (std::holds_alternative<std::exception_ptr>(shared_data->result)) {
       std::rethrow_exception(std::get<std::exception_ptr>(shared_data->result));
+    }
+    if constexpr (!std::is_same_v<T, void>) {
+      co_return std::cref(std::get<T>(shared_data->result));
     }
   }
 

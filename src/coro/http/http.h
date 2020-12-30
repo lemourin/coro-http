@@ -76,6 +76,7 @@ class HttpException : public std::exception {
   static constexpr int kInvalidMethod = -4;
   static constexpr int kBadRequest = 400;
   static constexpr int kNotFound = 404;
+  static constexpr int kRangeNotSatisfiable = 416;
 
   HttpException(int status) : HttpException(status, ToString(status)) {}
 
@@ -100,6 +101,8 @@ class HttpException : public std::exception {
         return "Invalid method.";
       case kBadRequest:
         return "Bad request.";
+      case kRangeNotSatisfiable:
+        return "Range not satisfiable.";
       default:
         return "Unknown.";
     }
@@ -275,10 +278,10 @@ concept HttpClient = HttpClientImpl<T> && requires(T v) {
 template <HttpClientImpl Impl>
 class ToHttpClient : protected Impl {
  public:
-  using ResponseType = decltype(std::declval<Impl>()
-                                    .Fetch(std::declval<Request<>>(),
-                                           std::declval<stdx::stop_token>())
-                                    .await_resume());
+  using ResponseType = decltype(
+      std::declval<Impl>()
+          .Fetch(std::declval<Request<>>(), std::declval<stdx::stop_token>())
+          .await_resume());
 
   using Impl::Impl;
 

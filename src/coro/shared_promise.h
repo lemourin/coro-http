@@ -25,9 +25,9 @@ class SharedPromise {
             SharedData{.producer = std::move(producer)})) {}
 
   SharedPromise(const SharedPromise&) = delete;
-  SharedPromise(SharedPromise&&) = default;
+  SharedPromise(SharedPromise&&) noexcept = default;
   SharedPromise& operator=(const SharedPromise&) = delete;
-  SharedPromise& operator=(SharedPromise&&) = default;
+  SharedPromise& operator=(SharedPromise&&) noexcept = default;
 
   TaskT Get(coro::stdx::stop_token stop_token) const {
     auto shared_data = shared_data_;

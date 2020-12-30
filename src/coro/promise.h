@@ -14,12 +14,12 @@ class Promise {
  public:
   Promise() = default;
   Promise(const Promise&) = delete;
-  Promise(Promise&& other)
+  Promise(Promise&& other) noexcept
       : result_(std::move(other.result_)),
         continuation_(std::exchange(other.continuation_, nullptr)) {}
 
   Promise& operator=(const Promise&) = delete;
-  Promise& operator=(Promise&& other) {
+  Promise& operator=(Promise&& other) noexcept {
     result_ = std::move(other.result_);
     continuation_ = std::exchange(other.continuation_, nullptr);
     return *this;
@@ -59,12 +59,12 @@ class Promise<void> {
  public:
   Promise() = default;
   Promise(const Promise&) = delete;
-  Promise(Promise&& other)
+  Promise(Promise&& other) noexcept
       : result_(std::move(other.result_)),
         continuation_(std::exchange(other.continuation_, nullptr)) {}
 
   Promise& operator=(const Promise&) = delete;
-  Promise& operator=(Promise&& other) {
+  Promise& operator=(Promise&& other) noexcept {
     result_ = std::move(other.result_);
     continuation_ = std::exchange(other.continuation_, nullptr);
     return *this;

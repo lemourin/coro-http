@@ -10,3 +10,6 @@
 [submodule "contrib/nghttp2"]
 	path = contrib/nghttp2
 	url = https://github.com/nghttp2/nghttp2
+[submodule "contrib/libressl"]
+	path = contrib/libressl
+	url = https://github.com/libressl-portable/portable

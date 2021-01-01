@@ -1,0 +1,65 @@
+From 71837ea68fcc3a54a012c571d10f13bf4ee15277 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Pawe=C5=82=20Wegner?= <pawel.wegner95@gmail.com>
+Date: Fri, 1 Jan 2021 01:13:17 +0100
+Subject: [PATCH] curl: adjust cmake file.
+
+---
+ CMakeLists.txt     | 13 -------------
+ lib/CMakeLists.txt |  3 ---
+ 2 files changed, 16 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ca77ba946..1d48fbd3f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -150,8 +150,6 @@ set(CURL_LIBS "")
+ 
+ if(ENABLE_ARES)
+   set(USE_ARES 1)
+-  find_package(CARES REQUIRED)
+-  list(APPEND CURL_LIBS ${CARES_LIBRARY})
+ endif()
+ 
+ include(CurlSymbolHiding)
+@@ -447,11 +445,6 @@ if(CMAKE_USE_NSS)
+ endif()
+ 
+ option(USE_NGHTTP2 "Use Nghttp2 library" OFF)
+-if(USE_NGHTTP2)
+-  find_package(NGHTTP2 REQUIRED)
+-  include_directories(${NGHTTP2_INCLUDE_DIRS})
+-  list(APPEND CURL_LIBS ${NGHTTP2_LIBRARIES})
+-endif()
+ 
+ function(CheckQuicSupportInOpenSSL)
+   # Be sure that the OpenSSL library actually supports QUIC.
+@@ -1529,12 +1522,6 @@ configure_package_config_file(CMake/curl-config.cmake.in
+         INSTALL_DESTINATION ${CURL_INSTALL_CMAKE_DIR}
+ )
+ 
+-install(
+-        EXPORT "${TARGETS_EXPORT_NAME}"
+-        NAMESPACE "${PROJECT_NAME}::"
+-        DESTINATION ${CURL_INSTALL_CMAKE_DIR}
+-)
+-
+ install(
+         FILES ${version_config} ${project_config}
+         DESTINATION ${CURL_INSTALL_CMAKE_DIR}
+diff --git a/lib/CMakeLists.txt b/lib/CMakeLists.txt
+index 911c9096d..d697de361 100644
+--- a/lib/CMakeLists.txt
++++ b/lib/CMakeLists.txt
+@@ -74,9 +74,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../include)
+ include_directories(${CMAKE_CURRENT_BINARY_DIR}/..)
+ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+ include_directories(${CMAKE_CURRENT_BINARY_DIR})
+-if(USE_ARES)
+-  include_directories(${CARES_INCLUDE_DIR})
+-endif()
+ 
+ add_library(
+   ${LIB_NAME}
+-- 
+2.25.1
+

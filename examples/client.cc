@@ -11,17 +11,18 @@
 
 class CancelRequest {
  public:
-  CancelRequest(event_base *event_loop,
-                coro::stdx::stop_source request_stop_source)
-      : task_(Init(event_loop, std::move(request_stop_source))) {}
+  CancelRequest(const coro::util::EventLoop &event_loop,
+                coro::stdx::stop_source request_stop_source) {
+    coro::Invoke(Init(event_loop, std::move(request_stop_source)));
+  }
 
   ~CancelRequest() { timeout_stop_source_.request_stop(); }
 
  private:
-  coro::Task<> Init(event_base *event_loop,
+  coro::Task<> Init(const coro::util::EventLoop &event_loop,
                     coro::stdx::stop_source request_stop_source) noexcept {
     try {
-      co_await coro::Wait(event_loop, 3000, timeout_stop_source_.get_token());
+      co_await event_loop.Wait(3000, timeout_stop_source_.get_token());
       std::cerr << "REQUESTING STOP\n";
       request_stop_source.request_stop();
     } catch (const coro::InterruptedException &) {
@@ -29,15 +30,15 @@ class CancelRequest {
   };
 
   coro::stdx::stop_source timeout_stop_source_;
-  coro::Task<> task_;
 };
 
-coro::Task<> CoMain(event_base *event_loop) noexcept {
+coro::Task<> CoMain(event_base *event_base) noexcept {
   try {
+    coro::http::CurlHttp http(event_base);
+    coro::util::EventLoop event_loop(event_base);
     coro::stdx::stop_source stop_source;
     CancelRequest cancel_request(event_loop, stop_source);
 
-    coro::http::CurlHttp http(event_loop);
     coro::http::Response response =
         co_await http.Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv",
                             stop_source.get_token());
@@ -50,7 +51,7 @@ coro::Task<> CoMain(event_base *event_loop) noexcept {
     std::size_t size = 0;
     FOR_CO_AWAIT(const std::string &bytes, response.body) {
       std::cerr << "awaiting...\n";
-      co_await coro::Wait(event_loop, 1000, stop_source.get_token());
+      co_await event_loop.Wait(1000, stop_source.get_token());
       std::cerr << "bytes:" << bytes.size() << "\n";
       size += bytes.size();
     }
@@ -78,7 +79,7 @@ int main() {
 #endif
 
   auto base = coro::util::MakePointer(event_base_new(), event_base_free);
-  CoMain(base.get());
+  coro::Invoke(CoMain(base.get()));
   event_base_dispatch(base.get());
   return 0;
 }

@@ -1,5 +1,6 @@
 #include <coro/generator.h>
 #include <coro/http/curl_http.h>
+#include <coro/http/http_parse.h>
 #include <coro/http/http_server.h>
 #include <coro/util/make_pointer.h>
 
@@ -12,26 +13,29 @@ constexpr const char *kUrl =
 template <coro::http::HttpClient HttpClient>
 class HttpHandler {
  public:
-  explicit HttpHandler(HttpClient &http) : http_(http) {}
+  HttpHandler(const HttpClient &http, coro::Promise<void> *semaphore)
+      : http_(http), semaphore_(semaphore) {}
 
   coro::Task<typename HttpClient::ResponseType> operator()(
       const coro::http::Request<> &request,
-      const coro::stdx::stop_token &stop_token) const {
-    std::unordered_multimap<std::string, std::string> headers;
-    auto range_it = request.headers.find("Range");
-    if (range_it != std::end(request.headers)) {
-      headers.emplace(*range_it);
+      coro::stdx::stop_token stop_token) const {
+    coro::http::Request<> pipe_request{.url = kUrl};
+    if (auto range_header = coro::http::GetHeader(request.headers, "Range")) {
+      pipe_request.headers.emplace_back("Range", std::move(*range_header));
     }
-    auto pipe_request =
-        coro::http::Request<>{.url = kUrl, .headers = std::move(headers)};
-    auto pipe = co_await http_.Fetch(std::move(pipe_request), stop_token);
+    if (request.url == "/quit") {
+      semaphore_->SetValue();
+    }
+    auto pipe =
+        co_await http_.Fetch(std::move(pipe_request), std::move(stop_token));
     co_return typename HttpClient::ResponseType{.status = pipe.status,
                                                 .headers = pipe.headers,
                                                 .body = std::move(pipe.body)};
   }
 
  private:
-  HttpClient &http_;
+  const HttpClient &http_;
+  coro::Promise<void> *semaphore_;
 };
 
 int main() {
@@ -47,9 +51,15 @@ int main() {
 #endif
 
   auto base = coro::util::MakePointer(event_base_new(), event_base_free);
-  coro::http::CurlHttp http(base.get());
-  coro::http::HttpServer http_server(
-      base.get(), {.address = "0.0.0.0", .port = 4444}, HttpHandler{http});
+  coro::Invoke([base = base.get()]() -> coro::Task<> {
+    coro::http::CurlHttp http(base);
+    coro::Promise<void> semaphore;
+    coro::http::HttpServer http_server(base,
+                                       {.address = "0.0.0.0", .port = 4444},
+                                       HttpHandler{http, &semaphore});
+    co_await semaphore;
+    co_await http_server.Quit();
+  });
   event_base_dispatch(base.get());
   return 0;
 }

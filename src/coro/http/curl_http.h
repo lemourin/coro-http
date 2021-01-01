@@ -106,13 +106,13 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
   friend class CurlHandle;
   friend class CurlHttpImpl;
 
-  CurlHandle handle_;
   event chunk_ready_;
   event body_ready_;
   bool body_ready_fired_ = false;
   int status_ = -1;
   std::exception_ptr exception_ptr_;
   std::string data_;
+  CurlHandle handle_;
 };
 
 class CurlHttpOperation {
@@ -137,7 +137,6 @@ class CurlHttpOperation {
   friend class CurlHandle;
 
   stdx::coroutine_handle<void> awaiting_coroutine_;
-  CurlHandle handle_;
   std::exception_ptr exception_ptr_;
   event headers_ready_;
   bool headers_ready_event_posted_;
@@ -145,6 +144,7 @@ class CurlHttpOperation {
   std::vector<std::pair<std::string, std::string>> headers_;
   std::string body_;
   bool no_body_ = false;
+  CurlHandle handle_;
 };
 
 class CurlHttpImpl {

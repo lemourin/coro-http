@@ -162,7 +162,7 @@ class HttpBodyGenerator {
   Iterator end();
 
  protected:
-  void ReceivedData(std::string_view data);
+  void ReceivedData(std::string data);
   void Close(int status);
   void Close(std::exception_ptr);
 
@@ -217,8 +217,8 @@ typename HttpBodyGenerator<Impl>::Iterator HttpBodyGenerator<Impl>::end() {
 }
 
 template <typename Impl>
-void HttpBodyGenerator<Impl>::ReceivedData(std::string_view data) {
-  data_ += data;
+void HttpBodyGenerator<Impl>::ReceivedData(std::string data) {
+  data_ += std::move(data);
   if (handle_) {
     std::exchange(handle_, nullptr).resume();
   }
@@ -278,10 +278,10 @@ concept HttpClient = HttpClientImpl<T> && requires(T v) {
 template <HttpClientImpl Impl>
 class ToHttpClient : protected Impl {
  public:
-  using ResponseType = decltype(
-      std::declval<Impl>()
-          .Fetch(std::declval<Request<>>(), std::declval<stdx::stop_token>())
-          .await_resume());
+  using ResponseType = decltype(std::declval<Impl>()
+                                    .Fetch(std::declval<Request<>>(),
+                                           std::declval<stdx::stop_token>())
+                                    .await_resume());
 
   using Impl::Impl;
 

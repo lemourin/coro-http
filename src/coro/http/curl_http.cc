@@ -283,13 +283,13 @@ CurlHandle& CurlHandle::operator=(CurlHandle&& handle) noexcept {
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(
     CurlHttpBodyGenerator&& other) noexcept
     : HttpBodyGenerator(std::move(other)),
-      handle_(std::move(other.handle_), this),
       chunk_ready_(MoveEvent(&other.chunk_ready_, this)),
       body_ready_(MoveEvent(&other.body_ready_, this)),
       body_ready_fired_(other.body_ready_fired_),
       status_(other.status_),
       exception_ptr_(other.exception_ptr_),
-      data_(std::move(other.data_)) {}
+      data_(std::move(other.data_)),
+      handle_(std::move(other.handle_), this) {}
 
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle handle,
                                              std::string initial_chunk)
@@ -304,13 +304,13 @@ CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle handle,
 CurlHttpBodyGenerator& CurlHttpBodyGenerator::operator=(
     CurlHttpBodyGenerator&& other) noexcept {
   static_cast<HttpBodyGenerator&>(*this) = std::move(other);
-  handle_ = CurlHandle(std::move(other.handle_), this);
   MoveAssignEvent(&chunk_ready_, &other.chunk_ready_, this);
   MoveAssignEvent(&body_ready_, &other.body_ready_, this);
   body_ready_fired_ = other.body_ready_fired_;
   status_ = other.status_;
   exception_ptr_ = other.exception_ptr_;
   data_ = std::move(other.data_);
+  handle_ = CurlHandle(std::move(other.handle_), this);
   return *this;
 }
 
@@ -353,24 +353,24 @@ void CurlHttpBodyGenerator::Resume() {
 CurlHttpOperation::CurlHttpOperation(CURLM* http, event_base* event_loop,
                                      Request<> request,
                                      stdx::stop_token stop_token)
-    : handle_(http, event_loop, std::move(request), std::move(stop_token),
-              this),
-      headers_ready_(),
-      headers_ready_event_posted_() {
+    : headers_ready_(),
+      headers_ready_event_posted_(),
+      handle_(http, event_loop, std::move(request), std::move(stop_token),
+              this) {
   Check(event_assign(&headers_ready_, handle_.event_loop_, -1, 0,
                      OnHeadersReady, this));
 }
 
 CurlHttpOperation::CurlHttpOperation(CurlHttpOperation&& other) noexcept
     : awaiting_coroutine_(std::exchange(other.awaiting_coroutine_, nullptr)),
-      handle_(std::move(other.handle_), this),
       headers_ready_(MoveEvent(&other.headers_ready_, this)),
       exception_ptr_(other.exception_ptr_),
       headers_ready_event_posted_(other.headers_ready_event_posted_),
       status_(other.status_),
       headers_(std::move(other.headers_)),
       body_(std::move(other.body_)),
-      no_body_(other.no_body_) {}
+      no_body_(other.no_body_),
+      handle_(std::move(other.handle_), this) {}
 
 CurlHttpOperation::~CurlHttpOperation() {
   if (headers_ready_.ev_base) {

@@ -326,9 +326,11 @@ Generator<T> async_generator_promise<T>::get_return_object() noexcept {
 }  // namespace detail
 
 // clang-format off
-template <typename T>
-concept GeneratorLike = requires(T v) {
-  { v.begin() } -> Awaitable;
+template <typename T, typename R>
+concept GeneratorLike = requires(T v, stdx::coroutine_handle<void> handle) {
+  v.begin().await_suspend(handle);
+  { v.begin().await_ready() } -> stdx::same_as<bool>;
+  { *v.begin().await_resume() } -> stdx::convertible_to<R>;
   v.end();
 };
 // clang-format on

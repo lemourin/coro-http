@@ -53,7 +53,7 @@ class CacheHttpImpl {
     co_return result;
   }
 
-  template <GeneratorLike T>
+  template <GeneratorLike<std::string_view> T>
   static Generator<std::string> ConvertGenerator(T generator) {
     FOR_CO_AWAIT(auto& d, generator) { co_yield std::move(d); }
   }

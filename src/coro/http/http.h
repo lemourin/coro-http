@@ -54,17 +54,18 @@ struct Request {
   }
 };
 
-template <GeneratorLike HttpBodyGenerator = Generator<std::string>>
+template <GeneratorLike<std::string_view> HttpBodyGenerator =
+              Generator<std::string>>
 struct Response {
   int status = -1;
   std::vector<std::pair<std::string, std::string>> headers;
   HttpBodyGenerator body;
 };
 
-template <GeneratorLike HttpBodyGenerator>
+template <GeneratorLike<std::string_view> HttpBodyGenerator>
 Task<std::string> GetBody(HttpBodyGenerator body) {
   std::string result;
-  FOR_CO_AWAIT(const std::string& piece, body) { result += piece; }
+  FOR_CO_AWAIT(std::string & piece, body) { result += std::move(piece); }
   co_return result;
 }
 
@@ -254,7 +255,7 @@ template <typename T>
 concept ResponseLike = requires (T v) {
   { v.status } -> stdx::convertible_to<int>;
   { v.headers } -> HeaderCollection;
-  { v.body } -> coro::GeneratorLike;
+  { v.body } -> coro::GeneratorLike<std::string_view>;
 };
 
 template <typename T>
@@ -315,16 +316,6 @@ class ToHttpClient : protected Impl {
   static Generator<std::string> ToGenerator(std::string value) {
     co_yield value;
   }
-};
-
-struct HttpOperationStub {
-  Response<> await_resume();
-};
-
-struct HttpStub {
-  using ResponseType = Response<>;
-  HttpOperationStub Fetch(std::string, stdx::stop_token) const;
-  HttpOperationStub Fetch(Request<>, stdx::stop_token) const;
 };
 
 }  // namespace coro::http

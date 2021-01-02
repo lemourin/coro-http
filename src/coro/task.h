@@ -66,7 +66,7 @@ class [[nodiscard]] Task<T> {
   };
 
   Task(const Task&) = delete;
-  Task(Task && task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
   ~Task() {
     if (handle_) {
       handle_.destroy();
@@ -124,7 +124,7 @@ class [[nodiscard]] Task<> {
   };
 
   Task(const Task&) = delete;
-  Task(Task && task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
   ~Task() {
     if (handle_) {
       handle_.destroy();
@@ -156,9 +156,9 @@ class [[nodiscard]] Task<> {
 };
 
 // clang-format off
-template <typename T>
+template <typename T, typename Result>
 concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
-  v.await_resume();
+  { v.await_resume() } -> stdx::convertible_to<Result>;
   v.await_suspend(handle);
   { v.await_ready() } -> stdx::same_as<bool>;
 };

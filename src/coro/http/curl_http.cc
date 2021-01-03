@@ -190,6 +190,8 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
   Check(curl_easy_setopt(handle_.get(), CURLOPT_SSL_VERIFYPEER, 0L));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_CUSTOMREQUEST,
                          MethodToString(request.method)));
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_HTTP_VERSION,
+                         CURL_HTTP_VERSION_1_1));
   std::optional<long> content_length;
   curl_slist* header_list = nullptr;
   for (const auto& [header_name, header_value] : request.headers) {

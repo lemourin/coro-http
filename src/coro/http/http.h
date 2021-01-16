@@ -16,13 +16,7 @@
 
 namespace coro::http {
 
-enum class Method {
-  kGet,
-  kPost,
-  kOptions,
-  kHead,
-  kPropfind,
-};
+enum class Method { kGet, kPost, kOptions, kHead, kPatch, kDelete, kPropfind };
 
 inline const char* MethodToString(Method method) {
   switch (method) {
@@ -34,6 +28,10 @@ inline const char* MethodToString(Method method) {
       return "HEAD";
     case Method::kOptions:
       return "OPTIONS";
+    case Method::kPatch:
+      return "PATCH";
+    case Method::kDelete:
+      return "DELETE";
     case Method::kPropfind:
       return "PROPFIND";
     default:
@@ -277,12 +275,12 @@ concept HttpClient = HttpClientImpl<T> && requires(T v) {
 // clang-format on
 
 template <HttpClientImpl Impl>
-class ToHttpClient : protected Impl {
+class ToHttpClient : public Impl {
  public:
-  using ResponseType = decltype(std::declval<Impl>()
-                                    .Fetch(std::declval<Request<>>(),
-                                           std::declval<stdx::stop_token>())
-                                    .await_resume());
+  using ResponseType = decltype(
+      std::declval<Impl>()
+          .Fetch(std::declval<Request<>>(), std::declval<stdx::stop_token>())
+          .await_resume());
 
   using Impl::Impl;
 

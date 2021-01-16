@@ -35,6 +35,8 @@ class CacheHttpImpl {
     co_return ConvertResponse(response);
   }
 
+  void InvalidateCache() { last_invalidate_ms_ = GetTime(); }
+
  private:
   struct CacheableResponse {
     int status;
@@ -97,6 +99,9 @@ class CacheHttpImpl {
     if (response.status >= 400) {
       return true;
     }
+    if (response.timestamp <= last_invalidate_ms_) {
+      return true;
+    }
     return GetTime() - response.timestamp >= max_staleness_ms_;
   }
 
@@ -108,6 +113,7 @@ class CacheHttpImpl {
   std::unique_ptr<Http> http_;
   util::LRUCache<Request<std::string>, Factory> cache_;
   int max_staleness_ms_;
+  int64_t last_invalidate_ms_ = 0;
 };  // namespace coro::http
 
 template <HttpClient Http>

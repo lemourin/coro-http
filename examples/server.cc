@@ -2,7 +2,7 @@
 #include <coro/http/curl_http.h>
 #include <coro/http/http_parse.h>
 #include <coro/http/http_server.h>
-#include <coro/util/make_pointer.h>
+#include <coro/util/raii_utils.h>
 
 #include <csignal>
 #include <memory>

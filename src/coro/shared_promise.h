@@ -1,10 +1,10 @@
-#ifndef CORO_CLOUDSTORAGE_SHARED_PROMISE_H
-#define CORO_CLOUDSTORAGE_SHARED_PROMISE_H
+#ifndef CORO_UTIL_SHARED_PROMISE_H
+#define CORO_UTIL_SHARED_PROMISE_H
 
 #include <coro/interrupted_exception.h>
 #include <coro/promise.h>
 #include <coro/stdx/stop_callback.h>
-#include <coro/util/make_pointer.h>
+#include <coro/util/raii_utils.h>
 
 #include <functional>
 #include <unordered_set>
@@ -89,4 +89,4 @@ class SharedPromise {
 
 }  // namespace coro
 
-#endif  // CORO_CLOUDSTORAGE_SHARED_PROMISE_H
+#endif  // CORO_UTIL_SHARED_PROMISE_H

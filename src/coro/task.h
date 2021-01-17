@@ -17,6 +17,8 @@ class Task;
 template <typename T>
 class [[nodiscard]] Task<T> {
  public:
+  using type = T;
+
   struct promise_type {
     struct final_awaitable {
       bool await_ready() noexcept { return false; }
@@ -66,7 +68,7 @@ class [[nodiscard]] Task<T> {
   };
 
   Task(const Task&) = delete;
-  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task && task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
   ~Task() {
     if (handle_) {
       handle_.destroy();
@@ -125,7 +127,7 @@ class [[nodiscard]] Task<> {
   };
 
   Task(const Task&) = delete;
-  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task && task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
   ~Task() {
     if (handle_) {
       handle_.destroy();

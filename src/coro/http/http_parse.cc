@@ -1,7 +1,7 @@
 #include "http_parse.h"
 
 #include <coro/http/http.h>
-#include <coro/util/make_pointer.h>
+#include <coro/util/raii_utils.h>
 #include <event2/http.h>
 #include <event2/keyvalq_struct.h>
 

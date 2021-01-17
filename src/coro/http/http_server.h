@@ -7,7 +7,7 @@
 #include <coro/stdx/stop_source.h>
 #include <coro/task.h>
 #include <coro/util/function_traits.h>
-#include <coro/util/make_pointer.h>
+#include <coro/util/raii_utils.h>
 #include <event2/buffer.h>
 #include <event2/event.h>
 #include <event2/http.h>

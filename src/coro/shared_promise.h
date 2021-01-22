@@ -32,23 +32,23 @@ class SharedPromise {
   TaskT Get(coro::stdx::stop_token stop_token) const {
     auto shared_data = shared_data_;
     if (shared_data->producer) {
-      Invoke(
-          [shared_data, producer = *std::exchange(shared_data->producer,
-                                                  std::nullopt)]() -> Task<> {
-            try {
-              if constexpr (std::is_same_v<void, T>) {
-                co_await producer();
-                shared_data->result = std::monostate();
-              } else {
-                shared_data->result = co_await producer();
-              }
-            } catch (const std::exception&) {
-              shared_data->result = std::current_exception();
-            }
-            while (!shared_data->awaiters.empty()) {
-              (*shared_data->awaiters.begin())->SetValue();
-            }
-          });
+      Invoke([shared_data,
+              producer = *std::exchange(shared_data->producer,
+                                        std::nullopt)]() mutable -> Task<> {
+        try {
+          if constexpr (std::is_same_v<void, T>) {
+            co_await producer();
+            shared_data->result = std::monostate();
+          } else {
+            shared_data->result = co_await producer();
+          }
+        } catch (const std::exception&) {
+          shared_data->result = std::current_exception();
+        }
+        while (!shared_data->awaiters.empty()) {
+          (*shared_data->awaiters.begin())->SetValue();
+        }
+      });
     }
     return Get(shared_data, std::move(stop_token));
   }

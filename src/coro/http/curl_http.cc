@@ -118,8 +118,13 @@ int CurlHandle::ProgressCallback(void* clientp, curl_off_t /*dltotal*/,
 size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
                                 void* userdata) {
   auto handle = reinterpret_cast<CurlHandle*>(userdata);
+  size_t offset = 0;
+  for (; offset < size * nitems && !handle->buffer_.empty(); offset++) {
+    buffer[offset] = handle->buffer_.front();
+    handle->buffer_.pop_front();
+  }
   if (!handle->request_body_it_) {
-    return CURL_READFUNC_PAUSE;
+    return offset > 0 ? offset : CURL_READFUNC_PAUSE;
   }
   if (handle->request_body_it_ == std::end(*handle->request_body_)) {
     return 0;
@@ -128,16 +133,14 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
     handle->buffer_.push_back(c);
   }
   auto it = *std::exchange(handle->request_body_it_, std::nullopt);
-  size_t sent_cnt = 0;
-  for (size_t i = 0; i < size * nitems && !handle->buffer_.empty(); i++) {
-    buffer[i] = handle->buffer_.front();
+  for (; offset < size * nitems && !handle->buffer_.empty(); offset++) {
+    buffer[offset] = handle->buffer_.front();
     handle->buffer_.pop_front();
-    sent_cnt++;
   }
   if (handle->buffer_.empty()) {
     evuser_trigger(&handle->next_request_body_chunk_);
   }
-  return sent_cnt;
+  return offset;
 }
 
 void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,

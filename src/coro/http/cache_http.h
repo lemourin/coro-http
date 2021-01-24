@@ -91,12 +91,15 @@ class CacheHttpImpl {
   };
 
   static bool IsCacheable(const Request<>& request) {
-    return (HasHeader(request.headers, "Accept", "application/json") ||
-            HasHeader(request.headers, "Accept", "application/xml")) &&
-           (HasHeader(request.headers, "Content-Type", "application/json") ||
-            HasHeader(request.headers, "Content-Type", "application/xml") ||
-            HasHeader(request.headers, "Content-Type",
-                      "application/x-www-form-urlencoded"));
+    auto accept = GetHeader(request.headers, "Accept");
+    if (!accept ||
+        (accept != "application/json" && accept != "application/xml")) {
+      return false;
+    }
+    auto content_type = GetHeader(request.headers, "Content-Type");
+    return !content_type || content_type == "application/json" ||
+           content_type == "application/xml" ||
+           content_type == "application/x-www-form-urlencoded";
   }
 
   bool IsStale(const CacheableResponse& response) const {

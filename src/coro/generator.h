@@ -167,14 +167,14 @@ class async_generator_increment_operation final
  public:
   async_generator_increment_operation(
       async_generator_iterator<T>& iterator) noexcept
-      : async_generator_advance_operation(iterator.m_coroutine.promise(),
-                                          iterator.m_coroutine),
-        m_iterator(iterator) {}
+      : async_generator_advance_operation(iterator.coroutine_.promise(),
+                                          iterator.coroutine_),
+        iterator_(iterator) {}
 
   async_generator_iterator<T>& await_resume();
 
  private:
-  async_generator_iterator<T>& m_iterator;
+  async_generator_iterator<T>& iterator_;
 };
 
 template <typename T>
@@ -191,19 +191,19 @@ class async_generator_iterator final {
   using reference = std::add_lvalue_reference_t<T>;
   using pointer = std::add_pointer_t<value_type>;
 
-  async_generator_iterator(std::nullptr_t) noexcept : m_coroutine(nullptr) {}
+  async_generator_iterator(std::nullptr_t) noexcept : coroutine_(nullptr) {}
 
   async_generator_iterator(handle_type coroutine) noexcept
-      : m_coroutine(coroutine) {}
+      : coroutine_(coroutine) {}
 
   async_generator_increment_operation<T> operator++() noexcept {
     return async_generator_increment_operation<T>{*this};
   }
 
-  reference operator*() const noexcept { return m_coroutine.promise().value(); }
+  reference operator*() const noexcept { return coroutine_.promise().value(); }
 
   bool operator==(const async_generator_iterator& other) const noexcept {
-    return m_coroutine == other.m_coroutine;
+    return coroutine_ == other.coroutine_;
   }
 
   bool operator!=(const async_generator_iterator& other) const noexcept {
@@ -213,7 +213,7 @@ class async_generator_iterator final {
  private:
   friend class async_generator_increment_operation<T>;
 
-  handle_type m_coroutine;
+  handle_type coroutine_;
 };
 
 template <typename T>
@@ -221,11 +221,11 @@ async_generator_iterator<T>&
 async_generator_increment_operation<T>::await_resume() {
   if (promise_->finished()) {
     // Update iterator to end()
-    m_iterator = async_generator_iterator<T>{nullptr};
+    iterator_ = async_generator_iterator<T>{nullptr};
     promise_->rethrow_if_unhandled_exception();
   }
 
-  return m_iterator;
+  return iterator_;
 }
 
 template <typename T>
@@ -271,11 +271,11 @@ class [[nodiscard]] Generator {
 
   Generator() noexcept : coroutine_(nullptr) {}
 
-  explicit Generator(promise_type& promise) noexcept
+  explicit Generator(promise_type & promise) noexcept
       : coroutine_(
             stdx::coroutine_handle<promise_type>::from_promise(promise)) {}
 
-  Generator(Generator&& other) noexcept : coroutine_(other.coroutine_) {
+  Generator(Generator && other) noexcept : coroutine_(other.coroutine_) {
     other.coroutine_ = nullptr;
   }
 
@@ -304,7 +304,7 @@ class [[nodiscard]] Generator {
 
   auto end() noexcept { return iterator{nullptr}; }
 
-  void swap(Generator& other) noexcept {
+  void swap(Generator & other) noexcept {
     using std::swap;
     swap(coroutine_, other.coroutine_);
   }

@@ -185,8 +185,8 @@ bool HttpBodyGenerator<Impl>::Iterator::operator!=(
 
 template <typename Impl>
 auto HttpBodyGenerator<Impl>::Iterator::operator++() -> Awaitable<Iterator&> {
-  if (http_body_generator_->status_ != -1 ||
-      http_body_generator_->exception_ptr_) {
+  if (data_.empty() && (http_body_generator_->status_ != -1 ||
+                        http_body_generator_->exception_ptr_)) {
     offset_ = INT64_MAX;
   } else {
     offset_++;

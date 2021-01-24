@@ -63,13 +63,98 @@ void MoveAssignEvent(event* target, event* source, void* userdata) {
 
 }  // namespace
 
+struct CurlHandle::Data {
+  template <typename Owner>
+  Data(CURLM* http, event_base* event_loop, Request<> request,
+       stdx::stop_token stop_token, Owner* owner)
+      : http(http),
+        event_loop(event_loop),
+        handle(curl_easy_init()),
+        header_list(),
+        request_body(std::move(request.body)),
+        stop_token(std::move(stop_token)),
+        owner(owner),
+        stop_callback(this->stop_token, OnCancel{this}) {
+    Check(curl_easy_setopt(handle.get(), CURLOPT_URL, request.url.data()));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_PRIVATE, this));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, WriteCallback));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, this));
+    Check(
+        curl_easy_setopt(handle.get(), CURLOPT_HEADERFUNCTION, HeaderCallback));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_HEADERDATA, this));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_XFERINFOFUNCTION,
+                           ProgressCallback));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_XFERINFODATA, this));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_READFUNCTION, ReadCallback));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_READDATA, this));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_NOPROGRESS, 0L));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_SSL_VERIFYPEER, 0L));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_CUSTOMREQUEST,
+                           MethodToString(request.method)));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_HTTP_VERSION,
+                           CURL_HTTP_VERSION_1_1));
+    std::optional<long> content_length;
+    curl_slist* header_list = nullptr;
+    for (const auto& [header_name, header_value] : request.headers) {
+      std::string header_line = header_name;
+      header_line += ": ";
+      header_line += header_value;
+      header_list = curl_slist_append(header_list, header_line.c_str());
+      if (ToLowerCase(header_name) == "content-length") {
+        content_length = std::stol(header_value);
+      }
+    }
+    this->header_list =
+        std::unique_ptr<curl_slist, CurlListDeleter>(header_list);
+    Check(curl_easy_setopt(handle.get(), CURLOPT_HTTPHEADER, header_list));
+
+    if (request_body) {
+      if (request.method == Method::kPost) {
+        Check(curl_easy_setopt(handle.get(), CURLOPT_POST, 1L));
+        if (content_length) {
+          Check(curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE,
+                                 *content_length));
+        }
+      } else {
+        curl_easy_setopt(handle.get(), CURLOPT_UPLOAD, 1L);
+      }
+      Invoke([d = this]() -> Task<> {
+        d->request_body_it = co_await d->request_body->begin();
+        curl_easy_pause(d->handle.get(), CURLPAUSE_SEND_CONT);
+      });
+    }
+
+    Check(event_assign(&next_request_body_chunk, event_loop, -1, 0,
+                       OnNextRequestBodyChunkRequested, this));
+
+    Check(curl_multi_add_handle(http, handle.get()));
+  }
+
+  ~Data() {
+    Check(curl_multi_remove_handle(http, handle.get()));
+    event_del(&next_request_body_chunk);
+  }
+
+  CURLM* http;
+  event_base* event_loop;
+  std::unique_ptr<CURL, CurlHandleDeleter> handle;
+  std::unique_ptr<curl_slist, CurlListDeleter> header_list;
+  std::optional<Generator<std::string>> request_body;
+  std::deque<char> buffer;
+  std::optional<Generator<std::string>::iterator> request_body_it;
+  stdx::stop_token stop_token;
+  std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner;
+  event next_request_body_chunk;
+  stdx::stop_callback<OnCancel> stop_callback;
+};
+
 size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
                                   void* userdata) {
-  auto handle = reinterpret_cast<CurlHandle*>(userdata);
-  if (!std::holds_alternative<CurlHttpOperation*>(handle->owner_)) {
+  auto data = reinterpret_cast<CurlHandle::Data*>(userdata);
+  if (!std::holds_alternative<CurlHttpOperation*>(data->owner)) {
     return 0;
   }
-  auto http_operation = std::get<CurlHttpOperation*>(handle->owner_);
+  auto http_operation = std::get<CurlHttpOperation*>(data->owner);
   std::string_view view(buffer, size * nitems);
   auto index = view.find_first_of(":");
   if (index != std::string::npos) {
@@ -89,16 +174,16 @@ size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
 
 size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
                                  void* userdata) {
-  auto handle = reinterpret_cast<CurlHandle*>(userdata);
-  if (std::holds_alternative<CurlHttpOperation*>(handle->owner_)) {
-    auto http_operation = std::get<CurlHttpOperation*>(handle->owner_);
+  auto data = reinterpret_cast<CurlHandle::Data*>(userdata);
+  if (std::holds_alternative<CurlHttpOperation*>(data->owner)) {
+    auto http_operation = std::get<CurlHttpOperation*>(data->owner);
     if (!http_operation->headers_ready_event_posted_) {
       http_operation->headers_ready_event_posted_ = true;
       evuser_trigger(&http_operation->headers_ready_);
     }
     http_operation->body_ += std::string(ptr, ptr + size * nmemb);
-  } else if (std::holds_alternative<CurlHttpBodyGenerator*>(handle->owner_)) {
-    auto http_body_generator = std::get<CurlHttpBodyGenerator*>(handle->owner_);
+  } else if (std::holds_alternative<CurlHttpBodyGenerator*>(data->owner)) {
+    auto http_body_generator = std::get<CurlHttpBodyGenerator*>(data->owner);
     if (!http_body_generator->data_.empty()) {
       return CURL_WRITEFUNC_PAUSE;
     }
@@ -111,55 +196,55 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
 int CurlHandle::ProgressCallback(void* clientp, curl_off_t /*dltotal*/,
                                  curl_off_t /*dlnow*/, curl_off_t /*ultotal*/,
                                  curl_off_t /*ulnow*/) {
-  auto handle = reinterpret_cast<CurlHandle*>(clientp);
-  return handle->stop_token_.stop_requested() ? -1 : 0;
+  auto data = reinterpret_cast<CurlHandle::Data*>(clientp);
+  return data->stop_token.stop_requested() ? -1 : 0;
 }
 
 size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
                                 void* userdata) {
-  auto handle = reinterpret_cast<CurlHandle*>(userdata);
+  auto data = reinterpret_cast<CurlHandle::Data*>(userdata);
   size_t offset = 0;
-  for (; offset < size * nitems && !handle->buffer_.empty(); offset++) {
-    buffer[offset] = handle->buffer_.front();
-    handle->buffer_.pop_front();
+  for (; offset < size * nitems && !data->buffer.empty(); offset++) {
+    buffer[offset] = data->buffer.front();
+    data->buffer.pop_front();
   }
-  if (!handle->request_body_it_) {
+  if (!data->request_body_it) {
     return offset > 0 ? offset : CURL_READFUNC_PAUSE;
   }
-  if (handle->request_body_it_ == std::end(*handle->request_body_)) {
+  if (data->request_body_it == std::end(*data->request_body)) {
     return 0;
   }
-  for (char c : **handle->request_body_it_) {
-    handle->buffer_.push_back(c);
+  for (char c : **data->request_body_it) {
+    data->buffer.push_back(c);
   }
-  auto it = *std::exchange(handle->request_body_it_, std::nullopt);
-  for (; offset < size * nitems && !handle->buffer_.empty(); offset++) {
-    buffer[offset] = handle->buffer_.front();
-    handle->buffer_.pop_front();
+  auto it = *std::exchange(data->request_body_it, std::nullopt);
+  for (; offset < size * nitems && !data->buffer.empty(); offset++) {
+    buffer[offset] = data->buffer.front();
+    data->buffer.pop_front();
   }
-  if (handle->buffer_.empty()) {
-    evuser_trigger(&handle->next_request_body_chunk_);
+  if (data->buffer.empty()) {
+    evuser_trigger(&data->next_request_body_chunk);
   }
   return offset;
 }
 
 void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
                                                  void* userdata) {
-  Invoke([handle = reinterpret_cast<CurlHandle*>(userdata)]() -> Task<> {
-    handle->request_body_it_ = co_await ++*handle->request_body_it_;
-    curl_easy_pause(handle->handle_.get(), CURLPAUSE_SEND_CONT);
+  Invoke([data = reinterpret_cast<CurlHandle::Data*>(userdata)]() -> Task<> {
+    data->request_body_it = co_await ++*data->request_body_it;
+    curl_easy_pause(data->handle.get(), CURLPAUSE_SEND_CONT);
   });
 }
 
 void CurlHandle::OnCancel::operator()() const {
-  if (std::holds_alternative<CurlHttpOperation*>(handle->owner_)) {
-    auto operation = std::get<CurlHttpOperation*>(handle->owner_);
+  if (std::holds_alternative<CurlHttpOperation*>(data->owner)) {
+    auto operation = std::get<CurlHttpOperation*>(data->owner);
     operation->exception_ptr_ = std::make_exception_ptr(InterruptedException());
     if (operation->awaiting_coroutine_) {
       std::exchange(operation->awaiting_coroutine_, nullptr).resume();
     }
-  } else if (std::holds_alternative<CurlHttpBodyGenerator*>(handle->owner_)) {
-    auto generator = std::get<CurlHttpBodyGenerator*>(handle->owner_);
+  } else if (std::holds_alternative<CurlHttpBodyGenerator*>(data->owner)) {
+    auto generator = std::get<CurlHttpBodyGenerator*>(data->owner);
     generator->exception_ptr_ = std::make_exception_ptr(InterruptedException());
     generator->Close(generator->exception_ptr_);
   }
@@ -168,122 +253,16 @@ void CurlHandle::OnCancel::operator()() const {
 template <typename Owner>
 CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
                        stdx::stop_token stop_token, Owner* owner)
-    : http_(http),
-      event_loop_(event_loop),
-      handle_(curl_easy_init()),
-      header_list_(),
-      request_body_(std::move(request.body)),
-      stop_token_(std::move(stop_token)),
-      owner_(owner),
-      stop_callback_(std::make_unique<stdx::stop_callback<OnCancel>>(
-          stop_token_, OnCancel{this})) {
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_URL, request.url.data()));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEFUNCTION, WriteCallback));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
-  Check(
-      curl_easy_setopt(handle_.get(), CURLOPT_HEADERFUNCTION, HeaderCallback));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFOFUNCTION,
-                         ProgressCallback));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFODATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_READFUNCTION, ReadCallback));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_NOPROGRESS, 0L));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_SSL_VERIFYPEER, 0L));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_CUSTOMREQUEST,
-                         MethodToString(request.method)));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_HTTP_VERSION,
-                         CURL_HTTP_VERSION_1_1));
-  std::optional<long> content_length;
-  curl_slist* header_list = nullptr;
-  for (const auto& [header_name, header_value] : request.headers) {
-    std::string header_line = header_name;
-    header_line += ": ";
-    header_line += header_value;
-    header_list = curl_slist_append(header_list, header_line.c_str());
-    if (ToLowerCase(header_name) == "content-length") {
-      content_length = std::stol(header_value);
-    }
-  }
-  header_list_ = std::unique_ptr<curl_slist, CurlListDeleter>(header_list);
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_HTTPHEADER, header_list));
-
-  if (request_body_) {
-    if (request.method == Method::kPost) {
-      Check(curl_easy_setopt(handle_.get(), CURLOPT_POST, 1L));
-      if (content_length) {
-        Check(curl_easy_setopt(handle_.get(), CURLOPT_POSTFIELDSIZE,
-                               *content_length));
-      }
-    } else {
-      curl_easy_setopt(handle_.get(), CURLOPT_UPLOAD, 1L);
-    }
-    Invoke([d = this]() -> Task<> {
-      d->request_body_it_ = co_await d->request_body_->begin();
-      curl_easy_pause(d->handle_.get(), CURLPAUSE_SEND_CONT);
-    });
-  }
-
-  Check(event_assign(&next_request_body_chunk_, event_loop, -1, 0,
-                     OnNextRequestBodyChunkRequested, this));
-
-  Check(curl_multi_add_handle(http, handle_.get()));
-}
-
-CurlHandle::CurlHandle(CurlHandle&& handle) noexcept
-    : http_(std::exchange(handle.http_, nullptr)),
-      event_loop_(handle.event_loop_),
-      handle_(std::move(handle.handle_)),
-      header_list_(std::move(handle.header_list_)),
-      request_body_(std::move(handle.request_body_)),
-      request_body_it_(handle.request_body_it_),
-      stop_token_(std::move(handle.stop_token_)),
-      owner_(handle.owner_),
-      next_request_body_chunk_(
-          MoveEvent(&handle.next_request_body_chunk_, this)),
-      stop_callback_(std::make_unique<stdx::stop_callback<OnCancel>>(
-          stop_token_, OnCancel{this})) {
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFODATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
-}
+    : d_(std::make_unique<Data>(http, event_loop, std::move(request),
+                                std::move(stop_token), owner)) {}
 
 template <typename NewOwner>
 CurlHandle::CurlHandle(CurlHandle handle, NewOwner* owner)
     : CurlHandle(std::move(handle)) {
-  owner_ = owner;
+  d_->owner = owner;
 }
 
-CurlHandle::~CurlHandle() {
-  if (http_) {
-    Check(curl_multi_remove_handle(http_, handle_.get()));
-    event_del(&next_request_body_chunk_);
-  }
-}
-
-CurlHandle& CurlHandle::operator=(CurlHandle&& handle) noexcept {
-  http_ = std::exchange(handle.http_, nullptr);
-  event_loop_ = handle.event_loop_;
-  handle_ = std::move(handle.handle_);
-  header_list_ = std::move(handle.header_list_);
-  request_body_ = std::move(handle.request_body_);
-  request_body_it_ = handle.request_body_it_;
-  stop_token_ = std::move(handle.stop_token_);
-  owner_ = handle.owner_;
-  stop_callback_ = std::make_unique<stdx::stop_callback<OnCancel>>(
-      stop_token_, OnCancel{this});
-  MoveAssignEvent(&next_request_body_chunk_, &handle.next_request_body_chunk_,
-                  this);
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_WRITEDATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_HEADERDATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_XFERINFODATA, this));
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_READDATA, this));
-  return *this;
-}
+CurlHandle::~CurlHandle() = default;
 
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(
     CurlHttpBodyGenerator&& other) noexcept
@@ -299,9 +278,9 @@ CurlHttpBodyGenerator::CurlHttpBodyGenerator(
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle handle,
                                              std::string initial_chunk)
     : handle_(std::move(handle), this) {
-  Check(event_assign(&chunk_ready_, handle_.event_loop_, -1, 0, OnChunkReady,
+  Check(event_assign(&chunk_ready_, handle_.d_->event_loop, -1, 0, OnChunkReady,
                      this));
-  Check(event_assign(&body_ready_, handle_.event_loop_, -1, 0, OnBodyReady,
+  Check(event_assign(&body_ready_, handle_.d_->event_loop, -1, 0, OnBodyReady,
                      this));
   ReceivedData(std::move(initial_chunk));
 }
@@ -351,7 +330,7 @@ CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
 
 void CurlHttpBodyGenerator::Resume() {
   if (status_ == -1 && !exception_ptr_) {
-    curl_easy_pause(handle_.handle_.get(), CURLPAUSE_RECV_CONT);
+    curl_easy_pause(handle_.d_->handle.get(), CURLPAUSE_RECV_CONT);
   }
 }
 
@@ -362,7 +341,7 @@ CurlHttpOperation::CurlHttpOperation(CURLM* http, event_base* event_loop,
       headers_ready_event_posted_(),
       handle_(http, event_loop, std::move(request), std::move(stop_token),
               this) {
-  Check(event_assign(&headers_ready_, handle_.event_loop_, -1, 0,
+  Check(event_assign(&headers_ready_, handle_.d_->event_loop, -1, 0,
                      OnHeadersReady, this));
 }
 
@@ -464,10 +443,10 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
     message = curl_multi_info_read(multi_handle, &message_count);
     if (message && message->msg == CURLMSG_DONE) {
       CURL* handle = message->easy_handle;
-      CurlHandle* curl_handle;
-      Check(curl_easy_getinfo(handle, CURLINFO_PRIVATE, &curl_handle));
-      if (std::holds_alternative<CurlHttpOperation*>(curl_handle->owner_)) {
-        auto operation = std::get<CurlHttpOperation*>(curl_handle->owner_);
+      CurlHandle::Data* data;
+      Check(curl_easy_getinfo(handle, CURLINFO_PRIVATE, &data));
+      if (std::holds_alternative<CurlHttpOperation*>(data->owner)) {
+        auto operation = std::get<CurlHttpOperation*>(data->owner);
         if (message->data.result == CURLE_OK) {
           long response_code;
           Check(curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE,
@@ -479,16 +458,15 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
         }
         operation->no_body_ = true;
         Check(event_base_once(
-            operation->handle_.event_loop_, -1, EV_TIMEOUT,
+            operation->handle_.d_->event_loop, -1, EV_TIMEOUT,
             [](evutil_socket_t fd, short event, void* handle) {
               stdx::coroutine_handle<void>::from_address(handle).resume();
             },
             std::exchange(operation->awaiting_coroutine_, nullptr).address(),
             nullptr));
-      } else if (std::holds_alternative<CurlHttpBodyGenerator*>(
-                     curl_handle->owner_)) {
+      } else if (std::holds_alternative<CurlHttpBodyGenerator*>(data->owner)) {
         auto curl_http_body_generator =
-            std::get<CurlHttpBodyGenerator*>(curl_handle->owner_);
+            std::get<CurlHttpBodyGenerator*>(data->owner);
         curl_http_body_generator->status_ =
             static_cast<int>(message->data.result);
         if (message->data.result != CURLE_OK) {

@@ -20,12 +20,10 @@ class CurlHttpBodyGenerator;
 
 class CurlHandle {
  public:
-  CurlHandle(const CurlHandle&) = delete;
-  CurlHandle(CurlHandle&&) noexcept;
-  ~CurlHandle();
+  CurlHandle(CurlHandle&&) = default;
+  CurlHandle& operator=(CurlHandle&&) = default;
 
-  CurlHandle& operator=(const CurlHandle&) = delete;
-  CurlHandle& operator=(CurlHandle&&) noexcept;
+  ~CurlHandle();
 
  private:
   template <typename Owner>
@@ -47,9 +45,11 @@ class CurlHandle {
   static void OnNextRequestBodyChunkRequested(evutil_socket_t, short,
                                               void* handle);
 
+  struct Data;
+
   struct OnCancel {
     void operator()() const;
-    CurlHandle* handle;
+    Data* data;
   };
 
   struct CurlHandleDeleter {
@@ -72,17 +72,7 @@ class CurlHandle {
   friend class CurlHttpOperation;
   friend class CurlHttpBodyGenerator;
 
-  CURLM* http_;
-  event_base* event_loop_;
-  std::unique_ptr<CURL, CurlHandleDeleter> handle_;
-  std::unique_ptr<curl_slist, CurlListDeleter> header_list_;
-  std::optional<Generator<std::string>> request_body_;
-  std::deque<char> buffer_;
-  std::optional<Generator<std::string>::iterator> request_body_it_;
-  stdx::stop_token stop_token_;
-  std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner_;
-  event next_request_body_chunk_;
-  std::unique_ptr<stdx::stop_callback<OnCancel>> stop_callback_;
+  std::unique_ptr<Data> d_;
 };
 
 class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {

@@ -225,7 +225,7 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
   if (data->buffer.empty()) {
     evuser_trigger(&data->next_request_body_chunk);
   }
-  return offset;
+  return offset > 0 ? offset : CURL_READFUNC_PAUSE;
 }
 
 void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,

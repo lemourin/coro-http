@@ -16,7 +16,16 @@
 
 namespace coro::http {
 
-enum class Method { kGet, kPost, kOptions, kHead, kPatch, kDelete, kPropfind };
+enum class Method {
+  kGet,
+  kPost,
+  kPut,
+  kOptions,
+  kHead,
+  kPatch,
+  kDelete,
+  kPropfind
+};
 
 inline const char* MethodToString(Method method) {
   switch (method) {
@@ -24,6 +33,8 @@ inline const char* MethodToString(Method method) {
       return "GET";
     case Method::kPost:
       return "POST";
+    case Method::kPut:
+      return "PUT";
     case Method::kHead:
       return "HEAD";
     case Method::kOptions:

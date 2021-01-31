@@ -22,6 +22,7 @@ target_link_libraries(libcurl c-ares nghttp2_static ssl)
 
 set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "build libevent without OpenSSL")
 set(EVENT__DISABLE_MBEDTLS ON CACHE BOOL "build libevent without mbedTLS")
+set(EVENT__MSVC_STATIC_RUNTIME OFF CACHE BOOL "link libevent with static runtime libraries")
 if(BUILD_SHARED_LIBS)
     set(EVENT__LIBRARY_TYPE SHARED CACHE BOOL "build shared libevent")
 else()

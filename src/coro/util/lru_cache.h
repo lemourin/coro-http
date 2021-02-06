@@ -94,12 +94,12 @@ class LRUCache {
 
    private:
     struct ProduceValue {
-      Task<Value> operator()() const {
+      Task<Value> operator()() {
         auto guard = util::MakePointer(d, [this](Data* d) {
-          d->pending_cleanup_queue_.emplace_back(key);
+          d->pending_cleanup_queue_.emplace_back(std::move(key));
         });
         auto result = co_await d->factory_(key, std::move(stop_token));
-        d->Insert(std::move(key), result);
+        d->Insert(key, result);
         co_return std::move(result);
       }
       Data* d;

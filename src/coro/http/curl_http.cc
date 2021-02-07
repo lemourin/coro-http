@@ -120,6 +120,7 @@ struct CurlHandle::Data {
       }
       Invoke([d = this]() -> Task<> {
         d->request_body_it = co_await d->request_body->begin();
+        d->request_body_chunk_index_ = 0;
         curl_easy_pause(d->handle.get(), CURLPAUSE_SEND_CONT);
       });
     }
@@ -140,8 +141,8 @@ struct CurlHandle::Data {
   std::unique_ptr<CURL, CurlHandleDeleter> handle;
   std::unique_ptr<curl_slist, CurlListDeleter> header_list;
   std::optional<Generator<std::string>> request_body;
-  std::deque<char> buffer;
   std::optional<Generator<std::string>::iterator> request_body_it;
+  std::optional<int64_t> request_body_chunk_index_;
   stdx::stop_token stop_token;
   std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner;
   event next_request_body_chunk;
@@ -203,26 +204,22 @@ int CurlHandle::ProgressCallback(void* clientp, curl_off_t /*dltotal*/,
 size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
                                 void* userdata) {
   auto data = reinterpret_cast<CurlHandle::Data*>(userdata);
-  size_t offset = 0;
-  for (; offset < size * nitems && !data->buffer.empty(); offset++) {
-    buffer[offset] = data->buffer.front();
-    data->buffer.pop_front();
-  }
-  if (!data->request_body_it) {
-    return offset > 0 ? offset : CURL_READFUNC_PAUSE;
+  if (!data->request_body_it || !data->request_body_chunk_index_) {
+    return CURL_READFUNC_PAUSE;
   }
   if (data->request_body_it == std::end(*data->request_body)) {
     return 0;
   }
-  for (char c : **data->request_body_it) {
-    data->buffer.push_back(c);
+  std::string& current_chunk = **data->request_body_it;
+  size_t offset = 0;
+  for (;
+       offset < size * nitems && data->request_body_chunk_index_ <
+                                     static_cast<int64_t>(current_chunk.size());
+       offset++) {
+    buffer[offset] = current_chunk[(*data->request_body_chunk_index_)++];
   }
-  auto it = *std::exchange(data->request_body_it, std::nullopt);
-  for (; offset < size * nitems && !data->buffer.empty(); offset++) {
-    buffer[offset] = data->buffer.front();
-    data->buffer.pop_front();
-  }
-  if (data->buffer.empty()) {
+  if (data->request_body_chunk_index_ == current_chunk.size()) {
+    data->request_body_chunk_index_ = std::nullopt;
     evuser_trigger(&data->next_request_body_chunk);
   }
   return offset > 0 ? offset : CURL_READFUNC_PAUSE;
@@ -232,6 +229,7 @@ void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
                                                  void* userdata) {
   Invoke([data = reinterpret_cast<CurlHandle::Data*>(userdata)]() -> Task<> {
     data->request_body_it = co_await ++*data->request_body_it;
+    data->request_body_chunk_index_ = 0;
     curl_easy_pause(data->handle.get(), CURLPAUSE_SEND_CONT);
   });
 }

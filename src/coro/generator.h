@@ -165,6 +165,8 @@ template <typename T>
 class async_generator_increment_operation final
     : public async_generator_advance_operation {
  public:
+  using type = async_generator_iterator<T>&;
+
   async_generator_increment_operation(
       async_generator_iterator<T>& iterator) noexcept
       : async_generator_advance_operation(iterator.coroutine_.promise(),
@@ -235,6 +237,8 @@ class async_generator_begin_operation final
   using handle_type = stdx::coroutine_handle<promise_type>;
 
  public:
+  using type = async_generator_iterator<T>;
+
   async_generator_begin_operation(std::nullptr_t) noexcept
       : async_generator_advance_operation(nullptr) {}
 

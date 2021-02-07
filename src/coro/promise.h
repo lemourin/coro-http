@@ -12,6 +12,8 @@ namespace coro {
 template <typename T>
 class Promise {
  public:
+  using type = T;
+
   Promise() = default;
   Promise(const Promise&) = delete;
   Promise(Promise&& other) noexcept
@@ -57,6 +59,8 @@ class Promise {
 template <>
 class Promise<void> {
  public:
+  using type = void;
+
   Promise() = default;
   Promise(const Promise&) = delete;
   Promise(Promise&& other) noexcept

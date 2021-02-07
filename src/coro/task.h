@@ -33,7 +33,9 @@ class [[nodiscard]] Task<T> {
     ~promise_type() {
       switch (type) {
         case Type::kValue:
-          value.~T();
+          if constexpr (!std::is_reference_v<T>) {
+            value.~T();
+          }
           break;
         case Type::kException:
           exception.~exception_ptr();
@@ -50,7 +52,11 @@ class [[nodiscard]] Task<T> {
     final_awaitable final_suspend() noexcept { return {}; }
     template <typename V>
     void return_value(V&& v) {
-      new (static_cast<void*>(std::addressof(value))) T(std::forward<V>(v));
+      if constexpr (std::is_reference_v<T>) {
+        value = &v;
+      } else {
+        new (static_cast<void*>(std::addressof(value))) T(std::forward<V>(v));
+      }
       type = Type::kValue;
     }
     void unhandled_exception() {
@@ -61,7 +67,8 @@ class [[nodiscard]] Task<T> {
 
     stdx::coroutine_handle<void> continuation = stdx::noop_coroutine();
     union {
-      T value;
+      std::conditional_t<std::is_reference_v<T>, std::remove_reference_t<T>*, T>
+          value;
       std::exception_ptr exception;
     };
     enum class Type { kNone, kValue, kException } type = Type::kNone;
@@ -91,7 +98,11 @@ class [[nodiscard]] Task<T> {
     if (handle_.promise().type == promise_type::Type::kException) {
       std::rethrow_exception(handle_.promise().exception);
     }
-    return std::move(handle_.promise().value);
+    if constexpr (std::is_reference_v<T>) {
+      return *handle_.promise().value;
+    } else {
+      return std::move(handle_.promise().value);
+    }
   }
 
  private:
@@ -104,6 +115,8 @@ class [[nodiscard]] Task<T> {
 template <>
 class [[nodiscard]] Task<> {
  public:
+  using type = void;
+
   struct promise_type {
     struct final_awaitable {
       bool await_ready() noexcept { return false; }
@@ -187,7 +200,10 @@ inline RunTask Invoke(Task<> task) {
 
 template <typename F, typename... Args>
 RunTask Invoke(F func, Args&&... args) {
-  co_await func(std::forward<Args>(args)...);
+  try {
+    co_await func(std::forward<Args>(args)...);
+  } catch (const InterruptedException&) {
+  }
 }
 
 template <typename... T>

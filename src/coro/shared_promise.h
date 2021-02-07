@@ -17,8 +17,10 @@ template <typename F>
 class SharedPromise {
  public:
   using T = decltype(std::declval<F>()().await_resume());
-  using TaskT = std::conditional_t<std::is_same_v<void, T>, Task<>,
-                                   Task<std::reference_wrapper<const T>>>;
+  using TaskT = std::conditional_t<
+      std::is_same_v<void, T>, Task<>,
+      Task<std::conditional_t<std::is_reference_v<T>, const T,
+                              std::reference_wrapper<const T>>>>;
 
   explicit SharedPromise(F producer)
       : shared_data_(std::make_shared<SharedData>(
@@ -40,7 +42,11 @@ class SharedPromise {
             co_await producer();
             shared_data->result = std::monostate();
           } else {
-            shared_data->result = co_await producer();
+            if constexpr (std::is_reference_v<T>) {
+              shared_data->result = &co_await producer();
+            } else {
+              shared_data->result = co_await producer();
+            }
           }
         } catch (const std::exception&) {
           shared_data->result = std::current_exception();
@@ -57,8 +63,11 @@ class SharedPromise {
   struct NotReady {};
   struct SharedData {
     std::unordered_set<Promise<void>*> awaiters;
-    std::variant<NotReady, std::exception_ptr,
-                 std::conditional_t<std::is_same_v<T, void>, std::monostate, T>>
+    std::variant<
+        NotReady, std::exception_ptr,
+        std::conditional_t<std::is_same_v<T, void>, std::monostate,
+                           std::conditional_t<std::is_reference_v<T>,
+                                              std::remove_reference_t<T>*, T>>>
         result;
     std::optional<F> producer;
   };
@@ -80,12 +89,39 @@ class SharedPromise {
       std::rethrow_exception(std::get<std::exception_ptr>(shared_data->result));
     }
     if constexpr (!std::is_same_v<T, void>) {
-      co_return std::cref(std::get<T>(shared_data->result));
+      if constexpr (std::is_reference_v<T>) {
+        co_return* std::get<std::remove_reference_t<T>*>(shared_data->result);
+      } else {
+        co_return std::cref(std::get<T>(shared_data->result));
+      }
     }
   }
 
   std::shared_ptr<SharedData> shared_data_;
 };
+
+namespace internal {
+template <typename T>
+using TaskT = std::conditional_t<std::is_same_v<T, void>, Task<>, Task<T>>;
+}
+
+template <typename T, typename ReturnT = typename T::type>
+internal::TaskT<ReturnT> InterruptibleAwait(T&& task,
+                                            stdx::stop_token stop_token) {
+  SharedPromise promise(
+      [task = std::move(task)]() mutable -> internal::TaskT<ReturnT> {
+        co_return co_await std::move(task);
+      });
+  co_return co_await promise.Get(std::move(stop_token));
+}
+
+template <typename T, typename ReturnT = typename T::type>
+internal::TaskT<ReturnT> InterruptibleAwait(T& task,
+                                            stdx::stop_token stop_token) {
+  SharedPromise promise(
+      [&]() mutable -> internal::TaskT<ReturnT> { co_return co_await task; });
+  co_return co_await promise.Get(std::move(stop_token));
+}
 
 }  // namespace coro
 

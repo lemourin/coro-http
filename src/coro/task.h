@@ -76,7 +76,7 @@ class [[nodiscard]] Task<T> {
   }
   Task& operator=(const Task&) = delete;
   Task& operator=(Task&& task) noexcept {
-    ~Task();
+    this->~Task();
     handle_ = std::exchange(task.handle_, nullptr);
     return *this;
   }

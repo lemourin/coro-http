@@ -91,7 +91,10 @@ class Promise<void> {
   }
   template <typename Exception>
   void SetException(Exception e) {
-    result_ = std::make_exception_ptr(std::move(e));
+    SetException(std::make_exception_ptr(std::move(e)));
+  }
+  void SetException(std::exception_ptr e) {
+    result_ = std::move(e);
     if (continuation_) {
       std::exchange(continuation_, nullptr).resume();
     }

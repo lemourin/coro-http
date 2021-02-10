@@ -142,7 +142,7 @@ struct CurlHandle::Data {
   std::unique_ptr<curl_slist, CurlListDeleter> header_list;
   std::optional<Generator<std::string>> request_body;
   std::optional<Generator<std::string>::iterator> request_body_it;
-  std::optional<int64_t> request_body_chunk_index_;
+  std::optional<size_t> request_body_chunk_index_;
   stdx::stop_token stop_token;
   std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*> owner;
   event next_request_body_chunk;

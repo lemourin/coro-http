@@ -64,7 +64,7 @@ class LRUCache {
     }
 
     void Insert(Key key, Value value) {
-      while (map_.size() >= size_) {
+      while (map_.size() >= static_cast<size_t>(size_)) {
         Invalidate(*queue_.begin());
       }
       map_.insert({std::move(key), std::move(value)});

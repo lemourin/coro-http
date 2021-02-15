@@ -2,6 +2,7 @@
 #define CORO_UTIL_RAII_UTILS_H
 
 #include <memory>
+#include <optional>
 
 namespace coro::util {
 

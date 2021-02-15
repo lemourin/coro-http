@@ -16,7 +16,7 @@ namespace coro {
 template <typename F>
 class SharedPromise {
  public:
-  using T = decltype(std::declval<F>()().await_resume());
+  using T = typename decltype(std::declval<F>()())::type;
   using TaskT = std::conditional_t<
       std::is_same_v<void, T>, Task<>,
       Task<std::conditional_t<std::is_reference_v<T>, const T,

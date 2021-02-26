@@ -119,9 +119,13 @@ struct CurlHandle::Data {
         curl_easy_setopt(handle.get(), CURLOPT_UPLOAD, 1L);
       }
       Invoke([d = this]() -> Task<> {
-        d->request_body_it = co_await d->request_body->begin();
-        d->request_body_chunk_index_ = 0;
-        curl_easy_pause(d->handle.get(), CURLPAUSE_SEND_CONT);
+        try {
+          d->request_body_it = co_await d->request_body->begin();
+          d->request_body_chunk_index_ = 0;
+          curl_easy_pause(d->handle.get(), CURLPAUSE_SEND_CONT);
+        } catch (...) {
+          d->HandleException(std::current_exception());
+        }
       });
     }
 
@@ -134,6 +138,18 @@ struct CurlHandle::Data {
   ~Data() {
     Check(curl_multi_remove_handle(http, handle.get()));
     event_del(&next_request_body_chunk);
+  }
+
+  void HandleException(std::exception_ptr exception) {
+    if (auto* operation = std::get_if<CurlHttpOperation*>(&owner)) {
+      (*operation)->exception_ptr_ = std::current_exception();
+      if ((*operation)->awaiting_coroutine_) {
+        std::exchange((*operation)->awaiting_coroutine_, nullptr).resume();
+      }
+    } else if (auto* generator = std::get_if<CurlHttpBodyGenerator*>(&owner)) {
+      (*generator)->exception_ptr_ = std::current_exception();
+      (*generator)->Close((*generator)->exception_ptr_);
+    }
   }
 
   CURLM* http;
@@ -212,9 +228,8 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
   }
   std::string& current_chunk = **data->request_body_it;
   size_t offset = 0;
-  for (;
-       offset < size * nitems && data->request_body_chunk_index_ <
-                                     static_cast<int64_t>(current_chunk.size());
+  for (; offset < size * nitems &&
+         data->request_body_chunk_index_ < current_chunk.size();
        offset++) {
     buffer[offset] = current_chunk[(*data->request_body_chunk_index_)++];
   }
@@ -228,24 +243,18 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
 void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
                                                  void* userdata) {
   Invoke([data = reinterpret_cast<CurlHandle::Data*>(userdata)]() -> Task<> {
-    data->request_body_it = co_await ++*data->request_body_it;
-    data->request_body_chunk_index_ = 0;
-    curl_easy_pause(data->handle.get(), CURLPAUSE_SEND_CONT);
+    try {
+      data->request_body_it = co_await ++*data->request_body_it;
+      data->request_body_chunk_index_ = 0;
+      curl_easy_pause(data->handle.get(), CURLPAUSE_SEND_CONT);
+    } catch (...) {
+      data->HandleException(std::current_exception());
+    }
   });
 }
 
 void CurlHandle::OnCancel::operator()() const {
-  if (std::holds_alternative<CurlHttpOperation*>(data->owner)) {
-    auto operation = std::get<CurlHttpOperation*>(data->owner);
-    operation->exception_ptr_ = std::make_exception_ptr(InterruptedException());
-    if (operation->awaiting_coroutine_) {
-      std::exchange(operation->awaiting_coroutine_, nullptr).resume();
-    }
-  } else if (std::holds_alternative<CurlHttpBodyGenerator*>(data->owner)) {
-    auto generator = std::get<CurlHttpBodyGenerator*>(data->owner);
-    generator->exception_ptr_ = std::make_exception_ptr(InterruptedException());
-    generator->Close(generator->exception_ptr_);
-  }
+  data->HandleException(std::make_exception_ptr(InterruptedException()));
 }
 
 template <typename Owner>

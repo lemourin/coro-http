@@ -12,13 +12,11 @@
 
 namespace coro::util {
 
-template <typename Key, typename Factory>
+template <typename Key, typename Factory, typename Hash = std::hash<Key>>
 class LRUCache {
  public:
-  using Value =
-      decltype(std::declval<Factory>()(std::declval<Key>(),
-                                       std::declval<stdx::stop_token>())
-                   .await_resume());
+  using Value = typename decltype(std::declval<Factory>()(
+      std::declval<Key>(), std::declval<stdx::stop_token>()))::type;
 
   LRUCache(int size, Factory factory)
       : d_(std::make_unique<Data>(size, std::move(factory))) {}
@@ -117,9 +115,9 @@ class LRUCache {
     int size_;
     Factory factory_;
     int time_ = 0;
-    std::unordered_map<Key, Value> map_;
-    std::unordered_map<Key, SharedPromise<ProduceValue>> pending_;
-    std::unordered_map<Key, int> last_access_;
+    std::unordered_map<Key, Value, Hash> map_;
+    std::unordered_map<Key, SharedPromise<ProduceValue>, Hash> pending_;
+    std::unordered_map<Key, int, Hash> last_access_;
     std::set<Key, Compare> queue_;
     stdx::stop_source stop_source_;
     std::vector<Key> pending_cleanup_queue_;

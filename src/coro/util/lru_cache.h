@@ -56,9 +56,9 @@ class LRUCache {
     }
 
     void Invalidate(const Key& key) {
-      queue_.erase(key);
       last_access_.erase(key);
       map_.erase(key);
+      queue_.erase(key);
     }
 
     void Insert(Key key, Value value) {

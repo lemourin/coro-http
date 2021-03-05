@@ -1,6 +1,9 @@
 #ifndef CORO_CLOUDSTORAGE_ANY_INVOCABLE_H
 #define CORO_CLOUDSTORAGE_ANY_INVOCABLE_H
 
+#include <memory>
+#include <utility>
+
 namespace coro::stdx {
 
 namespace internal {

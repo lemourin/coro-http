@@ -10,5 +10,7 @@ target_sources(coro-util PRIVATE
     event_loop.h
     event_loop.cc
     stop_token_or.h
+    thread_pool.h
+    thread_pool.cc
 )
 target_link_libraries(coro-util PUBLIC stdx event_core)

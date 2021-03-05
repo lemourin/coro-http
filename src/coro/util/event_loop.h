@@ -53,6 +53,39 @@ class EventLoop {
 
   WaitTask Wait(int msec, stdx::stop_token = stdx::stop_token()) const;
 
+  template <Awaitable<void> F>
+  void RunOnEventLoop(F func) const {
+    F* data = new F(std::move(func));
+    if (event_base_once(
+            event_loop_, -1, EV_TIMEOUT,
+            [](evutil_socket_t, short, void* d) {
+              coro::Invoke([func = reinterpret_cast<F*>(d)]() -> Task<> {
+                co_await (*func)();
+                delete func;
+              });
+            },
+            data, nullptr) != 0) {
+      delete data;
+      throw std::runtime_error("can't run on event loop");
+    }
+  }
+
+  template <typename F>
+  void RunOnEventLoop(F func) const {
+    F* data = new F(std::move(func));
+    if (event_base_once(
+            event_loop_, -1, EV_TIMEOUT,
+            [](evutil_socket_t, short, void* d) {
+              auto func = reinterpret_cast<F*>(d);
+              (*func)();
+              delete func;
+            },
+            data, nullptr) != 0) {
+      delete data;
+      throw std::runtime_error("can't run on event loop");
+    }
+  }
+
  private:
   event_base* event_loop_;
 };

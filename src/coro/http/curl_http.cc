@@ -117,6 +117,10 @@ struct CurlHandle::Data {
         }
       } else {
         curl_easy_setopt(handle.get(), CURLOPT_UPLOAD, 1L);
+        if (content_length) {
+          Check(curl_easy_setopt(handle.get(), CURLOPT_INFILESIZE,
+                                 *content_length));
+        }
       }
       Invoke([d = this]() -> Task<> {
         try {

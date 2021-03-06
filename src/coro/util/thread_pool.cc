@@ -4,7 +4,7 @@ namespace coro::util {
 
 ThreadPool::ThreadPool(const EventLoop& event_loop, unsigned int thread_count)
     : event_loop_(&event_loop) {
-  for (unsigned int i = 0; i < std::max(thread_count, 1u); i++) {
+  for (unsigned int i = 0; i < std::max<unsigned int>(thread_count, 1u); i++) {
     threads_.emplace_back([this] { Work(); });
   }
 }

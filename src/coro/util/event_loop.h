@@ -8,6 +8,8 @@
 #include <event2/event.h>
 #include <event2/event_struct.h>
 
+#include <stdexcept>
+
 namespace coro::util {
 
 class EventLoop {
@@ -53,7 +55,11 @@ class EventLoop {
 
   WaitTask Wait(int msec, stdx::stop_token = stdx::stop_token()) const;
 
-  template <Awaitable<void> F>
+  template <typename F>
+  requires requires(F func) {
+    { func() }
+    ->Awaitable<void>;
+  }
   void RunOnEventLoop(F func) const {
     F* data = new F(std::move(func));
     if (event_base_once(

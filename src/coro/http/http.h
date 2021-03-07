@@ -175,6 +175,7 @@ class HttpBodyGenerator {
   void ReceivedData(std::string data);
   void Close(int status);
   void Close(std::exception_ptr);
+  auto GetBufferedByteCount() const { return data_.size(); }
 
  private:
   stdx::coroutine_handle<void> handle_;

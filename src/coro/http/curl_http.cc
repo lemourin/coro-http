@@ -205,7 +205,8 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
     http_operation->body_ += std::string(ptr, ptr + size * nmemb);
   } else if (std::holds_alternative<CurlHttpBodyGenerator*>(data->owner)) {
     auto http_body_generator = std::get<CurlHttpBodyGenerator*>(data->owner);
-    if (!http_body_generator->data_.empty()) {
+    if (!http_body_generator->data_.empty() ||
+        http_body_generator->GetBufferedByteCount() > 0) {
       return CURL_WRITEFUNC_PAUSE;
     }
     http_body_generator->data_ += std::string(ptr, ptr + size * nmemb);

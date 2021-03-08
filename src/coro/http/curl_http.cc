@@ -151,6 +151,7 @@ struct CurlHandle::Data {
         std::exchange((*operation)->awaiting_coroutine_, nullptr).resume();
       }
     } else if (auto* generator = std::get_if<CurlHttpBodyGenerator*>(&owner)) {
+      curl_easy_pause((*generator)->handle_.d_->handle.get(), CURLPAUSE_CONT);
       (*generator)->exception_ptr_ = std::current_exception();
       (*generator)->Close((*generator)->exception_ptr_);
     }

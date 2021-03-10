@@ -267,9 +267,16 @@ int64_t ParseTime(std::string_view str) {
   char buffer[SIZE + 1] = {};
   float sec;
   std::tm time = {};
-  if (sscanf(std::string(str).c_str(), "%d-%d-%dT%d:%d:%f%6s", &time.tm_year,
-             &time.tm_mon, &time.tm_mday, &time.tm_hour, &time.tm_min, &sec,
-             buffer) == 7) {
+#ifdef _MSC_VER
+  int cnt = sscanf_s(std::string(str).c_str(), "%d-%d-%dT%d:%d:%f%6s",
+                     &time.tm_year, &time.tm_mon, &time.tm_mday, &time.tm_hour,
+                     &time.tm_min, &sec, buffer, SIZE + 1);
+#else
+  int cnt = sscanf(std::string(str).c_str(), "%d-%d-%dT%d:%d:%f%6s",
+                   &time.tm_year, &time.tm_mon, &time.tm_mday, &time.tm_hour,
+                   &time.tm_min, &sec, buffer);
+#endif
+  if (cnt == 7) {
     time.tm_year -= 1900;
     time.tm_mon--;
     time.tm_sec = std::lround(sec);

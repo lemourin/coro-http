@@ -8,6 +8,7 @@
 #include <memory>
 #include <tuple>
 #include <utility>
+#include <variant>
 
 namespace coro {
 
@@ -75,7 +76,7 @@ class [[nodiscard]] Task<T> {
   };
 
   Task(const Task&) = delete;
-  Task(Task && task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
   ~Task() {
     if (handle_) {
       handle_.destroy();
@@ -140,7 +141,7 @@ class [[nodiscard]] Task<> {
   };
 
   Task(const Task&) = delete;
-  Task(Task && task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
   ~Task() {
     if (handle_) {
       handle_.destroy();
@@ -173,12 +174,12 @@ class [[nodiscard]] Task<> {
 };
 
 // clang-format off
-template <typename T, typename Result>
-concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
-  { v.await_resume() } -> stdx::convertible_to<Result>;
-  v.await_suspend(handle);
-  { v.await_ready() } -> stdx::same_as<bool>;
-};
+  template <typename T, typename Result>
+  concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
+    { v.await_resume() } -> stdx::convertible_to<Result>;
+    v.await_suspend(handle);
+    { v.await_ready() } -> stdx::same_as<bool>;
+  };
 // clang-format on
 
 struct RunTask {
@@ -206,9 +207,36 @@ RunTask Invoke(F func, Args&&... args) {
   }
 }
 
+template <typename T>
+Task<std::variant<T, std::exception_ptr>> NoExceptTask(Task<T> task) {
+  try {
+    co_return co_await task;
+  } catch (...) {
+    co_return std::current_exception();
+  }
+}
+
+namespace internal {
+
+template <typename T>
+T Convert(std::variant<T, std::exception_ptr> variant) {
+  if (auto* exception = std::get_if<std::exception_ptr>(&variant)) {
+    std::rethrow_exception(*exception);
+  } else {
+    return std::get<T>(std::move(variant));
+  }
+}
+
+template <typename... T>
+auto ConvertTuple(std::variant<T, std::exception_ptr>... variant) {
+  return std::make_tuple(Convert(std::move(variant))...);
+}
+
+}  // namespace internal
+
 template <typename... T>
 Task<std::tuple<T...>> WhenAll(Task<T>... tasks) {
-  co_return std::make_tuple((co_await tasks)...);
+  co_return internal::ConvertTuple(co_await NoExceptTask(std::move(tasks))...);
 }
 
 }  // namespace coro

@@ -146,6 +146,7 @@ struct CurlHandle::Data {
 
   void HandleException(std::exception_ptr exception) {
     if (auto* operation = std::get_if<CurlHttpOperation*>(&owner)) {
+      curl_easy_pause((*operation)->handle_.d_->handle.get(), CURLPAUSE_CONT);
       (*operation)->exception_ptr_ = std::current_exception();
       if ((*operation)->awaiting_coroutine_) {
         std::exchange((*operation)->awaiting_coroutine_, nullptr).resume();

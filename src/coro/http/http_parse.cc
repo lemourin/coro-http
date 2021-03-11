@@ -282,7 +282,12 @@ int64_t ParseTime(std::string_view str) {
     time.tm_sec = std::lround(sec);
     if (buffer != std::string("Z")) {
       int offset_hour, offset_minute;
-      if (sscanf(buffer, "%d:%d", &offset_hour, &offset_minute) == 2) {
+#ifdef _MSC_VER
+      int cnt = sscanf_s(buffer, "%d:%d", &offset_hour, &offset_minute);
+#else
+      int cnt = sscanf(buffer, "%d:%d", &offset_hour, &offset_minute);
+#endif
+      if (cnt == 2) {
         time.tm_hour -= offset_hour;
         time.tm_min -= offset_minute;
       }

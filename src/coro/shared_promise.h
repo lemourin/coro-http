@@ -48,7 +48,7 @@ class SharedPromise {
               shared_data->result = co_await producer();
             }
           }
-        } catch (const std::exception&) {
+        } catch (...) {
           shared_data->result = std::current_exception();
         }
         while (!shared_data->awaiters.empty()) {

@@ -8,7 +8,6 @@
 #include <memory>
 #include <tuple>
 #include <utility>
-#include <variant>
 
 namespace coro {
 
@@ -49,7 +48,7 @@ class [[nodiscard]] Task<T> {
     Task get_return_object() {
       return Task(stdx::coroutine_handle<promise_type>::from_promise(*this));
     }
-    stdx::suspend_never initial_suspend() { return {}; }
+    stdx::suspend_always initial_suspend() { return {}; }
     final_awaitable final_suspend() noexcept { return {}; }
     template <typename V>
     void return_value(V&& v) {
@@ -92,8 +91,9 @@ class [[nodiscard]] Task<T> {
   bool await_ready() {
     return handle_.promise().type != promise_type::Type::kNone;
   }
-  void await_suspend(stdx::coroutine_handle<void> continuation) {
+  auto await_suspend(stdx::coroutine_handle<void> continuation) {
     handle_.promise().continuation = continuation;
+    return handle_;
   }
   T await_resume() {
     if (handle_.promise().type == promise_type::Type::kException) {
@@ -130,7 +130,7 @@ class [[nodiscard]] Task<> {
     Task get_return_object() {
       return Task(stdx::coroutine_handle<promise_type>::from_promise(*this));
     }
-    stdx::suspend_never initial_suspend() { return {}; }
+    stdx::suspend_always initial_suspend() { return {}; }
     final_awaitable final_suspend() noexcept { return {}; }
     void return_void() { done = true; }
     void unhandled_exception() { exception = std::current_exception(); }
@@ -157,8 +157,9 @@ class [[nodiscard]] Task<> {
   bool await_ready() {
     return handle_.promise().done || handle_.promise().exception;
   }
-  void await_suspend(stdx::coroutine_handle<void> continuation) {
+  auto await_suspend(stdx::coroutine_handle<void> continuation) {
     handle_.promise().continuation = continuation;
+    return handle_;
   }
   void await_resume() {
     if (handle_.promise().exception) {
@@ -174,12 +175,12 @@ class [[nodiscard]] Task<> {
 };
 
 // clang-format off
-  template <typename T, typename Result>
-  concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
-    { v.await_resume() } -> stdx::convertible_to<Result>;
-    v.await_suspend(handle);
-    { v.await_ready() } -> stdx::same_as<bool>;
-  };
+template <typename T, typename Result>
+concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
+  { v.await_resume() } -> stdx::convertible_to<Result>;
+  v.await_suspend(handle);
+  { v.await_ready() } -> stdx::same_as<bool>;
+};
 // clang-format on
 
 struct RunTask {
@@ -205,38 +206,6 @@ RunTask Invoke(F func, Args&&... args) {
     co_await func(std::forward<Args>(args)...);
   } catch (const InterruptedException&) {
   }
-}
-
-template <typename T>
-Task<std::variant<T, std::exception_ptr>> NoExceptTask(Task<T> task) {
-  try {
-    co_return co_await task;
-  } catch (...) {
-    co_return std::current_exception();
-  }
-}
-
-namespace internal {
-
-template <typename T>
-T Convert(std::variant<T, std::exception_ptr> variant) {
-  if (auto* exception = std::get_if<std::exception_ptr>(&variant)) {
-    std::rethrow_exception(*exception);
-  } else {
-    return std::get<T>(std::move(variant));
-  }
-}
-
-template <typename... T>
-auto ConvertTuple(std::variant<T, std::exception_ptr>... variant) {
-  return std::make_tuple(Convert(std::move(variant))...);
-}
-
-}  // namespace internal
-
-template <typename... T>
-Task<std::tuple<T...>> WhenAll(Task<T>... tasks) {
-  co_return internal::ConvertTuple(co_await NoExceptTask(std::move(tasks))...);
 }
 
 }  // namespace coro

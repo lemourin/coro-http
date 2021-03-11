@@ -9,6 +9,7 @@ target_sources(coro PRIVATE
     promise.h
     shared_promise.h
     interrupted_exception.h
+    when_all.h
 )
 
 target_link_libraries(coro PUBLIC coro-util event_core stdx)

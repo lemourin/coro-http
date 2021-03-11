@@ -50,6 +50,12 @@ class Promise {
       std::exchange(continuation_, nullptr).resume();
     }
   }
+  void SetException(std::exception_ptr e) {
+    result_ = std::move(e);
+    if (continuation_) {
+      std::exchange(continuation_, nullptr).resume();
+    }
+  }
 
  private:
   std::optional<std::variant<T, std::exception_ptr>> result_;

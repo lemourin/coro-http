@@ -118,8 +118,10 @@ internal::TaskT<ReturnT> InterruptibleAwait(T&& task,
 template <typename T, typename ReturnT = typename T::type>
 internal::TaskT<ReturnT> InterruptibleAwait(T& task,
                                             stdx::stop_token stop_token) {
-  SharedPromise promise(
-      [&]() mutable -> internal::TaskT<ReturnT> { co_return co_await task; });
+  SharedPromise promise([&]() -> internal::TaskT<ReturnT> {
+    auto& ref = task;
+    co_return co_await ref;
+  });
   co_return co_await promise.Get(std::move(stop_token));
 }
 

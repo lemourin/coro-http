@@ -51,22 +51,6 @@ class CurlHandle {
     Data* data;
   };
 
-  struct CurlHandleDeleter {
-    void operator()(CURL* handle) const {
-      if (handle) {
-        curl_easy_cleanup(handle);
-      }
-    }
-  };
-
-  struct CurlListDeleter {
-    void operator()(curl_slist* list) const {
-      if (list) {
-        curl_slist_free_all(list);
-      }
-    }
-  };
-
   friend class CurlHttpImpl;
   friend class CurlHttpOperation;
   friend class CurlHttpBodyGenerator;

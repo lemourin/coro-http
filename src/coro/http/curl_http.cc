@@ -12,6 +12,22 @@ struct SocketData {
   event socket_event = {};
 };
 
+struct CurlHandleDeleter {
+  void operator()(CURL* handle) const {
+    if (handle) {
+      curl_easy_cleanup(handle);
+    }
+  }
+};
+
+struct CurlListDeleter {
+  void operator()(curl_slist* list) const {
+    if (list) {
+      curl_slist_free_all(list);
+    }
+  }
+};
+
 void Check(CURLMcode code) {
   if (code != CURLM_OK) {
     throw HttpException(code, curl_multi_strerror(code));
@@ -139,6 +155,11 @@ struct CurlHandle::Data {
     Check(curl_multi_add_handle(http, handle.get()));
   }
 
+  Data(Data&&) = delete;
+  Data(const Data&) = delete;
+  Data& operator=(Data&&) = delete;
+  Data& operator=(const Data&) = delete;
+
   ~Data() {
     Check(curl_multi_remove_handle(http, handle.get()));
     event_del(&next_request_body_chunk);
@@ -146,14 +167,14 @@ struct CurlHandle::Data {
 
   void HandleException(std::exception_ptr exception) {
     if (auto* operation = std::get_if<CurlHttpOperation*>(&owner)) {
-      curl_easy_pause((*operation)->handle_.d_->handle.get(), CURLPAUSE_CONT);
-      (*operation)->exception_ptr_ = std::current_exception();
+      curl_easy_pause(handle.get(), CURLPAUSE_CONT);
+      (*operation)->exception_ptr_ = std::move(exception);
       if ((*operation)->awaiting_coroutine_) {
         std::exchange((*operation)->awaiting_coroutine_, nullptr).resume();
       }
     } else if (auto* generator = std::get_if<CurlHttpBodyGenerator*>(&owner)) {
-      curl_easy_pause((*generator)->handle_.d_->handle.get(), CURLPAUSE_CONT);
-      (*generator)->exception_ptr_ = std::current_exception();
+      curl_easy_pause(handle.get(), CURLPAUSE_CONT);
+      (*generator)->exception_ptr_ = std::move(exception);
       (*generator)->Close((*generator)->exception_ptr_);
     }
   }

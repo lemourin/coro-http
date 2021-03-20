@@ -10,7 +10,8 @@ target_sources(coro PRIVATE
     shared_promise.h
     interrupted_exception.h
     when_all.h
-)
+    mutex.h
+    mutex.cc)
 
 target_link_libraries(coro PUBLIC coro-util event_core stdx)
 target_include_directories(coro PUBLIC ..)

@@ -160,20 +160,24 @@ struct CurlHandle::Data {
   Data& operator=(Data&&) = delete;
   Data& operator=(const Data&) = delete;
 
-  ~Data() {
-    Check(curl_multi_remove_handle(http, handle.get()));
-    event_del(&next_request_body_chunk);
+  ~Data() { Cleanup(); }
+
+  void Cleanup() {
+    curl_multi_remove_handle(http, handle.get());
+    if (next_request_body_chunk.ev_base) {
+      event_del(&next_request_body_chunk);
+    }
   }
 
   void HandleException(std::exception_ptr exception) {
     if (auto* operation = std::get_if<CurlHttpOperation*>(&owner)) {
-      curl_easy_pause(handle.get(), CURLPAUSE_CONT);
+      Cleanup();
       (*operation)->exception_ptr_ = std::move(exception);
       if ((*operation)->awaiting_coroutine_) {
         std::exchange((*operation)->awaiting_coroutine_, nullptr).resume();
       }
     } else if (auto* generator = std::get_if<CurlHttpBodyGenerator*>(&owner)) {
-      curl_easy_pause(handle.get(), CURLPAUSE_CONT);
+      Cleanup();
       (*generator)->exception_ptr_ = std::move(exception);
       (*generator)->Close((*generator)->exception_ptr_);
     }

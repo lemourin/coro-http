@@ -24,7 +24,10 @@ enum class Method {
   kHead,
   kPatch,
   kDelete,
-  kPropfind
+  kPropfind,
+  kProppatch,
+  kMkcol,
+  kMove
 };
 
 inline const char* MethodToString(Method method) {
@@ -45,6 +48,12 @@ inline const char* MethodToString(Method method) {
       return "DELETE";
     case Method::kPropfind:
       return "PROPFIND";
+    case Method::kProppatch:
+      return "PROPPATCH";
+    case Method::kMkcol:
+      return "MKCOL";
+    case Method::kMove:
+      return "MOVE";
     default:
       return "UNKNOWN";
   }

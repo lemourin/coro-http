@@ -45,7 +45,10 @@ class HttpServer {
     Check(event_assign(&quit_event_, event_loop, -1, 0, OnQuit, this));
     evhttp_set_allowed_methods(
         http_.get(), EVHTTP_REQ_PROPFIND | EVHTTP_REQ_GET | EVHTTP_REQ_POST |
-                         EVHTTP_REQ_OPTIONS | EVHTTP_REQ_HEAD);
+                         EVHTTP_REQ_OPTIONS | EVHTTP_REQ_HEAD |
+                         EVHTTP_REQ_MKCOL | EVHTTP_REQ_PROPPATCH |
+                         EVHTTP_REQ_PUT | EVHTTP_REQ_DELETE | EVHTTP_REQ_MOVE |
+                         EVHTTP_REQ_PATCH);
   }
 
   ~HttpServer() { Check(event_del(&quit_event_)); }
@@ -196,6 +199,18 @@ class HttpServer {
         return http::Method::kOptions;
       case EVHTTP_REQ_PROPFIND:
         return http::Method::kPropfind;
+      case EVHTTP_REQ_PROPPATCH:
+        return http::Method::kProppatch;
+      case EVHTTP_REQ_MKCOL:
+        return http::Method::kMkcol;
+      case EVHTTP_REQ_MOVE:
+        return http::Method::kMove;
+      case EVHTTP_REQ_DELETE:
+        return http::Method::kDelete;
+      case EVHTTP_REQ_PATCH:
+        return http::Method::kPatch;
+      case EVHTTP_REQ_PUT:
+        return http::Method::kPut;
       default:
         throw http::HttpException(http::HttpException::kInvalidMethod);
     }

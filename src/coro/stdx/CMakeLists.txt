@@ -7,6 +7,7 @@ set(stdx-headers
     coroutine.h
     concepts.h
     any_invocable.h
+    bind_front.h
 )
 
 set(stdx-sources

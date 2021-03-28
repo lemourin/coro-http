@@ -65,6 +65,7 @@ struct Request {
   Method method = Method::kGet;
   std::vector<std::pair<std::string, std::string>> headers;
   std::optional<BodyGenerator> body;
+  enum Flag { kRead = 1 << 0 } flags;
 
   friend bool operator==(const Request& r1, const Request& r2) {
     return std::tie(r1.url, r1.method, r1.headers, r1.body) ==

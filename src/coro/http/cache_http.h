@@ -18,11 +18,16 @@ class CacheHttpImpl {
         max_staleness_ms_(max_staleness_ms) {}
 
   Task<Response<>> Fetch(Request<> request, stdx::stop_token stop_token) const {
+    if (request.method != Method::kGet && request.method != Method::kHead &&
+        request.method != Method::kOptions &&
+        request.method != Method::kPropfind &&
+        !(request.flags & Request<>::kRead)) {
+      InvalidateCache();
+    }
     if (!IsCacheable(request)) {
       co_return ConvertResponse(
           co_await http_->Fetch(std::move(request), std::move(stop_token)));
     }
-
     auto r = co_await GetRequest(std::move(request));
     auto cached_response = cache_.GetCached(r);
     if (cached_response && !IsStale(*cached_response)) {
@@ -35,9 +40,9 @@ class CacheHttpImpl {
     co_return ConvertResponse(response);
   }
 
-  void InvalidateCache() { last_invalidate_ms_ = GetTime(); }
-
  private:
+  void InvalidateCache() const { last_invalidate_ms_ = GetTime(); }
+
   struct CacheableResponse {
     int status;
     std::vector<std::pair<std::string, std::string>> headers;
@@ -120,7 +125,7 @@ class CacheHttpImpl {
   std::unique_ptr<Http> http_;
   util::LRUCache<Request<std::string>, Factory> cache_;
   int max_staleness_ms_;
-  int64_t last_invalidate_ms_ = 0;
+  mutable int64_t last_invalidate_ms_ = 0;
 };  // namespace coro::http
 
 template <HttpClient Http>

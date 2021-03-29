@@ -9,6 +9,8 @@
 
 namespace coro::http {
 
+enum class Method;
+
 struct Range {
   int64_t start;
   std::optional<int64_t> end;
@@ -55,6 +57,8 @@ std::string GetMimeType(std::string_view extension);
 std::string ToBase64(std::string_view);
 std::string FromBase64(std::string_view);
 int64_t ParseTime(std::string_view);
+std::string_view ToStatusString(int http_code);
+Method ToMethod(std::string_view method);
 
 template <typename Collection>
 std::optional<std::string> GetHeader(const Collection& collection,

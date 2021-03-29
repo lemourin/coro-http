@@ -90,6 +90,7 @@ struct CurlHandle::Data {
         request_body(std::move(request.body)),
         stop_token(std::move(stop_token)),
         owner(owner),
+        next_request_body_chunk(),
         stop_callback(this->stop_token, OnCancel{this}) {
     Check(curl_easy_setopt(handle.get(), CURLOPT_URL, request.url.data()));
     Check(curl_easy_setopt(handle.get(), CURLOPT_PRIVATE, this));

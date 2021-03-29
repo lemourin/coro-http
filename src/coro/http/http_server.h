@@ -1,6 +1,9 @@
 #ifndef CORO_HTTP_HTTP_SERVER_H
 #define CORO_HTTP_HTTP_SERVER_H
 
+#ifndef WIN32
+#include <arpa/inet.h>
+#endif
 #include <coro/http/http_parse.h>
 #include <coro/promise.h>
 #include <coro/stdx/stop_callback.h>
@@ -9,11 +12,13 @@
 #include <coro/util/function_traits.h>
 #include <coro/util/raii_utils.h>
 #include <event2/buffer.h>
+#include <event2/bufferevent.h>
 #include <event2/event.h>
-#include <event2/http.h>
-#include <evhttp.h>
+#include <event2/listener.h>
 
 #include <memory>
+#include <regex>
+#include <sstream>
 #include <vector>
 
 #include "http.h"
@@ -38,17 +43,26 @@ class HttpServer {
   HttpServer(event_base* event_loop, const HttpServerConfig& config,
              HandlerType on_request)
       : event_loop_(event_loop),
-        http_(evhttp_new(event_loop)),
+        listener_([&] {
+          union {
+            struct sockaddr_in sin;
+            struct sockaddr sockaddr;
+          } d;
+          memset(&d.sin, 0, sizeof(sockaddr_in));
+          inet_pton(AF_INET, config.address.c_str(), &d.sin.sin_addr);
+          d.sin.sin_family = AF_INET;
+          d.sin.sin_port = htons(config.port);
+          auto listener = evconnlistener_new_bind(
+              event_loop, EvListenerCallback, this,
+              LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE,
+              /*backlog=*/-1, &d.sockaddr, sizeof(sockaddr_in));
+          if (listener == nullptr) {
+            throw HttpException(HttpException::kUnknown, "http server error");
+          }
+          return listener;
+        }()),
         on_request_(std::move(on_request)) {
-    Check(evhttp_bind_socket(http_.get(), config.address.c_str(), config.port));
-    evhttp_set_gencb(http_.get(), OnHttpRequest, this);
     Check(event_assign(&quit_event_, event_loop, -1, 0, OnQuit, this));
-    evhttp_set_allowed_methods(
-        http_.get(), EVHTTP_REQ_PROPFIND | EVHTTP_REQ_GET | EVHTTP_REQ_POST |
-                         EVHTTP_REQ_OPTIONS | EVHTTP_REQ_HEAD |
-                         EVHTTP_REQ_MKCOL | EVHTTP_REQ_PROPPATCH |
-                         EVHTTP_REQ_PUT | EVHTTP_REQ_DELETE | EVHTTP_REQ_MOVE |
-                         EVHTTP_REQ_PATCH);
   }
 
   ~HttpServer() { Check(event_del(&quit_event_)); }
@@ -66,186 +80,47 @@ class HttpServer {
     quitting_ = true;
     stop_source_.request_stop();
     if (current_connections_ == 0) {
-      timeval tv = {};
-      Check(event_add(&quit_event_, &tv));
+      evuser_trigger(&quit_event_);
     }
     co_await quit_semaphore_;
   }
 
  private:
-  Task<> OnHttpRequest(evhttp_request* ev_request) noexcept {
-    if (quitting_) {
-      evhttp_send_reply(ev_request, 500, nullptr, nullptr);
-      co_return;
-    }
+  static inline constexpr int kMaxLineLength = 16192;
 
-    bool reply_started = false;
-    current_connections_++;
-    try {
-      RequestType request{
-          .url = evhttp_request_get_uri(ev_request),
-          .method = ToMethod(evhttp_request_get_command(ev_request))};
-      stdx::stop_source stop_source;
-      stdx::stop_callback stop_callback(stop_source_.get_token(),
-                                        [&] { stop_source.request_stop(); });
-      evhttp_connection_set_closecb(evhttp_request_get_connection(ev_request),
-                                    OnConnectionClose, &stop_source);
+  using HandlerArgumentList = util::ArgumentListTypeT<HandlerType>;
+  static_assert(util::TypeListLengthV<HandlerArgumentList> == 2);
 
-      evkeyvalq* ev_headers = evhttp_request_get_input_headers(ev_request);
-      evkeyval* header = ev_headers ? ev_headers->tqh_first : nullptr;
-      while (header != nullptr) {
-        request.headers.emplace_back(header->key, header->value);
-        header = header->next.tqe_next;
-      }
+  using RequestType =
+      std::remove_cvref_t<util::TypeAtT<HandlerArgumentList, 0>>;
+  using ResponseType = typename util::ReturnTypeT<HandlerType>::type;
 
-      stdx::stop_source body_stop_source;
-      stdx::stop_callback body_stop_callback(
-          stop_source.get_token(), [&] { body_stop_source.request_stop(); });
-      auto body_size = http::GetHeader(request.headers, "Content-Length");
-      if (body_size) {
-        auto input_buffer = evhttp_request_get_input_buffer(ev_request);
-        if (input_buffer) {
-          request.body =
-              GenerateRequestBody(input_buffer, std::stoll(*body_size),
-                                  body_stop_source.get_token());
-        }
-      }
-
-      auto response =
-          co_await on_request_(std::move(request), stop_source.get_token());
-
-      evkeyvalq* response_headers =
-          evhttp_request_get_output_headers(ev_request);
-      for (const auto& [key, value] : response.headers) {
-        Check(evhttp_add_header(response_headers, key.c_str(), value.c_str()));
-      }
-
-      reply_started = true;
-      evhttp_send_reply_start(ev_request, response.status, nullptr);
-
-      auto buffer = util::MakePointer(evbuffer_new(), evbuffer_free);
-      FOR_CO_AWAIT(const std::string& chunk, response.body) {
-        evbuffer_add(buffer.get(), chunk.c_str(), chunk.size());
-        Promise<void> semaphore;
-        evhttp_send_reply_chunk_with_cb(ev_request, buffer.get(), OnWriteReady,
-                                        &semaphore);
-        stdx::stop_callback stop_callback_dl1(stop_source_.get_token(), [&] {
-          semaphore.SetException(InterruptedException());
-        });
-        stdx::stop_callback stop_callback_dl2(stop_source.get_token(), [&] {
-          semaphore.SetException(InterruptedException());
-        });
-        co_await semaphore;
-      }
-      ResetOnCloseCallback(ev_request);
-      evhttp_send_reply_end(ev_request);
-    } catch (const std::exception& e) {
-      ResetOnCloseCallback(ev_request);
-      auto buffer = util::MakePointer(evbuffer_new(), evbuffer_free);
-      std::string error = std::string(e.what());
-      if (!error.empty() && error.back() != '\n') {
-        error += '\n';
-      }
-      evbuffer_add(buffer.get(), error.c_str(), error.length());
-      if (!reply_started) {
-        evhttp_send_reply(ev_request, 500, nullptr, buffer.get());
-      } else {
-        evhttp_send_reply_chunk(ev_request, buffer.get());
-        evhttp_send_reply_end(ev_request);
+  struct BufferEventDeleter {
+    void operator()(bufferevent* bev) const {
+      if (bev) {
+        bufferevent_free(bev);
       }
     }
-    current_connections_--;
-    if (current_connections_ == 0 && quitting_) {
-      timeval tv = {};
-      Check(event_add(&quit_event_, &tv));
+  };
+
+  struct FreeDeleter {
+    void operator()(char* d) const {
+      if (d) {
+        free(d);
+      }
     }
-  }
+  };
 
-  Generator<std::string> GenerateRequestBody(
-      evbuffer* buffer, int64_t size, stdx::stop_token stop_token) const {
-    size_t initial_length = evbuffer_get_length(buffer);
-    size -= initial_length;
-    std::string chunk(initial_length, 0);
-    if (evbuffer_copyout(buffer, chunk.data(), initial_length) !=
-        initial_length) {
-      Check(HttpException::kUnknown);
-    }
-    co_yield chunk;
-    Promise<const evbuffer_cb_info*> data;
-    stdx::stop_callback stop_callback(
-        stop_token, [&] { data.SetException(InterruptedException()); });
-    auto cb_entry =
-        util::MakePointer(evbuffer_add_cb(buffer, EvBufferCallback, &data),
-                          [buffer](evbuffer_cb_entry* cb_entry) {
-                            evbuffer_remove_cb_entry(buffer, cb_entry);
-                          });
-    while (size > 0) {
-      const evbuffer_cb_info* info = co_await data;
-      data = Promise<const evbuffer_cb_info*>();
-      std::cerr << info->n_added << "\n";
-      size -= info->n_added;
-    }
-  }
-
-  static http::Method ToMethod(evhttp_cmd_type type) {
-    switch (type) {
-      case EVHTTP_REQ_GET:
-        return http::Method::kGet;
-      case EVHTTP_REQ_POST:
-        return http::Method::kPost;
-      case EVHTTP_REQ_HEAD:
-        return http::Method::kHead;
-      case EVHTTP_REQ_OPTIONS:
-        return http::Method::kOptions;
-      case EVHTTP_REQ_PROPFIND:
-        return http::Method::kPropfind;
-      case EVHTTP_REQ_PROPPATCH:
-        return http::Method::kProppatch;
-      case EVHTTP_REQ_MKCOL:
-        return http::Method::kMkcol;
-      case EVHTTP_REQ_MOVE:
-        return http::Method::kMove;
-      case EVHTTP_REQ_DELETE:
-        return http::Method::kDelete;
-      case EVHTTP_REQ_PATCH:
-        return http::Method::kPatch;
-      case EVHTTP_REQ_PUT:
-        return http::Method::kPut;
-      default:
-        throw http::HttpException(http::HttpException::kInvalidMethod);
-    }
-  }
-
-  static void OnConnectionClose(evhttp_connection*, void* arg) {
-    reinterpret_cast<stdx::stop_source*>(arg)->request_stop();
-  }
-
-  static void OnHttpRequest(evhttp_request* request, void* arg) {
-    auto http_server = reinterpret_cast<HttpServer*>(arg);
-    Invoke(http_server->OnHttpRequest(request));
-  }
-
-  static void OnWriteReady(evhttp_connection*, void* arg) {
-    reinterpret_cast<Promise<void>*>(arg)->SetValue();
-  }
-
-  static void OnQuit(evutil_socket_t, short, void* handle) {
-    auto http_server = reinterpret_cast<HttpServer*>(handle);
-    evhttp_free(http_server->http_.release());
-    http_server->quit_semaphore_.SetValue();
-  }
-
-  static void ResetOnCloseCallback(evhttp_request* request) {
-    evhttp_connection* connection = evhttp_request_get_connection(request);
-    if (connection) {
-      evhttp_connection_set_closecb(connection, nullptr, nullptr);
-    }
-  }
-
-  static void EvBufferCallback(evbuffer*, const evbuffer_cb_info* info,
-                               void* arg) {
-    reinterpret_cast<Promise<const evbuffer_cb_info*>*>(arg)->SetValue(info);
-  }
+  struct RequestContext {
+    RequestType request;
+    std::optional<ResponseType> response;
+    std::optional<int64_t> content_length;
+    std::optional<int64_t> current_chunk_length;
+    int64_t read_count;
+    Promise<void> semaphore;
+    stdx::stop_source stop_source;
+    enum class Stage { kUrl, kHeaders, kBody, kInvalid } stage = Stage::kUrl;
+  };
 
   static void Check(int code) {
     if (code != 0) {
@@ -253,28 +128,350 @@ class HttpServer {
     }
   }
 
-  using HandlerArgumentList = util::ArgumentListTypeT<HandlerType>;
-  static_assert(util::TypeListLengthV<HandlerArgumentList> == 2);
+  static Task<> Wait(RequestContext* context) {
+    if (context->stop_source.get_token().stop_requested()) {
+      throw HttpException(HttpException::kAborted);
+    } else {
+      co_await context->semaphore;
+    }
+  }
 
-  using RequestType =
-      std::remove_cvref_t<util::TypeAtT<HandlerArgumentList, 0>>;
-  using ResponseType = util::ReturnType<HandlerType>;
+  Task<> ListenerCallback(struct evconnlistener*, evutil_socket_t fd,
+                          struct sockaddr*, int socklen) {
+    RequestContext context{};
+    try {
+      if (quitting_) {
+        co_return;
+      }
+      current_connections_++;
+      auto scope_guard = util::AtScopeExit([&] {
+        current_connections_--;
+        if (quitting_ && current_connections_ == 0) {
+          evuser_trigger(&quit_event_);
+        }
+      });
+      std::unique_ptr<bufferevent, BufferEventDeleter> bev(
+          bufferevent_socket_new(event_loop_, fd, BEV_OPT_CLOSE_ON_FREE));
+      if (!bev) {
+        throw HttpException(HttpException::kUnknown,
+                            "bufferevent_socket_new failed");
+      }
+      stdx::stop_callback stop_callback1(stop_source_.get_token(), [&] {
+        context.stop_source.request_stop();
+      });
+      stdx::stop_callback stop_callback2(context.stop_source.get_token(), [&] {
+        context.semaphore.SetException(HttpException(HttpException::kAborted));
+      });
+      bufferevent_setcb(bev.get(), ReadCallback, WriteCallback, EventCallback,
+                        &context);
+      bufferevent_setwatermark(bev.get(), EV_READ | EV_WRITE, 0,
+                               2 * kMaxLineLength);
+      bool error = false;
+      while (!error) {
+        context.request = {};
+        context.semaphore = Promise<void>();
+        context.stage = RequestContext::Stage::kUrl;
+        context.content_length = std::nullopt;
+        context.current_chunk_length = std::nullopt;
+        context.read_count = 0;
+        Check(bufferevent_enable(bev.get(), EV_READ));
+        Check(bufferevent_disable(bev.get(), EV_WRITE));
+        try {
+          co_await Wait(&context);
+          context.response.emplace(co_await on_request_(
+              std::move(context.request), context.stop_source.get_token()));
+        } catch (const HttpException& e) {
+          context.response.emplace(GetResponse(e.status(), e.what()));
+          error = context.stage != RequestContext::Stage::kBody &&
+                  context.stage != RequestContext::Stage::kInvalid;
+        } catch (const std::exception& e) {
+          context.response.emplace(GetResponse(500, e.what()));
+          error = context.stage != RequestContext::Stage::kBody &&
+                  context.stage != RequestContext::Stage::kInvalid;
+        }
+        bool is_chunked =
+            !GetHeader(context.response->headers, "Content-Length").has_value();
+        std::stringstream header;
+        header << "HTTP/1.1 " << context.response->status << " "
+               << ToStatusString(context.response->status) << "\r\n";
+        if (is_chunked) {
+          header << "Transfer-Encoding: chunked\r\n";
+        }
+        for (const auto& [key, value] : context.response->headers) {
+          header << key << ": " << value << "\r\n";
+        }
+        header << "Connection: " << (error ? "close" : "keep-alive") << "\r\n";
+        header << "\r\n";
+        std::string chunk = std::move(header).str();
+        Check(bufferevent_enable(bev.get(), EV_WRITE));
+        context.semaphore = Promise<void>();
+        Check(bufferevent_write(bev.get(), chunk.data(), chunk.size()));
+        co_await Wait(&context);
 
-  struct EvHttpDeleter {
-    void operator()(evhttp* http) const {
-      if (http) {
-        evhttp_free(http);
+        if (context.request.method == Method::kHead) {
+          continue;
+        }
+
+        auto write = [&](std::string&& chunk) {
+          if (is_chunked) {
+            std::stringstream stream;
+            stream << std::hex << chunk.size() << "\r\n"
+                   << std::move(chunk) << "\r\n";
+            chunk = std::move(stream).str();
+            Check(bufferevent_write(bev.get(), chunk.data(), chunk.size()));
+          } else {
+            Check(bufferevent_write(bev.get(), chunk.data(), chunk.size()));
+          }
+        };
+        std::optional<typename decltype(context.response->body.begin())::type>
+            it;
+        try {
+          it.emplace(co_await context.response->body.begin());
+        } catch (const std::exception& e) {
+          write(e.what());
+        }
+        while (it && *it != context.response->body.end()) {
+          Check(bufferevent_enable(bev.get(), EV_WRITE));
+          context.semaphore = Promise<void>();
+          chunk = std::move(**it);
+          write(std::move(chunk));
+          try {
+            co_await ++*it;
+          } catch (const std::exception& e) {
+            write(e.what());
+            error = true;
+            break;
+          }
+          co_await Wait(&context);
+        }
+        if (is_chunked) {
+          context.semaphore = Promise<void>();
+          const std::string_view trailer = "0\r\n\r\n";
+          Check(bufferevent_write(bev.get(), trailer.data(), trailer.length()));
+          co_await Wait(&context);
+        }
+        FOR_CO_AWAIT(std::string & chunk,
+                     GetBodyGenerator(bev.get(), &context)) {}
+      }
+    } catch (...) {
+      context.stop_source.request_stop();
+    }
+  }
+
+  static void ReadCallback(struct bufferevent* bev, void* user_data) {
+    auto* context = reinterpret_cast<RequestContext*>(user_data);
+    struct evbuffer* input = bufferevent_get_input(bev);
+    while (evbuffer_get_length(input) > 0) {
+      if (context->stage == RequestContext::Stage::kUrl) {
+        size_t length;
+        std::unique_ptr<char, FreeDeleter> line(
+            evbuffer_readln(input, &length, EVBUFFER_EOL_CRLF_STRICT));
+        if (line) {
+          std::regex regex(R"(([A-Z]+) (\S+) HTTP\/1\.[01])");
+          std::string_view view(line.get(), length);
+          std::match_results<std::string_view::const_iterator> match;
+          if (std::regex_match(view.begin(), view.end(), match, regex)) {
+            try {
+              context->request.method = ToMethod(match[1].str());
+            } catch (const HttpException&) {
+              context->semaphore.SetException(HttpException(501));
+              return;
+            }
+            context->request.url = match[2];
+            context->stage = RequestContext::Stage::kHeaders;
+          } else {
+            context->semaphore.SetException(
+                HttpException(HttpException::kBadRequest, "malformed url"));
+            return;
+          }
+        } else if (evbuffer_get_length(input) >= kMaxLineLength) {
+          return context->semaphore.SetException(HttpException(414));
+        }
+      }
+      if (context->stage == RequestContext::Stage::kHeaders) {
+        size_t length;
+        std::unique_ptr<char, FreeDeleter> line(
+            evbuffer_readln(input, &length, EVBUFFER_EOL_CRLF_STRICT));
+        if (line) {
+          if (length == 0) {
+            if (auto header =
+                    GetHeader(context->request.headers, "Content-Length")) {
+              context->content_length = std::stoll(*header);
+            } else {
+              context->content_length = 0;
+            }
+            for (const auto& [key, value] : context->request.headers) {
+              if (ToLowerCase(key) == ToLowerCase("Transfer-Encoding") &&
+                  value.find("chunked") != std::string::npos) {
+                context->content_length = std::nullopt;
+                break;
+              }
+            }
+            context->stage = RequestContext::Stage::kBody;
+          } else {
+            std::regex regex(R"((\S+):\s*(.+)$)");
+            std::string_view view(line.get(), length);
+            std::match_results<std::string_view::const_iterator> match;
+            if (std::regex_match(view.begin(), view.end(), match, regex)) {
+              context->request.headers.emplace_back(match[1], match[2]);
+            } else {
+              context->semaphore.SetException(HttpException(
+                  HttpException::kBadRequest, "malformed header"));
+              return;
+            }
+          }
+        } else if (evbuffer_get_length(input) >= kMaxLineLength) {
+          return context->semaphore.SetException(HttpException(431));
+        }
+      }
+      if (context->stage == RequestContext::Stage::kBody) {
+        if (!context->request.body) {
+          context->request.body = GetBodyGenerator(bev, context);
+        }
+        Check(bufferevent_disable(bev, EV_READ));
+        context->semaphore.SetValue();
+        break;
+      }
+    }
+  }
+
+  static ResponseType GetResponse(int status, std::string body) {
+    ResponseType response;
+    response.status = status;
+    response.headers.emplace_back("Content-Length",
+                                  std::to_string(body.size()));
+    response.body = GetBodyGenerator(std::move(body));
+    return response;
+  }
+
+  static Generator<std::string> GetBodyGenerator(std::string chunk) {
+    co_yield std::move(chunk);
+  }
+
+  static Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
+                                                 RequestContext* context) {
+    struct evbuffer* input = bufferevent_get_input(bev);
+    if (!context->content_length) {
+      try {
+        while (!context->content_length) {
+          while (!context->current_chunk_length) {
+            size_t length;
+            std::unique_ptr<char, FreeDeleter> line(
+                evbuffer_readln(input, &length, EVBUFFER_EOL_CRLF_STRICT));
+            if (line) {
+              context->current_chunk_length =
+                  std::stoll(line.get(), /*pos=*/nullptr, /*base=*/16);
+            } else {
+              if (evbuffer_get_length(input) >= kMaxLineLength) {
+                throw HttpException(HttpException::kBadRequest);
+              }
+              bufferevent_enable(bev, EV_READ);
+              co_await Wait(context);
+              context->semaphore = Promise<void>();
+            }
+          }
+          bool terminated = context->current_chunk_length == 0;
+          while (*context->current_chunk_length > 0) {
+            if (evbuffer_get_length(input) == 0) {
+              bufferevent_enable(bev, EV_READ);
+              co_await Wait(context);
+              context->semaphore = Promise<void>();
+            }
+            std::string buffer(
+                std::min<size_t>(
+                    evbuffer_get_length(input),
+                    static_cast<size_t>(*context->current_chunk_length)),
+                0);
+            if (evbuffer_remove(input, buffer.data(), buffer.size()) !=
+                buffer.size()) {
+              throw HttpException(HttpException::kUnknown,
+                                  "evbuffer_remove failed");
+            }
+            *context->current_chunk_length -= buffer.size();
+            co_yield std::move(buffer);
+          }
+          while (true) {
+            size_t length;
+            std::unique_ptr<char, FreeDeleter> line(
+                evbuffer_readln(input, &length, EVBUFFER_EOL_CRLF_STRICT));
+            if (line) {
+              if (length != 0) {
+                throw HttpException(HttpException::kBadRequest);
+              }
+              break;
+            } else {
+              bufferevent_enable(bev, EV_READ);
+              co_await Wait(context);
+              context->semaphore = Promise<void>();
+            }
+          }
+          context->current_chunk_length = std::nullopt;
+          if (terminated) {
+            context->content_length = 0;
+          }
+        }
+      } catch (...) {
+        context->stage = RequestContext::Stage::kInvalid;
+        throw;
+      }
+    } else {
+      while (context->read_count < *context->content_length) {
+        bufferevent_enable(bev, EV_READ);
+        co_await Wait(context);
+        context->semaphore = Promise<void>();
+        std::string buffer(evbuffer_get_length(input), 0);
+        if (evbuffer_remove(input, reinterpret_cast<void*>(buffer.data()),
+                            buffer.size()) != buffer.size()) {
+          throw HttpException(HttpException::kUnknown,
+                              "evbuffer_remove failed");
+        }
+        context->read_count += buffer.size();
+        co_yield std::move(buffer);
+      }
+    }
+  }
+
+  static void WriteCallback(struct bufferevent* bev, void* user_data) {
+    auto* context = reinterpret_cast<RequestContext*>(user_data);
+    context->semaphore.SetValue();
+  }
+
+  static void EventCallback(struct bufferevent* bev, short events,
+                            void* user_data) {
+    auto* context = reinterpret_cast<RequestContext*>(user_data);
+    if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
+      context->stop_source.request_stop();
+    }
+  }
+
+  static void EvListenerCallback(struct evconnlistener* listener,
+                                 evutil_socket_t socket, struct sockaddr* addr,
+                                 int socklen, void* d) {
+    coro::Invoke(reinterpret_cast<HttpServer*>(d)->ListenerCallback(
+        listener, socket, addr, socklen));
+  }
+
+  static void OnQuit(evutil_socket_t, short, void* handle) {
+    auto http_server = reinterpret_cast<HttpServer*>(handle);
+    http_server->listener_.reset();
+    http_server->quit_semaphore_.SetValue();
+  }
+
+  struct EvconnListenerDeleter {
+    void operator()(evconnlistener* listener) const {
+      if (listener) {
+        evconnlistener_free(listener);
       }
     }
   };
 
   event_base* event_loop_;
-  std::unique_ptr<evhttp, EvHttpDeleter> http_;
   bool quitting_ = false;
   int current_connections_ = 0;
   stdx::stop_source stop_source_;
   event quit_event_;
   Promise<void> quit_semaphore_;
+  std::unique_ptr<evconnlistener, EvconnListenerDeleter> listener_;
   HandlerType on_request_;
 };
 

@@ -195,7 +195,7 @@ class HttpServer {
         std::stringstream header;
         header << "HTTP/1.1 " << context.response->status << " "
                << ToStatusString(context.response->status) << "\r\n";
-        if (is_chunked) {
+        if (is_chunked && context.request.method != Method::kOptions) {
           header << "Transfer-Encoding: chunked\r\n";
         }
         for (const auto& [key, value] : context.response->headers) {
@@ -209,7 +209,8 @@ class HttpServer {
         Check(bufferevent_write(bev.get(), chunk.data(), chunk.size()));
         co_await Wait(&context);
 
-        if (context.request.method == Method::kHead) {
+        if (context.request.method == Method::kHead ||
+            context.request.method == Method::kOptions) {
           continue;
         }
 

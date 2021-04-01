@@ -55,7 +55,7 @@ int main() {
     coro::http::CurlHttp http(base);
     coro::Promise<void> semaphore;
     coro::http::HttpServer http_server(base,
-                                       {.address = "0.0.0.0", .port = 4444},
+                                       {.address = "127.0.0.1", .port = 4444},
                                        HttpHandler{http, &semaphore});
     co_await semaphore;
     co_await http_server.Quit();

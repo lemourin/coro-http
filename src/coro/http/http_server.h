@@ -233,6 +233,7 @@ class HttpServer {
           it.emplace(co_await context.response->body.begin());
         } catch (const std::exception& e) {
           write(e.what());
+          error = true;
         }
         while (it && *it != context.response->body.end()) {
           Check(bufferevent_enable(bev.get(), EV_WRITE));

@@ -192,10 +192,13 @@ class HttpServer {
         }
         bool is_chunked =
             !GetHeader(context.response->headers, "Content-Length").has_value();
+        bool has_body = context.response->status / 100 != 1 &&
+                        context.response->status != 204 &&
+                        context.response->status != 304;
         std::stringstream header;
         header << "HTTP/1.1 " << context.response->status << " "
                << ToStatusString(context.response->status) << "\r\n";
-        if (is_chunked && context.request.method != Method::kOptions) {
+        if (is_chunked && has_body) {
           header << "Transfer-Encoding: chunked\r\n";
         }
         for (const auto& [key, value] : context.response->headers) {
@@ -209,8 +212,7 @@ class HttpServer {
         Check(bufferevent_write(bev.get(), chunk.data(), chunk.size()));
         co_await Wait(&context);
 
-        if (context.request.method == Method::kHead ||
-            context.request.method == Method::kOptions) {
+        if (context.request.method == Method::kHead || !has_body) {
           continue;
         }
 

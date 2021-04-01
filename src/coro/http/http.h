@@ -7,7 +7,6 @@
 #include <coro/stdx/coroutine.h>
 #include <coro/stdx/stop_token.h>
 
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -80,13 +79,6 @@ struct Response {
   std::vector<std::pair<std::string, std::string>> headers;
   HttpBodyGenerator body;
 };
-
-template <GeneratorLike<std::string_view> HttpBodyGenerator>
-Task<std::string> GetBody(HttpBodyGenerator body) {
-  std::string result;
-  FOR_CO_AWAIT(std::string & piece, body) { result += std::move(piece); }
-  co_return result;
-}
 
 class HttpException : public std::exception {
  public:
@@ -193,6 +185,18 @@ class HttpBodyGenerator {
   int status_ = -1;
   std::exception_ptr exception_ptr_;
 };
+
+template <GeneratorLike<std::string_view> HttpBodyGenerator>
+Task<std::string> GetBody(HttpBodyGenerator body) {
+  std::string result;
+  FOR_CO_AWAIT(std::string & piece, body) {
+    result += std::move(piece);
+    if (result.size() > 10 * 1024 * 1024) {
+      throw HttpException(HttpException::kBadRequest, "body too large");
+    }
+  }
+  co_return result;
+}
 
 template <typename Impl>
 HttpBodyGenerator<Impl>::Iterator::Iterator(

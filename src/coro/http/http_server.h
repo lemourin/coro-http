@@ -87,6 +87,7 @@ class HttpServer {
 
  private:
   static inline constexpr int kMaxLineLength = 16192;
+  static inline constexpr int kMaxHeaderCount = 128;
 
   using HandlerArgumentList = util::ArgumentListTypeT<HandlerType>;
   static_assert(util::TypeListLengthV<HandlerArgumentList> == 2);
@@ -314,6 +315,11 @@ class HttpServer {
             std::match_results<std::string_view::const_iterator> match;
             if (std::regex_match(view.begin(), view.end(), match, regex)) {
               context->request.headers.emplace_back(match[1], match[2]);
+              if (context->request.headers.size() > kMaxHeaderCount) {
+                context->semaphore.SetException(HttpException(
+                    HttpException::kBadRequest, "too many headers"));
+                return;
+              }
             } else {
               context->semaphore.SetException(HttpException(
                   HttpException::kBadRequest, "malformed header"));

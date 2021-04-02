@@ -347,7 +347,11 @@ class HttpServer {
 
   static ResponseType GetResponse(int status, std::string body) {
     ResponseType response;
-    response.status = status;
+    if (status >= 100 && status < 600) {
+      response.status = status;
+    } else {
+      response.status = 500;
+    }
     response.headers.emplace_back("Content-Length",
                                   std::to_string(body.size()));
     response.body = GetBodyGenerator(std::move(body));

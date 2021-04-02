@@ -18,6 +18,7 @@ template <size_t... Index>
 struct WhenAll<std::index_sequence<Index...>> {
   template <typename... T>
   Task<std::tuple<T...>> operator()(Task<T>... tasks) {
+    static_assert(sizeof...(T) > 0);
     std::tuple<T...> result;
     std::optional<std::exception_ptr> exception;
     Promise<void> semaphore;
@@ -54,6 +55,9 @@ Task<std::tuple<T...>> WhenAll(Task<T>... tasks) {
 
 template <typename Container, typename T = typename Container::value_type::type>
 Task<std::vector<T>> WhenAll(Container tasks) {
+  if (tasks.empty()) {
+    co_return std::vector<T>{};
+  }
   Promise<void> semaphore;
   size_t not_ready = tasks.size();
   std::vector<T> result(tasks.size());

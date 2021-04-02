@@ -192,9 +192,10 @@ class HttpServer {
         }
         bool is_chunked =
             !GetHeader(context.response->headers, "Content-Length").has_value();
-        bool has_body = context.response->status / 100 != 1 &&
-                        context.response->status != 204 &&
-                        context.response->status != 304;
+        bool has_body = (context.response->status / 100 != 1 &&
+                         context.response->status != 204 &&
+                         context.response->status != 304) ||
+                        (context.content_length && *context.content_length > 0);
         std::stringstream header;
         header << "HTTP/1.1 " << context.response->status << " "
                << ToStatusString(context.response->status) << "\r\n";
@@ -206,6 +207,12 @@ class HttpServer {
         }
         header << "Connection: " << (error ? "close" : "keep-alive") << "\r\n";
         header << "\r\n";
+
+        if (!error && (context.request.method == Method::kHead || !has_body)) {
+          FOR_CO_AWAIT(std::string & chunk,
+                       GetBodyGenerator(bev.get(), &context)) {}
+        }
+
         std::string chunk = std::move(header).str();
         Check(bufferevent_enable(bev.get(), EV_WRITE));
         context.semaphore = Promise<void>();
@@ -239,7 +246,6 @@ class HttpServer {
           Check(bufferevent_enable(bev.get(), EV_WRITE));
           context.semaphore = Promise<void>();
           chunk = std::move(**it);
-          write(std::move(chunk));
           try {
             co_await ++*it;
           } catch (const std::exception& e) {
@@ -247,16 +253,23 @@ class HttpServer {
             error = true;
             break;
           }
+          if (*it == context.response->body.end() && !is_chunked && !error) {
+            FOR_CO_AWAIT(std::string & chunk,
+                         GetBodyGenerator(bev.get(), &context)) {}
+          }
+          write(std::move(chunk));
           co_await Wait(&context);
         }
         if (is_chunked) {
+          if (!error) {
+            FOR_CO_AWAIT(std::string & chunk,
+                         GetBodyGenerator(bev.get(), &context)) {}
+          }
           context.semaphore = Promise<void>();
           const std::string_view trailer = "0\r\n\r\n";
           Check(bufferevent_write(bev.get(), trailer.data(), trailer.length()));
           co_await Wait(&context);
         }
-        FOR_CO_AWAIT(std::string & chunk,
-                     GetBodyGenerator(bev.get(), &context)) {}
       }
     } catch (...) {
       context.stop_source.request_stop();
@@ -430,10 +443,16 @@ class HttpServer {
       }
     } else {
       while (context->read_count < *context->content_length) {
-        bufferevent_enable(bev, EV_READ);
-        co_await Wait(context);
-        context->semaphore = Promise<void>();
-        std::string buffer(evbuffer_get_length(input), 0);
+        if (evbuffer_get_length(input) == 0) {
+          bufferevent_enable(bev, EV_READ);
+          co_await Wait(context);
+          context->semaphore = Promise<void>();
+        }
+        std::string buffer(
+            std::min<size_t>(evbuffer_get_length(input),
+                             static_cast<size_t>(*context->content_length -
+                                                 context->read_count)),
+            0);
         if (evbuffer_remove(input, reinterpret_cast<void*>(buffer.data()),
                             buffer.size()) != buffer.size()) {
           throw HttpException(HttpException::kUnknown,

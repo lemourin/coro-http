@@ -18,12 +18,16 @@ class CacheHttpImpl {
         max_staleness_ms_(max_staleness_ms) {}
 
   Task<Response<>> Fetch(Request<> request, stdx::stop_token stop_token) const {
-    if (request.method != Method::kGet && request.method != Method::kHead &&
-        request.method != Method::kOptions &&
-        request.method != Method::kPropfind &&
-        !(request.flags & Request<>::kRead)) {
-      InvalidateCache();
-    }
+    bool should_invalidate_cache = request.method != Method::kGet &&
+                                   request.method != Method::kHead &&
+                                   request.method != Method::kOptions &&
+                                   request.method != Method::kPropfind &&
+                                   !(request.flags & Request<>::kRead);
+    auto at_exit = util::AtScopeExit([&] {
+      if (should_invalidate_cache) {
+        InvalidateCache();
+      }
+    });
     if (!IsCacheable(request)) {
       co_return ConvertResponse(
           co_await http_->Fetch(std::move(request), std::move(stop_token)));
@@ -126,7 +130,7 @@ class CacheHttpImpl {
   util::LRUCache<Request<std::string>, Factory> cache_;
   int max_staleness_ms_;
   mutable int64_t last_invalidate_ms_ = 0;
-};  // namespace coro::http
+};
 
 template <HttpClient Http>
 using CacheHttp = ToHttpClient<CacheHttpImpl<Http>>;

@@ -18,11 +18,12 @@ class CacheHttpImpl {
         max_staleness_ms_(max_staleness_ms) {}
 
   Task<Response<>> Fetch(Request<> request, stdx::stop_token stop_token) const {
-    bool should_invalidate_cache = request.method != Method::kGet &&
-                                   request.method != Method::kHead &&
-                                   request.method != Method::kOptions &&
-                                   request.method != Method::kPropfind &&
-                                   !(request.flags & Request<>::kRead);
+    bool should_invalidate_cache =
+        (request.method != Method::kGet && request.method != Method::kHead &&
+         request.method != Method::kOptions &&
+         request.method != Method::kPropfind &&
+         !(request.flags & Request<>::kRead)) ||
+        (request.flags & Request<>::kWrite);
     auto at_exit = util::AtScopeExit([&] {
       if (should_invalidate_cache) {
         InvalidateCache();

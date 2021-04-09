@@ -64,7 +64,7 @@ struct Request {
   Method method = Method::kGet;
   std::vector<std::pair<std::string, std::string>> headers;
   std::optional<BodyGenerator> body;
-  enum Flag { kRead = 1 << 0 } flags;
+  enum Flag { kRead = 1 << 0, kWrite = 1 << 1 } flags;
 
   friend bool operator==(const Request& r1, const Request& r2) {
     return std::tie(r1.url, r1.method, r1.headers, r1.body) ==
@@ -318,7 +318,8 @@ class ToHttpClient : public Impl {
                   .headers = std::move(headers),
                   .body = request.body ? std::make_optional(ToGenerator(
                                              std::move(*request.body)))
-                                       : std::nullopt},
+                                       : std::nullopt,
+                  .flags = static_cast<Request<>::Flag>(request.flags)},
         std::move(stop_token));
   }
 

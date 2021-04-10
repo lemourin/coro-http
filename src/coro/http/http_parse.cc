@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <regex>
+#include <sstream>
 
 namespace coro::http {
 
@@ -164,6 +165,15 @@ std::string GetMimeType(std::string_view extension) {
     return "application/octet-stream";
   else
     return it->second;
+}
+
+std::string MimeTypeToExtension(std::string_view mime_type) {
+  for (const auto& [key, value] : kMimeType) {
+    if (value == mime_type) {
+      return key;
+    }
+  }
+  return "bin";
 }
 
 std::string ToBase64(std::string_view in) {
@@ -444,6 +454,15 @@ std::string_view ToStatusString(int http_code) {
     default:
       throw HttpException(http_code, "unknown http code");
   }
+}
+
+std::pair<std::string, std::string> ToRangeHeader(const Range& range) {
+  std::stringstream range_header;
+  range_header << "bytes=" << range.start << "-";
+  if (range.end) {
+    range_header << *range.end;
+  }
+  return {"Range", std::move(range_header).str()};
 }
 
 }  // namespace coro::http

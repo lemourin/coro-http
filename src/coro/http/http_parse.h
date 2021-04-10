@@ -54,11 +54,13 @@ Range ParseRange(std::string);
 std::string ToLowerCase(std::string);
 std::string GetExtension(std::string_view filename);
 std::string GetMimeType(std::string_view extension);
+std::string MimeTypeToExtension(std::string_view mime_type);
 std::string ToBase64(std::string_view);
 std::string FromBase64(std::string_view);
 int64_t ParseTime(std::string_view);
 std::string_view ToStatusString(int http_code);
 Method ToMethod(std::string_view method);
+std::pair<std::string, std::string> ToRangeHeader(const Range&);
 
 template <typename Collection>
 std::optional<std::string> GetHeader(const Collection& collection,

@@ -179,6 +179,13 @@ class HttpServer {
         Check(bufferevent_disable(bev.get(), EV_WRITE));
         try {
           co_await Wait(&context);
+          if (HasHeader(context.request.headers, "Expect", "100-continue")) {
+            Check(bufferevent_enable(bev.get(), EV_WRITE));
+            context.semaphore = Promise<void>();
+            std::string chunk = "HTTP/1.1 100 Continue\r\n\r\n";
+            Check(bufferevent_write(bev.get(), chunk.data(), chunk.size()));
+            co_await Wait(&context);
+          }
           context.response.emplace(co_await on_request_(
               std::move(context.request), context.stop_source.get_token()));
         } catch (const HttpException& e) {

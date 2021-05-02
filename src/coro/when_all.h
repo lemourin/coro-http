@@ -53,7 +53,8 @@ Task<std::tuple<T...>> WhenAll(Task<T>... tasks) {
       std::move(tasks)...);
 }
 
-template <typename Container, typename T = typename Container::value_type::type>
+template <typename Container, typename T = typename Container::value_type::type,
+          std::enable_if_t<!std::is_void_v<T>, int> = 0>
 Task<std::vector<T>> WhenAll(Container tasks) {
   if (tasks.empty()) {
     co_return std::vector<T>{};
@@ -82,6 +83,36 @@ Task<std::vector<T>> WhenAll(Container tasks) {
     std::rethrow_exception(*exception);
   }
   co_return std::move(result);
+}
+
+template <typename Container, typename T = typename Container::value_type::type,
+          std::enable_if_t<std::is_void_v<T>, int> = 0>
+Task<> WhenAll(Container tasks) {
+  if (tasks.empty()) {
+    co_return;
+  }
+  Promise<void> semaphore;
+  size_t not_ready = tasks.size();
+  std::optional<std::exception_ptr> exception;
+  for (size_t i = 0; i < tasks.size(); i++) {
+    Invoke(
+        [&](auto task) -> Task<> {
+          try {
+            co_await task;
+          } catch (...) {
+            exception = std::current_exception();
+          }
+          not_ready--;
+          if (not_ready == 0) {
+            semaphore.SetValue();
+          }
+        },
+        std::move(tasks[i]));
+  }
+  co_await semaphore;
+  if (exception) {
+    std::rethrow_exception(*exception);
+  }
 }
 
 }  // namespace coro

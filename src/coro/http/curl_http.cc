@@ -46,18 +46,6 @@ void Check(int code) {
   }
 }
 
-std::string TrimWhitespace(std::string_view str) {
-  int it1 = 0;
-  while (it1 < static_cast<int>(str.size()) && std::isspace(str[it1])) {
-    it1++;
-  }
-  int it2 = static_cast<int>(str.size()) - 1;
-  while (it2 > it1 && std::isspace(str[it2])) {
-    it2--;
-  }
-  return std::string(str.begin() + it1, str.begin() + it2 + 1);
-}
-
 event MoveEvent(event* source, void* userdata) {
   event target;
   Check(event_assign(&target, source->ev_base, -1, 0,

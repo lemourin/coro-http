@@ -52,6 +52,7 @@ std::string FormDataToString(const List& params) {
 
 Range ParseRange(std::string);
 std::string ToLowerCase(std::string);
+std::string TrimWhitespace(std::string_view);
 std::string GetExtension(std::string_view filename);
 std::string GetMimeType(std::string_view extension);
 std::string MimeTypeToExtension(std::string_view mime_type);

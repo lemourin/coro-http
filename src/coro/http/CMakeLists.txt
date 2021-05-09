@@ -4,6 +4,7 @@ target_sources(coro-http PRIVATE
     http.h
     curl_http.h
     http_server.h
+    http_server.cc
     http_parse.h
     curl_http.cc
     http_parse.cc

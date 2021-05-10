@@ -1,7 +1,7 @@
 #ifndef CORO_HTTP_COROUTINE_H
 #define CORO_HTTP_COROUTINE_H
 
-#if __has_include(<coroutine>)
+#if defined(COROUTINE_SUPPORTED)
 #include <version>
 #if defined(__clang__) && !defined(__cpp_impl_coroutine)
 #define __cpp_impl_coroutine 1
@@ -16,7 +16,7 @@ using std::coroutine_traits;
 namespace coro {
 namespace std_ns = std;
 }
-#elif __has_include(<experimental/coroutine>)
+#elif defined(EXPERIMENTAL_COROUTINE_SUPPORTED)
 #include <experimental/coroutine>
 namespace coro {
 namespace std_ns = std::experimental;

@@ -20,38 +20,48 @@ target_compile_features(stdx PUBLIC cxx_std_20)
 target_include_directories(stdx PUBLIC ../../)
 
 include(CheckCXXCompilerFlag)
+include(CheckCXXSourceCompiles)
 
-if(MSVC)
-    include(CheckCXXSourceCompiles)
-    set(CMAKE_REQUIRED_FLAGS "/std:c++latest")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(COROUTINE_FLAGS "/std:c++latest")
+    set(EXPERIMENTAL_COROUTINE_FLAGS "/await")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(EXPERIMENTAL_COROUTINE_FLAGS "-fcoroutines-ts")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(COROUTINE_FLAGS "-fcoroutines")
+endif()
+
+set(CMAKE_REQUIRED_FLAGS "${COROUTINE_FLAGS}")
+check_cxx_source_compiles(
+    "
+    #include <version>
+    #if defined(__clang__) && !defined(__cpp_impl_coroutine)
+    #define __cpp_impl_coroutine 1
+    #endif
+    #include <coroutine>
+    using std::coroutine_handle;
+    int main() {}
+    "
+    COROUTINE_SUPPORTED
+)
+
+if(COROUTINE_SUPPORTED)
+    target_compile_options(stdx PUBLIC ${COROUTINE_FLAGS})
+    target_compile_definitions(stdx PUBLIC COROUTINE_SUPPORTED)
+else()
+    set(CMAKE_REQUIRED_FLAGS "${EXPERIMENTAL_COROUTINE_FLAGS}")
     check_cxx_source_compiles(
         "
-        #include <version>
-        #ifndef __cpp_lib_coroutine
-            #error \"coroutines not supported\"
-        #endif
+        #include <experimental/coroutine>
+        using std::experimental::coroutine_handle;
         int main() {}
         "
-        COROUTINES_SUPPORTED
+        EXPERIMENTAL_COROUTINE_SUPPORTED
     )
-    if(NOT COROUTINES_SUPPORTED)
-        check_cxx_compiler_flag("/await" COROUTINES_TS_SUPPORTED)
-        if(COROUTINES_TS_SUPPORTED)
-            target_compile_options(stdx PUBLIC /await)
-        else()
-            message(FATAL_ERROR "Coroutines not supported.")
-        endif()
-    endif()
-else()
-    check_cxx_compiler_flag("-fcoroutines" COROUTINES_SUPPORTED)
-    if(COROUTINES_SUPPORTED)
-        target_compile_options(stdx PUBLIC -fcoroutines)
+    if(EXPERIMENTAL_COROUTINE_SUPPORTED)
+        target_compile_options(stdx PUBLIC ${EXPERIMENTAL_COROUTINE_FLAGS})
+        target_compile_definitions(stdx PUBLIC EXPERIMENTAL_COROUTINE_SUPPORTED)
     else()
-        check_cxx_compiler_flag("-fcoroutines-ts" COROUTINES_TS_SUPPORTED)
-        if(COROUTINES_TS_SUPPORTED)
-            target_compile_options(stdx PUBLIC -fcoroutines-ts)
-        else()
-            message(FATAL_ERROR "Coroutines not supported.")
-        endif()
+        message(FATAL_ERROR "Coroutines not supported.")
     endif()
 endif()

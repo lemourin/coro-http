@@ -1,15 +1,15 @@
-From aba5cb753fceccb27f01ad4ad0d4cc3eb2d74064 Mon Sep 17 00:00:00 2001
+From 7475a21a83c8ce0980fbcc111a299b088f50435c Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Pawe=C5=82=20Wegner?= <pawel.wegner95@gmail.com>
-Date: Fri, 1 Jan 2021 10:25:21 +0100
+Date: Tue, 11 May 2021 23:19:51 +0200
 Subject: [PATCH] curl: adjust cmake files.
 
 ---
- CMakeLists.txt     | 36 ------------------------------------
+ CMakeLists.txt     | 41 -----------------------------------------
  lib/CMakeLists.txt |  3 ---
- 2 files changed, 39 deletions(-)
+ 2 files changed, 44 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 7e41d3c03..9a9c5f73d 100644
+index 7e41d3c03..3b2db2568 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -150,8 +150,6 @@ set(CURL_LIBS "")
@@ -65,7 +65,33 @@ index 7e41d3c03..9a9c5f73d 100644
  
  function(CheckQuicSupportInOpenSSL)
    # Be sure that the OpenSSL library actually supports QUIC.
-@@ -1528,12 +1498,6 @@ configure_package_config_file(CMake/curl-config.cmake.in
+@@ -616,9 +586,6 @@ if(NOT CURL_DISABLE_LDAPS)
+   check_include_file_concat("ldapssl.h"  HAVE_LDAPSSL_H)
+ endif()
+ 
+-# Check for idn
+-check_library_exists_concat("idn2" idn2_lookup_ul HAVE_LIBIDN2)
+-
+ # Check for symbol dlopen (same as HAVE_LIBDL)
+ check_library_exists("${CURL_LIBS}" dlopen "" HAVE_DLOPEN)
+ 
+@@ -902,7 +869,6 @@ check_include_file_concat("crypto.h"         HAVE_CRYPTO_H)
+ check_include_file_concat("err.h"            HAVE_ERR_H)
+ check_include_file_concat("errno.h"          HAVE_ERRNO_H)
+ check_include_file_concat("fcntl.h"          HAVE_FCNTL_H)
+-check_include_file_concat("idn2.h"           HAVE_IDN2_H)
+ check_include_file_concat("ifaddrs.h"        HAVE_IFADDRS_H)
+ check_include_file_concat("io.h"             HAVE_IO_H)
+ check_include_file_concat("krb.h"            HAVE_KRB_H)
+@@ -1358,7 +1324,6 @@ _add_if("libz"          HAVE_LIBZ)
+ _add_if("brotli"        HAVE_BROTLI)
+ _add_if("zstd"          HAVE_ZSTD)
+ _add_if("AsynchDNS"     USE_ARES OR USE_THREADS_POSIX OR USE_THREADS_WIN32)
+-_add_if("IDN"           HAVE_LIBIDN2)
+ _add_if("Largefile"     (CURL_SIZEOF_CURL_OFF_T GREATER 4) AND
+                         ((SIZEOF_OFF_T GREATER 4) OR USE_WIN32_LARGE_FILES))
+ # TODO SSP1 (Schannel) check is missing
+@@ -1528,12 +1493,6 @@ configure_package_config_file(CMake/curl-config.cmake.in
          INSTALL_DESTINATION ${CURL_INSTALL_CMAKE_DIR}
  )
  

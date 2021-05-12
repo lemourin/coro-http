@@ -12,6 +12,8 @@ add_subdirectory(libressl EXCLUDE_FROM_ALL)
 
 set(CMAKE_USE_OPENSSL ON CACHE BOOL "enable curl with openssl")
 set(CMAKE_USE_LIBSSH2 OFF CACHE BOOL "enable curl with libssh2")
+set(CURL_DISABLE_LDAP ON CACHE BOOL "disable curl with ldap")
+set(CURL_DISABLE_LDAPS ON CACHE BOOL "disable curl with ldaps")
 set(CURL_ZLIB OFF CACHE BOOL "enable curl with zlib")
 set(ENABLE_ARES ON CACHE BOOL "enable curl with c-ares")
 set(USE_NGHTTP2 ON CACHE BOOL "enable curl with nghttp2")

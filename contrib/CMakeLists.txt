@@ -27,7 +27,7 @@ target_include_directories(libcurl PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/nghttp2/lib/includes
 )
 target_link_libraries(libcurl c-ares nghttp2_static ssl)
-target_compile_definitions(libcurl PRIVATE USE_NGHTTP2)
+target_compile_definitions(libcurl PRIVATE USE_NGHTTP2 USE_OPENSSL USE_ARES)
 
 set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "build libevent without OpenSSL")
 set(EVENT__DISABLE_MBEDTLS ON CACHE BOOL "build libevent without mbedTLS")

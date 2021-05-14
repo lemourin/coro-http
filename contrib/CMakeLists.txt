@@ -10,19 +10,24 @@ add_subdirectory(nghttp2 EXCLUDE_FROM_ALL)
 
 add_subdirectory(libressl EXCLUDE_FROM_ALL)
 
-set(CMAKE_USE_OPENSSL ON CACHE BOOL "enable curl with openssl")
+set(CMAKE_USE_OPENSSL OFF CACHE BOOL "enable curl with openssl")
 set(CMAKE_USE_LIBSSH2 OFF CACHE BOOL "enable curl with libssh2")
 set(CURL_DISABLE_LDAP ON CACHE BOOL "disable curl with ldap")
 set(CURL_DISABLE_LDAPS ON CACHE BOOL "disable curl with ldaps")
+set(CURL_ENABLE_EXPORT_TARGET OFF CACHE BOOL "enable curl export target")
 set(CURL_ZLIB OFF CACHE BOOL "enable curl with zlib")
-set(ENABLE_ARES ON CACHE BOOL "enable curl with c-ares")
-set(USE_NGHTTP2 ON CACHE BOOL "enable curl with nghttp2")
+set(USE_ARES ON CACHE BOOL "enable curl with c-ares")
+set(USE_LIBIDN2 ON CACHE BOOL "disable curl with idn2")
+set(SSL_ENABLED ON CACHE BOOL "enable curl with ssl")
+set(USE_OPENSSL ON CACHE BOOL "enable curl with openssl")
+set(ENABLE_THREADED_RESOLVER OFF CACHE BOOL "enable curl threaded resolver")
 add_subdirectory(curl EXCLUDE_FROM_ALL)
 target_include_directories(libcurl PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/nghttp2/lib/includes
     ${CMAKE_CURRENT_BINARY_DIR}/nghttp2/lib/includes
 )
 target_link_libraries(libcurl c-ares nghttp2_static ssl)
+target_compile_definitions(libcurl PRIVATE USE_NGHTTP2)
 
 set(EVENT__DISABLE_OPENSSL ON CACHE BOOL "build libevent without OpenSSL")
 set(EVENT__DISABLE_MBEDTLS ON CACHE BOOL "build libevent without mbedTLS")

@@ -6,7 +6,7 @@ git submodule update --init --recursive
 
 cd $(dirname $0)/contrib/curl
 git checkout .
-git apply ../patches/curl-adjust-cmake-file.patch
+git apply ../patches/CMake-add-CURL_ENABLE_EXPORT_TARGET-option.patch
 
 cd ../libevent
 git checkout .

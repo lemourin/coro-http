@@ -13,4 +13,4 @@ git checkout .
 git apply ../patches/libevent-don-t-override-CMAKE_CONFIGURATION_TYPES.patch
 
 cd ../libressl
-./autogen.sh
+./update.sh

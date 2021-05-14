@@ -158,6 +158,7 @@ class HttpBodyGenerator {
              std::string data);
 
     bool operator!=(const Iterator& iterator) const;
+    bool operator==(const Iterator& iterator) const;
     Awaitable<Iterator&> operator++();
     const std::string& operator*() const;
     std::string& operator*();
@@ -207,6 +208,12 @@ template <typename Impl>
 bool HttpBodyGenerator<Impl>::Iterator::operator!=(
     const Iterator& iterator) const {
   return offset_ != iterator.offset_;
+}
+
+template <typename Impl>
+bool HttpBodyGenerator<Impl>::Iterator::operator==(
+    const Iterator& iterator) const {
+  return !this->operator!=(iterator);
 }
 
 template <typename Impl>
@@ -298,10 +305,10 @@ concept HttpClient = HttpClientImpl<T> && requires(T v) {
 template <HttpClientImpl Impl>
 class ToHttpClient : public Impl {
  public:
-  using ResponseType = decltype(
-      std::declval<Impl>()
-          .Fetch(std::declval<Request<>>(), std::declval<stdx::stop_token>())
-          .await_resume());
+  using ResponseType = decltype(std::declval<Impl>()
+                                    .Fetch(std::declval<Request<>>(),
+                                           std::declval<stdx::stop_token>())
+                                    .await_resume());
 
   using Impl::Impl;
 

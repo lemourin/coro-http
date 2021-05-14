@@ -8,6 +8,14 @@ namespace coro::http::internal {
 
 namespace {
 
+struct FreeDeleter {
+  void operator()(char* d) const {
+    if (d) {
+      free(d);
+    }
+  }
+};
+
 void WriteCallback(struct bufferevent* bev, void* user_data) {
   auto* context = reinterpret_cast<RequestContextBase*>(user_data);
   context->semaphore.SetValue();

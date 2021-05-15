@@ -1,5 +1,6 @@
 #include "curl_http.h"
 
+#include <coro/http/assets.h>
 #include <coro/interrupted_exception.h>
 
 #include <sstream>
@@ -93,11 +94,15 @@ struct CurlHandle::Data {
     Check(curl_easy_setopt(handle.get(), CURLOPT_READFUNCTION, ReadCallback));
     Check(curl_easy_setopt(handle.get(), CURLOPT_READDATA, this));
     Check(curl_easy_setopt(handle.get(), CURLOPT_NOPROGRESS, 0L));
-    Check(curl_easy_setopt(handle.get(), CURLOPT_SSL_VERIFYPEER, 0L));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_SSL_VERIFYPEER, 1L));
     Check(curl_easy_setopt(handle.get(), CURLOPT_CUSTOMREQUEST,
                            MethodToString(request.method)));
     Check(curl_easy_setopt(handle.get(), CURLOPT_HTTP_VERSION,
                            CURL_HTTP_VERSION_1_1));
+    curl_blob ca_cert{.data = const_cast<void*>(reinterpret_cast<const void*>(
+                          kAssetsCacertPem.data())),
+                      .len = kAssetsCacertPem.size()};
+    Check(curl_easy_setopt(handle.get(), CURLOPT_CAINFO_BLOB, &ca_cert));
     std::optional<long> content_length;
     curl_slist* header_list = nullptr;
     for (const auto& [header_name, header_value] : request.headers) {

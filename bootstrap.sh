@@ -8,9 +8,5 @@ cd $(dirname $0)/contrib/curl
 git checkout .
 git apply ../patches/CMake-add-CURL_ENABLE_EXPORT_TARGET-option.patch
 
-cd ../libevent
-git checkout .
-git apply ../patches/libevent-don-t-override-CMAKE_CONFIGURATION_TYPES.patch
-
 cd ../libressl
 ./update.sh

@@ -22,12 +22,12 @@ target_include_directories(stdx PUBLIC ../../)
 include(CheckCXXCompilerFlag)
 include(CheckCXXSourceCompiles)
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+if(MSVC)
     set(COROUTINE_FLAGS "/std:c++latest")
     set(EXPERIMENTAL_COROUTINE_FLAGS "/await")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     set(EXPERIMENTAL_COROUTINE_FLAGS "-fcoroutines-ts")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     set(COROUTINE_FLAGS "-fcoroutines")
 endif()
 
@@ -37,6 +37,9 @@ check_cxx_source_compiles(
     #include <version>
     #if defined(__clang__) && !defined(__cpp_impl_coroutine)
     #define __cpp_impl_coroutine 1
+    #endif
+    #if defined(_MSC_VER) && !defined(__cpp_lib_coroutine)
+    #define __cpp_lib_coroutine 1
     #endif
     #include <coroutine>
     using std::coroutine_handle;

@@ -7,10 +7,10 @@ function(embed_resource)
         OUTPUT ${EMBED_OUTPUT}.cc
         COMMAND
             ${CMAKE_COMMAND}
-                "-DNAMESPACE=${EMBED_NAMESPACE}"
-                "-DOUTPUT=${EMBED_OUTPUT}"
-                "-DASSETS=${EMBED_INPUT}"
-                "-DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}"
+                "-DNAMESPACE=\"${EMBED_NAMESPACE}\""
+                "-DOUTPUT=\"${EMBED_OUTPUT}\""
+                "-DASSETS=\"${EMBED_INPUT}\""
+                "-DCMAKE_MODULE_PATH=\"${CMAKE_MODULE_PATH}\""
                 -P "${EMBED_RESOURCE_DIR}/embed_resource_impl.cmake"
         DEPENDS
             ${EMBED_INPUT}

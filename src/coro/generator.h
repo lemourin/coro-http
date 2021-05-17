@@ -275,11 +275,11 @@ class [[nodiscard]] Generator {
 
   Generator() noexcept : coroutine_(nullptr) {}
 
-  explicit Generator(promise_type & promise) noexcept
+  explicit Generator(promise_type& promise) noexcept
       : coroutine_(
             stdx::coroutine_handle<promise_type>::from_promise(promise)) {}
 
-  Generator(Generator && other) noexcept : coroutine_(other.coroutine_) {
+  Generator(Generator&& other) noexcept : coroutine_(other.coroutine_) {
     other.coroutine_ = nullptr;
   }
 
@@ -308,7 +308,7 @@ class [[nodiscard]] Generator {
 
   auto end() noexcept { return iterator{nullptr}; }
 
-  void swap(Generator & other) noexcept {
+  void swap(Generator& other) noexcept {
     using std::swap;
     swap(coroutine_, other.coroutine_);
   }
@@ -329,7 +329,6 @@ Generator<T> async_generator_promise<T>::get_return_object() noexcept {
 }
 }  // namespace detail
 
-// clang-format off
 template <typename T, typename R>
 concept GeneratorLike = requires(T v, stdx::coroutine_handle<void> handle) {
   v.begin().await_suspend(handle);
@@ -337,7 +336,6 @@ concept GeneratorLike = requires(T v, stdx::coroutine_handle<void> handle) {
   { *v.begin().await_resume() } -> stdx::convertible_to<R>;
   v.end();
 };
-// clang-format on
 
 }  // namespace coro
 

@@ -175,7 +175,7 @@ class HttpBodyGenerator {
   Iterator end();
 
  protected:
-  void ReceivedData(std::string data);
+  void ReceivedData(std::string_view data);
   void Close(int status);
   void Close(std::exception_ptr);
   auto GetBufferedByteCount() const { return data_.size(); }
@@ -202,7 +202,9 @@ Task<std::string> GetBody(HttpBodyGenerator body) {
 template <typename Impl>
 HttpBodyGenerator<Impl>::Iterator::Iterator(
     HttpBodyGenerator* http_body_generator, int64_t offset, std::string data)
-    : http_body_generator_(http_body_generator), offset_(offset), data_(data) {}
+    : http_body_generator_(http_body_generator),
+      offset_(offset),
+      data_(std::move(data)) {}
 
 template <typename Impl>
 bool HttpBodyGenerator<Impl>::Iterator::operator!=(
@@ -244,8 +246,8 @@ typename HttpBodyGenerator<Impl>::Iterator HttpBodyGenerator<Impl>::end() {
 }
 
 template <typename Impl>
-void HttpBodyGenerator<Impl>::ReceivedData(std::string data) {
-  data_ += std::move(data);
+void HttpBodyGenerator<Impl>::ReceivedData(std::string_view data) {
+  data_ += data;
   if (handle_) {
     std::exchange(handle_, nullptr).resume();
   }
@@ -261,13 +263,11 @@ void HttpBodyGenerator<Impl>::Close(int status) {
 
 template <typename Impl>
 void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
-  exception_ptr_ = std::move(exception);
+  exception_ptr_ = exception;
   if (handle_) {
     std::exchange(handle_, nullptr).resume();
   }
 }
-
-// clang-format off
 
 template <typename T>
 concept HeaderCollection = requires(T v) {
@@ -278,19 +278,20 @@ concept HeaderCollection = requires(T v) {
 };
 
 template <typename T>
-concept ResponseLike = requires (T v) {
+concept ResponseLike = requires(T v) {
   { v.status } -> stdx::convertible_to<int>;
   { v.headers } -> HeaderCollection;
   { v.body } -> coro::GeneratorLike<std::string_view>;
 };
 
 template <typename T>
-concept HttpOperation = requires (T v) {
+concept HttpOperation = requires(T v) {
   { v.await_resume() } -> ResponseLike;
 };
 
 template <typename T>
-concept HttpClientImpl = requires(T v, Request<> request, stdx::stop_token stop_token) {
+concept HttpClientImpl = requires(T v, Request<> request,
+                                  stdx::stop_token stop_token) {
   { v.Fetch(std::move(request), stop_token) } -> HttpOperation;
 };
 
@@ -299,8 +300,6 @@ concept HttpClient = HttpClientImpl<T> && requires(T v) {
   { v.Fetch(std::string(), stdx::stop_token()) } -> HttpOperation;
   typename T::ResponseType;
 };
-
-// clang-format on
 
 template <HttpClientImpl Impl>
 class ToHttpClient : public Impl {

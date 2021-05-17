@@ -174,14 +174,12 @@ class [[nodiscard]] Task<> {
   stdx::coroutine_handle<promise_type> handle_;
 };
 
-// clang-format off
 template <typename T, typename Result>
 concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
   { v.await_resume() } -> stdx::convertible_to<Result>;
   v.await_suspend(handle);
   { v.await_ready() } -> stdx::same_as<bool>;
 };
-// clang-format on
 
 struct RunTask {
   struct promise_type {

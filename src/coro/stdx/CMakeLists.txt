@@ -1,6 +1,6 @@
 add_library(stdx)
 
-set(stdx-headers
+target_sources(stdx PRIVATE
     stop_callback.h
     stop_source.h
     stop_token.h
@@ -8,14 +8,9 @@ set(stdx-headers
     concepts.h
     any_invocable.h
     bind_front.h
-)
-
-set(stdx-sources
     stop_source.cc
     stop_token.cc
 )
-
-target_sources(stdx PRIVATE ${stdx-headers} ${stdx-sources})
 target_compile_features(stdx PUBLIC cxx_std_20)
 target_include_directories(stdx PUBLIC ../../)
 

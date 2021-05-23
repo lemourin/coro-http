@@ -31,6 +31,59 @@ struct TypeListLength<TypeList<T...>>
 template <typename Lst>
 constexpr auto TypeListLengthV = TypeListLength<Lst>{};
 
+template <typename, typename>
+struct Concat;
+
+template <typename... T1, typename... T2>
+struct Concat<TypeList<T1...>, TypeList<T2...>>
+    : std::type_identity<TypeList<T1..., T2...>> {};
+
+template <typename T1, typename T2>
+using ConcatT = typename Concat<T1, T2>::type;
+
+template <template <typename...> typename F, typename Lst, typename... Args>
+struct Filter;
+
+template <template <typename...> typename F, typename Lst, typename... Args>
+using FilterT = typename Filter<F, Lst, Args...>::type;
+
+template <template <typename...> typename F, typename... Args>
+struct Filter<F, TypeList<>, Args...> : std::type_identity<TypeList<>> {};
+
+template <template <typename...> typename F, typename Head, typename... Tail,
+          typename... Args>
+struct Filter<F, TypeList<Head, Tail...>, Args...>
+    : Concat<std::conditional_t<F<Head, Args...>{}, TypeList<Head>, TypeList<>>,
+             FilterT<F, TypeList<Tail...>, Args...>> {};
+
+template <template <typename...> typename F, typename Lst, typename... Args>
+struct Map;
+
+template <template <typename...> typename F, typename Lst, typename... Args>
+using MapT = typename Map<F, Lst, Args...>::type;
+
+template <template <typename...> typename F, typename... Ts, typename... Args>
+struct Map<F, TypeList<Ts...>, Args...>
+    : std::type_identity<TypeList<typename F<Ts, Args...>::type...>> {};
+
+template <template <typename...> typename Head, typename Lst>
+struct FromTypeList;
+
+template <template <typename...> typename Head, typename Lst>
+using FromTypeListT = typename FromTypeList<Head, Lst>::type;
+
+template <template <typename...> typename Head, typename... Ts>
+struct FromTypeList<Head, TypeList<Ts...>> : std::type_identity<Head<Ts...>> {};
+
+template <template <typename...> typename Head, typename T>
+struct ToTypeList;
+
+template <template <typename...> typename Head, typename T>
+using ToTypeListT = typename ToTypeList<Head, T>::type;
+
+template <template <typename...> typename Head, typename... Ts>
+struct ToTypeList<Head, Head<Ts...>> : std::type_identity<TypeList<Ts...>> {};
+
 }  // namespace coro::util
 
 #endif  // CORO_HTTP_TYPE_LIST_H

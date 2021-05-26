@@ -31,15 +31,29 @@ struct TypeListLength<TypeList<T...>>
 template <typename Lst>
 constexpr auto TypeListLengthV = TypeListLength<Lst>{};
 
-template <typename, typename>
+template <typename...>
 struct Concat;
 
+template <typename... Ts>
+using ConcatT = typename Concat<Ts...>::type;
+
+template <>
+struct Concat<> : std::type_identity<TypeList<>> {};
+
+namespace internal {
+
+template <typename, typename>
+struct Concat2;
+
 template <typename... T1, typename... T2>
-struct Concat<TypeList<T1...>, TypeList<T2...>>
+struct Concat2<TypeList<T1...>, TypeList<T2...>>
     : std::type_identity<TypeList<T1..., T2...>> {};
 
-template <typename T1, typename T2>
-using ConcatT = typename Concat<T1, T2>::type;
+}  // namespace internal
+
+template <typename... T1, typename... Ts>
+struct Concat<TypeList<T1...>, Ts...>
+    : internal::Concat2<TypeList<T1...>, ConcatT<Ts...>> {};
 
 template <template <typename...> typename F, typename Lst, typename... Args>
 struct Filter;

@@ -101,31 +101,6 @@ class SharedPromise {
   std::shared_ptr<SharedData> shared_data_;
 };
 
-namespace internal {
-template <typename T>
-using TaskT = std::conditional_t<std::is_same_v<T, void>, Task<>, Task<T>>;
-}
-
-template <typename T, typename ReturnT = typename T::type>
-internal::TaskT<ReturnT> InterruptibleAwait(T&& task,
-                                            stdx::stop_token stop_token) {
-  SharedPromise promise(
-      [task = std::move(task)]() mutable -> internal::TaskT<ReturnT> {
-        co_return co_await std::move(task);
-      });
-  co_return co_await promise.Get(std::move(stop_token));
-}
-
-template <typename T, typename ReturnT = typename T::type>
-internal::TaskT<ReturnT> InterruptibleAwait(T& task,
-                                            stdx::stop_token stop_token) {
-  SharedPromise promise([&]() -> internal::TaskT<ReturnT> {
-    auto& ref = task;
-    co_return co_await ref;
-  });
-  co_return co_await promise.Get(std::move(stop_token));
-}
-
 }  // namespace coro
 
 #endif  // CORO_UTIL_SHARED_PROMISE_H

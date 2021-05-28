@@ -32,31 +32,11 @@ class SharedPromise {
   SharedPromise& operator=(SharedPromise&&) noexcept = default;
 
   TaskT Get(coro::stdx::stop_token stop_token) const {
-    auto shared_data = shared_data_;
-    if (shared_data->producer) {
-      Invoke([shared_data,
-              producer = *std::exchange(shared_data->producer,
-                                        std::nullopt)]() mutable -> Task<> {
-        try {
-          if constexpr (std::is_same_v<void, T>) {
-            co_await producer();
-            shared_data->result = std::monostate();
-          } else {
-            if constexpr (std::is_reference_v<T>) {
-              shared_data->result = &co_await producer();
-            } else {
-              shared_data->result = co_await producer();
-            }
-          }
-        } catch (...) {
-          shared_data->result = std::current_exception();
-        }
-        while (!shared_data->awaiters.empty()) {
-          (*shared_data->awaiters.begin())->SetValue();
-        }
-      });
+    if (shared_data_->producer) {
+      Invoke(ProduceValue, shared_data_,
+             *std::exchange(shared_data_->producer, std::nullopt));
     }
-    return Get(shared_data, std::move(stop_token));
+    return Get(shared_data_, std::move(stop_token));
   }
 
  private:
@@ -90,10 +70,31 @@ class SharedPromise {
     }
     if constexpr (!std::is_same_v<T, void>) {
       if constexpr (std::is_reference_v<T>) {
-        co_return* std::get<std::remove_reference_t<T>*>(shared_data->result);
+        co_return *std::get<std::remove_reference_t<T>*>(shared_data->result);
       } else {
         co_return std::cref(std::get<T>(shared_data->result));
       }
+    }
+  }
+
+  static Task<> ProduceValue(std::shared_ptr<SharedData> shared_data,
+                             F producer) {
+    try {
+      if constexpr (std::is_same_v<void, T>) {
+        co_await producer();
+        shared_data->result = std::monostate();
+      } else {
+        if constexpr (std::is_reference_v<T>) {
+          shared_data->result = &co_await producer();
+        } else {
+          shared_data->result = co_await producer();
+        }
+      }
+    } catch (...) {
+      shared_data->result = std::current_exception();
+    }
+    while (!shared_data->awaiters.empty()) {
+      (*shared_data->awaiters.begin())->SetValue();
     }
   }
 

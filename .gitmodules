@@ -12,4 +12,4 @@
 	url = https://github.com/nghttp2/nghttp2
 [submodule "contrib/libressl"]
 	path = contrib/libressl
-	url = https://github.com/libressl-portable/portable
+	url = https://github.com/lemourin/libressl

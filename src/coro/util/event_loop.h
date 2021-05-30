@@ -8,6 +8,7 @@
 #include <event2/event.h>
 #include <event2/event_struct.h>
 
+#include <future>
 #include <stdexcept>
 
 namespace coro::util {
@@ -57,8 +58,7 @@ class EventLoop {
 
   template <typename F>
   requires requires(F func) {
-    { func() }
-    ->Awaitable<void>;
+    { func() } -> Awaitable<void>;
   }
   void RunOnEventLoop(F func) const {
     F* data = new F(std::move(func));
@@ -90,6 +90,46 @@ class EventLoop {
       delete data;
       throw std::runtime_error("can't run on event loop");
     }
+  }
+
+  template <typename F,
+            typename ResultType = typename decltype(std::declval<F>()())::type>
+  requires requires(F func) {
+    { func() } -> Awaitable<ResultType>;
+  }
+  ResultType Do(F func) const {
+    std::promise<ResultType> result;
+    RunOnEventLoop([&result, &func]() -> Task<> {
+      try {
+        if constexpr (std::is_same_v<ResultType, void>) {
+          co_await func();
+          result.set_value();
+        } else {
+          result.set_value(co_await func());
+        }
+      } catch (...) {
+        result.set_exception(std::current_exception());
+      }
+    });
+    return std::move(result).get_future().get();
+  }
+
+  template <typename F, typename ResultType = decltype(std::declval<F>()())>
+  ResultType Do(F func) const {
+    std::promise<ResultType> result;
+    RunOnEventLoop([&result, &func] {
+      try {
+        if constexpr (std::is_same_v<ResultType, void>) {
+          func();
+          result.set_value();
+        } else {
+          result.set_value(func());
+        }
+      } catch (...) {
+        result.set_exception(std::current_exception());
+      }
+    });
+    return std::move(result).get_future().get();
   }
 
  private:

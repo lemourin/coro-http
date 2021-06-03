@@ -31,6 +31,11 @@ concept Handler = requires(T v, Request<> request,
   { v(std::move(request), stop_token).await_resume() } -> ResponseLike;
 };
 
+template <typename T>
+concept HasQuit = requires(T v) {
+  { v.Quit() } -> Awaitable<void>;
+};
+
 struct HttpServerConfig {
   std::string address;
   uint16_t port;
@@ -124,6 +129,9 @@ class HttpServer {
     stop_source_.request_stop();
     if (current_connections_ == 0) {
       evuser_trigger(&quit_event_);
+    }
+    if constexpr (HasQuit<HandlerType>) {
+      co_await on_request_.Quit();
     }
     co_await quit_semaphore_;
   }

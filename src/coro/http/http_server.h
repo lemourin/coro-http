@@ -176,13 +176,19 @@ class HttpServer {
            stage != RequestContext::Stage::kInvalid;
   }
 
+  static Task<> FlushInput(RequestContext* context, bufferevent* bev) {
+    FOR_CO_AWAIT(std::string & chunk, GetBodyGenerator(bev, context)) {
+      (void)chunk;
+    }
+  }
+
   Task<> WriteMessage(RequestContext* context, bufferevent* bev, int status,
                       std::string_view message) {
     if (status < 100 || status >= 600) {
       status = 500;
     }
     if (!IsInvalidStage(context->stage)) {
-      FOR_CO_AWAIT(std::string & chunk, GetBodyGenerator(bev, context)) {}
+      co_await FlushInput(context, bev);
     }
     std::vector<std::pair<std::string, std::string>> headers{
         {"Content-Length", std::to_string(message.size())},
@@ -216,7 +222,7 @@ class HttpServer {
     bool is_chunked = IsChunked(context->response->headers);
     bool has_body = HasBody(context->response->status, context->content_length);
     if (context->method == Method::kHead || !has_body) {
-      FOR_CO_AWAIT(std::string & chunk, GetBodyGenerator(bev, context)) {}
+      co_await FlushInput(context, bev);
     }
 
     if (is_chunked && has_body) {
@@ -244,7 +250,7 @@ class HttpServer {
         std::string chunk = std::move(*it);
         co_await ++it;
         if (it == context->response->body.end() && !is_chunked) {
-          FOR_CO_AWAIT(std::string & chunk, GetBodyGenerator(bev, context)) {}
+          co_await FlushInput(context, bev);
         }
         co_await Write(context, bev, chunk_to_send(chunk));
       }
@@ -256,7 +262,7 @@ class HttpServer {
     }
     if (is_chunked) {
       if (!error_message) {
-        FOR_CO_AWAIT(std::string & chunk, GetBodyGenerator(bev, context)) {}
+        co_await FlushInput(context, bev);
       }
       co_await Write(context, bev, "0\r\n\r\n");
     }

@@ -26,7 +26,8 @@ enum class Method {
   kPropfind,
   kProppatch,
   kMkcol,
-  kMove
+  kMove,
+  kCopy
 };
 
 inline const char* MethodToString(Method method) {
@@ -53,6 +54,8 @@ inline const char* MethodToString(Method method) {
       return "MKCOL";
     case Method::kMove:
       return "MOVE";
+    case Method::kCopy:
+      return "COPY";
     default:
       return "UNKNOWN";
   }

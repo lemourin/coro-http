@@ -67,6 +67,8 @@ class ThreadPool {
   const EventLoop* event_loop_;
 };
 
+void SetThreadName(std::string_view thread_name);
+
 }  // namespace coro::util
 
 #endif  // CORO_UTIL_THREAD_POOL_H

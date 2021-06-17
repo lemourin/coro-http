@@ -105,11 +105,12 @@ std::string GetChunk(std::string_view chunk);
 template <Handler HandlerType>
 class HttpServer {
  public:
+  template <typename... Args>
   HttpServer(event_base* event_loop, const HttpServerConfig& config,
-             HandlerType on_request)
+             Args&&... args)
       : event_loop_(event_loop),
         listener_(CreateListener(event_loop, EvListenerCallback, this, config)),
-        on_request_(std::move(on_request)) {
+        on_request_(std::forward<Args>(args)...) {
     Check(event_assign(&quit_event_, event_loop, -1, 0, OnQuit, this));
   }
 
@@ -325,10 +326,11 @@ class HttpServer {
 template <Handler HandlerType>
 class HttpServer : public internal::HttpServer<HandlerType> {
  public:
+  template <typename... Args>
   HttpServer(event_base* event_loop, const HttpServerConfig& config,
-             HandlerType on_request)
+             Args&&... args)
       : internal::HttpServer<HandlerType>(event_loop, config,
-                                          std::move(on_request)) {}
+                                          std::forward<Args>(args)...) {}
 };
 
 }  // namespace coro::http

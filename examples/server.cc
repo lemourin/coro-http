@@ -54,9 +54,8 @@ int main() {
   coro::Invoke([base = base.get()]() -> coro::Task<> {
     coro::http::CurlHttp http(base);
     coro::Promise<void> semaphore;
-    coro::http::HttpServer http_server(base,
-                                       {.address = "127.0.0.1", .port = 4444},
-                                       HttpHandler{http, &semaphore});
+    coro::http::HttpServer<HttpHandler<coro::http::CurlHttp>> http_server(
+        base, {.address = "127.0.0.1", .port = 4444}, http, &semaphore);
     co_await semaphore;
     co_await http_server.Quit();
   });

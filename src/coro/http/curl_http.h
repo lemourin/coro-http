@@ -124,11 +124,8 @@ class CurlHttpImpl {
  public:
   explicit CurlHttpImpl(event_base* event_loop);
 
-  CurlHttpImpl(const CurlHttpImpl&) = delete;
-  CurlHttpImpl(CurlHttpImpl&&) noexcept;
-
-  CurlHttpImpl& operator=(const CurlHttpImpl&) = delete;
-  CurlHttpImpl& operator=(CurlHttpImpl&&) noexcept;
+  CurlHttpImpl(CurlHttpImpl&&) = delete;
+  CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
 
   ~CurlHttpImpl();
 

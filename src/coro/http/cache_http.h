@@ -9,13 +9,22 @@
 
 namespace coro::http {
 
+struct CacheHttpConfig {
+  int cache_size = 1024;
+  int max_staleness_ms = 1000;
+};
+
 template <HttpClient Http>
 class CacheHttpImpl {
  public:
-  CacheHttpImpl(Http http, int cache_size = 1024, int max_staleness_ms = 10000)
-      : http_(std::make_unique<Http>(std::move(http))),
-        cache_(cache_size, Factory{http_.get()}),
-        max_staleness_ms_(max_staleness_ms) {}
+  template <typename... Args>
+  CacheHttpImpl(const CacheHttpConfig& config, Args&&... args)
+      : http_(std::forward<Args>(args)...),
+        cache_(config.cache_size, Factory{&http_}),
+        max_staleness_ms_(config.max_staleness_ms) {}
+
+  CacheHttpImpl(CacheHttpImpl&&) = delete;
+  CacheHttpImpl& operator=(CacheHttpImpl&&) = delete;
 
   Task<Response<>> Fetch(Request<> request, stdx::stop_token stop_token) const {
     bool should_invalidate_cache =
@@ -31,7 +40,7 @@ class CacheHttpImpl {
     });
     if (!IsCacheable(request)) {
       co_return ConvertResponse(
-          co_await http_->Fetch(std::move(request), std::move(stop_token)));
+          co_await http_.Fetch(std::move(request), std::move(stop_token)));
     }
     auto r = co_await GetRequest(std::move(request));
     auto cached_response = cache_.GetCached(r);
@@ -127,7 +136,7 @@ class CacheHttpImpl {
            std::chrono::milliseconds(1);
   }
 
-  std::unique_ptr<Http> http_;
+  Http http_;
   util::LRUCache<Request<std::string>, Factory> cache_;
   int max_staleness_ms_;
   mutable int64_t last_invalidate_ms_ = 0;

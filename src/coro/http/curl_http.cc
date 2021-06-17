@@ -439,28 +439,7 @@ CurlHttpImpl::CurlHttpImpl(event_base* event_loop)
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
 }
 
-CurlHttpImpl::CurlHttpImpl(CurlHttpImpl&& other) noexcept
-    : curl_handle_(std::move(other.curl_handle_)),
-      event_loop_(other.event_loop_),
-      timeout_event_(MoveEvent(&other.timeout_event_, curl_handle_.get())) {
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, this));
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
-}
-
-CurlHttpImpl& CurlHttpImpl::operator=(CurlHttpImpl&& other) noexcept {
-  curl_handle_ = std::move(other.curl_handle_);
-  event_loop_ = other.event_loop_;
-  timeout_event_ = MoveEvent(&other.timeout_event_, curl_handle_.get());
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, this));
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
-  return *this;
-}
-
-CurlHttpImpl::~CurlHttpImpl() {
-  if (timeout_event_.ev_base) {
-    event_del(&timeout_event_);
-  }
-}
+CurlHttpImpl::~CurlHttpImpl() { event_del(&timeout_event_); }
 
 void CurlHttpImpl::TimeoutEvent(evutil_socket_t fd, short event, void* handle) {
   int running_handles;

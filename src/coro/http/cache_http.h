@@ -137,7 +137,7 @@ class CacheHttpImpl {
   }
 
   Http http_;
-  util::LRUCache<Request<std::string>, Factory> cache_;
+  mutable util::LRUCache<Request<std::string>, Factory> cache_;
   int max_staleness_ms_;
   mutable int64_t last_invalidate_ms_ = 0;
 };

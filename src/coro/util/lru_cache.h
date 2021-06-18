@@ -38,9 +38,14 @@ class LRUCache {
     if (promise_it != std::end(pending_)) {
       co_return co_await promise_it->second.Get(std::move(stop_token));
     }
-    auto promise = SharedPromise(ProduceValue{
-        .d = this, .key = key, .stop_token = stop_source_.get_token()});
-    promise_it = pending_.insert({key, std::move(promise)}).first;
+    promise_it =
+        pending_
+            .emplace(std::piecewise_construct, std::forward_as_tuple(key),
+                     std::forward_as_tuple(
+                         ProduceValue{.d = this,
+                                      .key = key,
+                                      .stop_token = stop_source_.get_token()}))
+            .first;
     co_return co_await promise_it->second.Get(std::move(stop_token));
   }
 

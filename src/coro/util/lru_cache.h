@@ -5,6 +5,7 @@
 #include <coro/stdx/stop_source.h>
 #include <coro/stdx/stop_token.h>
 #include <coro/task.h>
+#include <coro/util/raii_utils.h>
 
 #include <set>
 #include <unordered_map>
@@ -46,6 +47,7 @@ class LRUCache {
                                       .key = key,
                                       .stop_token = stop_source_.get_token()}))
             .first;
+    auto guard = AtScopeExit([&] { pending_.erase(key); });
     co_return co_await promise_it->second.Get(std::move(stop_token));
   }
 
@@ -64,13 +66,6 @@ class LRUCache {
   }
 
  private:
-  void HandlePendingCleanupQueue() {
-    while (!pending_cleanup_queue_.empty()) {
-      pending_.erase(pending_cleanup_queue_.back());
-      pending_cleanup_queue_.pop_back();
-    }
-  }
-
   void Insert(Key key, Value value) {
     while (map_.size() >= static_cast<size_t>(size_)) {
       Invalidate(*queue_.begin());
@@ -82,14 +77,10 @@ class LRUCache {
     queue_.erase(key);
     last_access_[key] = time_++;
     queue_.insert(std::move(key));
-    HandlePendingCleanupQueue();
   }
 
   struct ProduceValue {
     Task<Value> operator()() {
-      auto guard = util::MakePointer(d, [&](LRUCache* d) {
-        d->pending_cleanup_queue_.emplace_back(std::move(key));
-      });
       auto result = co_await d->factory_(key, std::move(stop_token));
       d->Insert(key, result);
       co_return result;
@@ -114,7 +105,6 @@ class LRUCache {
   std::unordered_map<Key, int, Hash> last_access_;
   std::set<Key, Compare> queue_;
   stdx::stop_source stop_source_;
-  std::vector<Key> pending_cleanup_queue_;
 };
 
 }  // namespace coro::util

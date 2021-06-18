@@ -380,8 +380,8 @@ CurlHttpOperation::CurlHttpOperation(CURLM* http, event_base* event_loop,
 
 CurlHttpOperation::CurlHttpOperation(CurlHttpOperation&& other) noexcept
     : awaiting_coroutine_(std::exchange(other.awaiting_coroutine_, nullptr)),
-      headers_ready_(MoveEvent(&other.headers_ready_, this)),
       exception_ptr_(other.exception_ptr_),
+      headers_ready_(MoveEvent(&other.headers_ready_, this)),
       headers_ready_event_posted_(other.headers_ready_event_posted_),
       status_(other.status_),
       headers_(std::move(other.headers_)),

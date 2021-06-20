@@ -7,7 +7,6 @@ target_sources(stdx PRIVATE
     coroutine.h
     concepts.h
     any_invocable.h
-    bind_front.h
     stop_source.cc
     stop_token.cc
 )

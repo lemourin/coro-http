@@ -83,6 +83,10 @@ struct Response {
   HttpBodyGenerator body;
 };
 
+inline Generator<std::string> CreateBody(std::string body) {
+  co_yield std::move(body);
+}
+
 class HttpException : public std::exception {
  public:
   static constexpr int kAborted = -1;

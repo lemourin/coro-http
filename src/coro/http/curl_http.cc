@@ -157,7 +157,10 @@ struct CurlHandle::Data {
   ~Data() { Cleanup(); }
 
   void Cleanup() {
-    curl_multi_remove_handle(http, handle.get());
+    if (http) {
+      Check(curl_multi_remove_handle(http, handle.get()));
+      http = nullptr;
+    }
     if (next_request_body_chunk.ev_base) {
       event_del(&next_request_body_chunk);
     }

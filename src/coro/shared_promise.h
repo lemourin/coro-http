@@ -57,10 +57,8 @@ class SharedPromise {
     if (std::holds_alternative<NotReady>(shared_data->result)) {
       Promise<void> semaphore;
       shared_data->awaiters.insert(&semaphore);
-      auto guard = coro::util::MakePointer(
-          &semaphore, [shared_data](Promise<void>* semaphore) {
-            shared_data->awaiters.erase(semaphore);
-          });
+      auto guard = coro::util::AtScopeExit(
+          [&] { shared_data->awaiters.erase(&semaphore); });
       coro::stdx::stop_callback stop_callback(
           stop_token, [&] { semaphore.SetException(InterruptedException()); });
       co_await semaphore;

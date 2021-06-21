@@ -1,9 +1,7 @@
 #include <coro/generator.h>
 #include <coro/http/curl_http.h>
-#include <coro/http/http_server.h>
 #include <coro/stdx/stop_source.h>
 #include <coro/util/event_loop.h>
-#include <coro/util/raii_utils.h>
 
 #include <csignal>
 #include <iostream>
@@ -78,7 +76,8 @@ int main() {
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-  auto base = coro::util::MakePointer(event_base_new(), event_base_free);
+  std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
+      event_base_new());
   coro::Invoke(CoMain(base.get()));
   event_base_dispatch(base.get());
   return 0;

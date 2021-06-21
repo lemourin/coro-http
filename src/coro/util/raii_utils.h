@@ -40,11 +40,6 @@ auto AtScopeExit(F func) {
   return internal::Guard(std::move(func));
 }
 
-template <typename T, typename F>
-auto MakePointer(T* pointer, F deleter) {
-  return std::unique_ptr<T, F>(pointer, std::move(deleter));
-}
-
 }  // namespace coro::util
 
 #endif  // CORO_UTIL_RAII_UTILS_H

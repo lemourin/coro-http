@@ -2,6 +2,7 @@
 #include <coro/http/curl_http.h>
 #include <coro/http/http_parse.h>
 #include <coro/http/http_server.h>
+#include <coro/util/event_loop.h>
 #include <coro/util/raii_utils.h>
 
 #include <csignal>
@@ -50,7 +51,8 @@ int main() {
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-  auto base = coro::util::MakePointer(event_base_new(), event_base_free);
+  std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
+      event_base_new());
   coro::Invoke([base = base.get()]() -> coro::Task<> {
     coro::http::CurlHttp http(base);
     coro::Promise<void> semaphore;

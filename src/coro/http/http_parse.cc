@@ -13,6 +13,10 @@ namespace coro::http {
 
 namespace {
 
+struct EvHttpUriDeleter {
+  void operator()(evhttp_uri* uri) const { evhttp_uri_free(uri); }
+};
+
 const std::unordered_map<std::string, std::string> kMimeType = {
     {"aac", "audio/aac"},           {"avi", "video/x-msvideo"},
     {"gif", "image/gif"},           {"jpeg", "image/jpeg"},
@@ -47,10 +51,8 @@ std::optional<int> ToOptional(int value) {
 }  // namespace
 
 Uri ParseUri(std::string_view url_view) {
-  auto uri = util::MakePointer(
-      evhttp_uri_parse_with_flags(std::string(url_view).c_str(),
-                                  EVHTTP_URI_NONCONFORMANT),
-      evhttp_uri_free);
+  std::unique_ptr<evhttp_uri, EvHttpUriDeleter> uri(evhttp_uri_parse_with_flags(
+      std::string(url_view).c_str(), EVHTTP_URI_NONCONFORMANT));
   if (!uri) {
     throw HttpException(-1, "evhttp_uri_parse failed");
   }

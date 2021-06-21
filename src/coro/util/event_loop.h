@@ -13,6 +13,14 @@
 
 namespace coro::util {
 
+struct EventBaseDeleter {
+  void operator()(event_base* event_base) const {
+    if (event_base) {
+      event_base_free(event_base);
+    }
+  }
+};
+
 class EventLoop {
  public:
   explicit EventLoop(event_base* event_loop) : event_loop_(event_loop) {}

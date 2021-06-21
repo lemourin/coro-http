@@ -103,7 +103,6 @@ void ReadCallback(struct bufferevent* bev, void* user_data) {
       if (!context->body) {
         context->body = GetBodyGenerator(bev, context);
       }
-      Check(bufferevent_disable(bev, EV_READ));
       context->semaphore.SetValue();
       break;
     }
@@ -200,7 +199,6 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
             if (evbuffer_get_length(input) >= kMaxLineLength) {
               throw HttpException(HttpException::kBadRequest);
             }
-            bufferevent_enable(bev, EV_READ);
             co_await Wait(context);
             context->semaphore = Promise<void>();
           }
@@ -208,7 +206,6 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
         bool terminated = context->current_chunk_length == 0;
         while (*context->current_chunk_length > 0) {
           if (evbuffer_get_length(input) == 0) {
-            bufferevent_enable(bev, EV_READ);
             co_await Wait(context);
             context->semaphore = Promise<void>();
           }
@@ -235,7 +232,6 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
             }
             break;
           } else {
-            bufferevent_enable(bev, EV_READ);
             co_await Wait(context);
             context->semaphore = Promise<void>();
           }
@@ -252,7 +248,6 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
   } else {
     while (context->read_count < *context->content_length) {
       if (evbuffer_get_length(input) == 0) {
-        bufferevent_enable(bev, EV_READ);
         co_await Wait(context);
         context->semaphore = Promise<void>();
       }

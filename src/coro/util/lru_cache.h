@@ -70,13 +70,13 @@ class LRUCache {
     while (map_.size() >= static_cast<size_t>(size_)) {
       Invalidate(*queue_.begin());
     }
-    map_.insert({std::move(key), std::move(value)});
+    map_.emplace(std::move(key), std::move(value));
   }
 
   void RegisterAccess(Key key) {
     queue_.erase(key);
     last_access_[key] = time_++;
-    queue_.insert(std::move(key));
+    queue_.emplace(std::move(key));
   }
 
   struct ProduceValue {

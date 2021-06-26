@@ -30,7 +30,7 @@ class ThreadPool {
   using TaskT = std::conditional_t<std::is_void_v<T>, Task<>, Task<T>>;
 
   template <typename Func, typename... Args>
-  TaskT<util::ReturnTypeT<Func>> Invoke(Func func, Args&&... args) {
+  TaskT<util::ReturnTypeT<Func>> Do(Func func, Args&&... args) {
     Promise<util::ReturnTypeT<Func>> result;
     co_await SwitchTo();
     try {

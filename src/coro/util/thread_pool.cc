@@ -75,17 +75,21 @@ void ThreadPool::Work() {
     if (quit_ && tasks_.empty()) {
       break;
     }
-    auto task = std::move(tasks_.back());
+    auto* promise = tasks_.back();
     tasks_.pop_back();
     lock.unlock();
-    std::move(task)();
+    promise->SetValue();
   }
 }
 
-void ThreadPool::Schedule(stdx::any_invocable<void()> task) {
-  std::unique_lock lock(mutex_);
-  tasks_.emplace_back(std::move(task));
-  condition_variable_.notify_one();
+Task<> ThreadPool::SwitchTo() {
+  Promise<void> promise;
+  {
+    std::unique_lock lock(mutex_);
+    tasks_.emplace_back(&promise);
+    condition_variable_.notify_one();
+  }
+  co_await promise;
 }
 
 void SetThreadName(std::string_view name) {

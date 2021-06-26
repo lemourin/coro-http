@@ -11,7 +11,7 @@ class CancelRequest {
  public:
   CancelRequest(const coro::util::EventLoop &event_loop,
                 coro::stdx::stop_source request_stop_source) {
-    coro::Invoke(Init(event_loop, std::move(request_stop_source)));
+    coro::RunTask(Init(event_loop, std::move(request_stop_source)));
   }
 
   ~CancelRequest() { timeout_stop_source_.request_stop(); }
@@ -78,7 +78,7 @@ int main() {
 
   std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
       event_base_new());
-  coro::Invoke(CoMain(base.get()));
+  coro::RunTask(CoMain(base.get()));
   event_base_dispatch(base.get());
   return 0;
 }

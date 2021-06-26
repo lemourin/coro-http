@@ -132,7 +132,7 @@ struct CurlHandle::Data {
                                  *content_length));
         }
       }
-      Invoke([d = this]() -> Task<> {
+      RunTask([d = this]() -> Task<> {
         try {
           d->request_body_it = co_await d->request_body->begin();
           d->request_body_chunk_index_ = 0;
@@ -271,7 +271,7 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
 
 void CurlHandle::OnNextRequestBodyChunkRequested(evutil_socket_t, short,
                                                  void* userdata) {
-  Invoke([data = reinterpret_cast<CurlHandle::Data*>(userdata)]() -> Task<> {
+  RunTask([data = reinterpret_cast<CurlHandle::Data*>(userdata)]() -> Task<> {
     try {
       data->request_body_it = co_await ++*data->request_body_it;
       data->request_body_chunk_index_ = 0;

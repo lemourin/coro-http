@@ -301,8 +301,8 @@ class HttpServer {
   static void EvListenerCallback(struct evconnlistener* listener,
                                  evutil_socket_t socket, struct sockaddr* addr,
                                  int socklen, void* d) {
-    Invoke(reinterpret_cast<HttpServer*>(d)->ListenerCallback(listener, socket,
-                                                              addr, socklen));
+    RunTask(reinterpret_cast<HttpServer*>(d)->ListenerCallback(listener, socket,
+                                                               addr, socklen));
   }
 
   static void OnQuit(evutil_socket_t, short, void* handle) {

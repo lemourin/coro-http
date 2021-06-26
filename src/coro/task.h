@@ -181,9 +181,9 @@ concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
   { v.await_ready() } -> stdx::same_as<bool>;
 };
 
-struct RunTask {
+struct RunTaskT {
   struct promise_type {
-    auto get_return_object() { return RunTask(); }
+    auto get_return_object() { return RunTaskT(); }
     stdx::suspend_never initial_suspend() { return {}; }
     stdx::suspend_never final_suspend() noexcept { return {}; }
     void return_void() {}
@@ -191,7 +191,7 @@ struct RunTask {
   };
 };
 
-inline RunTask Invoke(Task<> task) {
+inline RunTaskT RunTask(Task<> task) {
   try {
     co_await task;
   } catch (const InterruptedException&) {
@@ -199,7 +199,7 @@ inline RunTask Invoke(Task<> task) {
 }
 
 template <typename F, typename... Args>
-RunTask Invoke(F func, Args&&... args) {
+RunTaskT RunTask(F func, Args&&... args) {
   try {
     co_await func(std::forward<Args>(args)...);
   } catch (const InterruptedException&) {

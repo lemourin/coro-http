@@ -33,8 +33,8 @@ class SharedPromise {
 
   TaskT Get(coro::stdx::stop_token stop_token) const {
     if (shared_data_->producer) {
-      Invoke(ProduceValue, shared_data_,
-             *std::exchange(shared_data_->producer, std::nullopt));
+      RunTask(ProduceValue, shared_data_,
+              *std::exchange(shared_data_->producer, std::nullopt));
     }
     return Get(shared_data_, std::move(stop_token));
   }

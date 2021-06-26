@@ -23,7 +23,7 @@ struct WhenAll<std::index_sequence<Index...>> {
     std::optional<std::exception_ptr> exception;
     Promise<void> semaphore;
     size_t ready = 0;
-    (Invoke(
+    (RunTask(
          [&](auto task, auto& result) -> Task<> {
            try {
              result = co_await task;
@@ -64,7 +64,7 @@ Task<std::vector<T>> WhenAll(Container tasks) {
   std::vector<T> result(tasks.size());
   std::optional<std::exception_ptr> exception;
   for (size_t i = 0; i < tasks.size(); i++) {
-    Invoke(
+    RunTask(
         [&](auto task, T& result) -> Task<> {
           try {
             result = co_await task;
@@ -95,7 +95,7 @@ Task<> WhenAll(Container tasks) {
   size_t not_ready = tasks.size();
   std::optional<std::exception_ptr> exception;
   for (size_t i = 0; i < tasks.size(); i++) {
-    Invoke(
+    RunTask(
         [&](auto task) -> Task<> {
           try {
             co_await task;

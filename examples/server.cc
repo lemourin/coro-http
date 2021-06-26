@@ -53,7 +53,7 @@ int main() {
 
   std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
       event_base_new());
-  coro::Invoke([base = base.get()]() -> coro::Task<> {
+  coro::RunTask([base = base.get()]() -> coro::Task<> {
     coro::http::CurlHttp http(base);
     coro::Promise<void> semaphore;
     coro::http::HttpServer<HttpHandler<coro::http::CurlHttp>> http_server(

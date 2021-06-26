@@ -73,7 +73,7 @@ class EventLoop {
     if (event_base_once(
             event_loop_, -1, EV_TIMEOUT,
             [](evutil_socket_t, short, void* d) {
-              coro::Invoke([func = reinterpret_cast<F*>(d)]() -> Task<> {
+              coro::RunTask([func = reinterpret_cast<F*>(d)]() -> Task<> {
                 co_await (*func)();
                 delete func;
               });

@@ -51,7 +51,7 @@ void SetThreadNameImpl(const std::string& name) {
 
 ThreadPool::ThreadPool(const EventLoop& event_loop, unsigned int thread_count)
     : event_loop_(&event_loop) {
-  for (unsigned int i = 0; i < std::max<unsigned int>(thread_count, 1u); i++) {
+  for (unsigned int i = 0; i < std::max<unsigned int>(thread_count, 2u); i++) {
     threads_.emplace_back([this] { Work(); });
   }
 }
@@ -75,21 +75,37 @@ void ThreadPool::Work() {
     if (quit_ && tasks_.empty()) {
       break;
     }
-    auto* promise = tasks_.back();
+    auto coroutine = tasks_.back();
     tasks_.pop_back();
     lock.unlock();
-    promise->SetValue();
+    coroutine.resume();
   }
 }
 
-Task<> ThreadPool::SwitchTo() {
-  Promise<void> promise;
-  {
-    std::unique_lock lock(mutex_);
-    tasks_.emplace_back(&promise);
-    condition_variable_.notify_one();
-  }
-  co_await promise;
+Task<> ThreadPool::SwitchToThreadLoop() {
+  struct Awaiter {
+    bool await_ready() const { return false; }
+    void await_resume() {}
+    void await_suspend(stdx::coroutine_handle<void> continuation) {
+      std::unique_lock lock(thread_pool->mutex_);
+      thread_pool->tasks_.emplace_back(continuation);
+      thread_pool->condition_variable_.notify_one();
+    }
+    ThreadPool* thread_pool;
+  };
+  co_await Awaiter{this};
+}
+
+Task<> ThreadPool::SwitchToEventLoop() {
+  struct Awaiter {
+    bool await_ready() const { return false; }
+    void await_resume() {}
+    void await_suspend(stdx::coroutine_handle<void> continuation) {
+      event_loop->RunOnEventLoop([=] { continuation.resume(); });
+    }
+    const EventLoop* event_loop;
+  };
+  co_await Awaiter{event_loop_};
 }
 
 void SetThreadName(std::string_view name) {

@@ -31,33 +31,31 @@ class ThreadPool {
 
   template <typename Func, typename... Args>
   TaskT<util::ReturnTypeT<Func>> Do(Func&& func, Args&&... args) {
-    Promise<util::ReturnTypeT<Func>> result;
-    co_await SwitchTo();
+    co_await SwitchToThreadLoop();
+    std::exception_ptr exception;
     try {
       if constexpr (std::is_void_v<util::ReturnTypeT<Func>>) {
         std::forward<Func>(func)(std::forward<Args>(args)...);
-        event_loop_->RunOnEventLoop([&] { result.SetValue(); });
+        co_await SwitchToEventLoop();
+        co_return;
       } else {
-        event_loop_->RunOnEventLoop(
-            [&result, r = std::forward<Func>(func)(
-                          std::forward<Args>(args)...)]() mutable {
-              result.SetValue(std::move(r));
-            });
+        auto result = std::forward<Func>(func)(std::forward<Args>(args)...);
+        co_await SwitchToEventLoop();
+        co_return result;
       }
     } catch (...) {
-      event_loop_->RunOnEventLoop(
-          [&result, exception = std::current_exception()]() mutable {
-            result.SetException(std::move(exception));
-          });
+      exception = std::current_exception();
     }
-    co_return co_await result;
+    co_await SwitchToEventLoop();
+    std::rethrow_exception(exception);
   }
 
  private:
   void Work();
-  Task<> SwitchTo();
+  Task<> SwitchToThreadLoop();
+  Task<> SwitchToEventLoop();
 
-  std::vector<Promise<void>*> tasks_;
+  std::vector<stdx::coroutine_handle<void>> tasks_;
   std::vector<std::thread> threads_;
   bool quit_ = false;
   std::condition_variable condition_variable_;

@@ -101,7 +101,7 @@ Task<> ThreadPool::SwitchToEventLoop() {
     bool await_ready() const { return false; }
     void await_resume() {}
     void await_suspend(stdx::coroutine_handle<void> continuation) {
-      event_loop->RunOnEventLoop([=] { continuation.resume(); });
+      event_loop->RunOnEventLoop([=]() mutable { continuation.resume(); });
     }
     const EventLoop* event_loop;
   };

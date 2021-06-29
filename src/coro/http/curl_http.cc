@@ -539,8 +539,9 @@ int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   if (timeout_ms == -1) {
     Check(event_del(&http->timeout_event_));
   } else {
-    timeval tv = {.tv_sec = timeout_ms / 1000,
-                  .tv_usec = timeout_ms % 1000 * 1000};
+    timeval tv = {
+        .tv_sec = static_cast<decltype(tv.tv_sec)>(timeout_ms / 1000),
+        .tv_usec = static_cast<decltype(tv.tv_usec)>(timeout_ms % 1000 * 1000)};
     Check(event_add(&http->timeout_event_, &tv));
   }
   return 0;

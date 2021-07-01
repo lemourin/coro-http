@@ -11,6 +11,10 @@
 #include <pthread.h>
 #endif
 
+#ifdef __APPLE__
+#include <pthread.h>
+#endif
+
 namespace coro::util {
 
 namespace {
@@ -44,6 +48,9 @@ void SetThreadNameImpl(const std::string& name) {
 #endif
 #ifdef __linux__
   pthread_setname_np(pthread_self(), name.c_str());
+#endif
+#ifdef __APPLE__
+  pthread_setname_np(name.c_str());
 #endif
 }
 

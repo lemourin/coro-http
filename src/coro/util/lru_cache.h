@@ -19,14 +19,31 @@ class LRUCache {
   using Value = typename decltype(std::declval<Factory>()(
       std::declval<Key>(), std::declval<stdx::stop_token>()))::type;
 
-  template <typename... Args>
-  LRUCache(int size, Args&&... args)
-      : size_(size),
-        factory_(std::forward<Args>(args)...),
-        queue_(Compare{this}) {}
+  LRUCache(int size, Factory factory)
+      : size_(size), factory_(std::move(factory)), queue_(Compare{this}) {}
 
-  LRUCache(LRUCache&&) = delete;
-  LRUCache& operator=(LRUCache&&) = delete;
+  LRUCache(LRUCache&& other) noexcept
+      : size_(other.size_),
+        factory_(std::move(other.factory_)),
+        time_(other.time_),
+        map_(std::move(other.map_)),
+        pending_(std::move(other.pending_)),
+        last_access_(std::move(other.last_access_)),
+        queue_(other.queue_.begin(), other.queue_.end(), Compare{this}),
+        stop_source_(std::move(other.stop_source_)) {}
+
+  LRUCache& operator=(LRUCache&& other) noexcept {
+    size_ = other.size_;
+    factory_ = std::move(other.factory_);
+    time_ = other.time_;
+    map_ = std::move(other.map_);
+    pending_ = std::move(other.pending_);
+    last_access_ = std::move(other.last_access_);
+    queue_ = std::set<Key, Compare>(other.queue_.begin(), other.queue_.end(),
+                                    Compare{this});
+    stop_source_ = std::move(other.stop_source_);
+    return *this;
+  }
 
   ~LRUCache() { stop_source_.request_stop(); }
 

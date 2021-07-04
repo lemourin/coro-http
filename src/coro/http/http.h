@@ -7,6 +7,7 @@
 #include <coro/stdx/coroutine.h>
 #include <coro/stdx/stop_token.h>
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -349,6 +350,19 @@ class ToHttpClient : public Impl {
   static Generator<std::string> ToGenerator(std::string value) {
     co_yield value;
   }
+};
+
+class FetchF : public std::function<Task<http::Response<>>(
+                   http::Request<std::string>, stdx::stop_token)> {
+ public:
+  template <typename T>
+  explicit FetchF(const T* f)
+      : std::function<Task<http::Response<>>(http::Request<std::string>,
+                                             stdx::stop_token)>(
+            [f](http::Request<std::string> request,
+                stdx::stop_token stop_token) {
+              return f->Fetch(std::move(request), std::move(stop_token));
+            }) {}
 };
 
 }  // namespace coro::http

@@ -8,6 +8,7 @@
 #include <event2/event.h>
 #include <event2/event_struct.h>
 
+#include <functional>
 #include <future>
 #include <stdexcept>
 
@@ -142,6 +143,16 @@ class EventLoop {
 
  private:
   event_base* event_loop_;
+};
+
+class WaitF : public std::function<Task<>(int, stdx::stop_token)> {
+ public:
+  template <typename F>
+  explicit WaitF(const F* f)
+      : std::function<Task<>(int, stdx::stop_token)>(
+            [f](int ms, stdx::stop_token stop_token) -> Task<> {
+              co_await f->Wait(ms, std::move(stop_token));
+            }) {}
 };
 
 }  // namespace coro::util

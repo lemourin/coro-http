@@ -18,6 +18,7 @@ else()
     set(ENABLE_LIB_ONLY ON CACHE BOOL "build only nghttp2 lib")
     set(ENABLE_STATIC_LIB ON CACHE BOOL "build static nghttp2")
     set(ENABLE_SHARED_LIB OFF CACHE BOOL "build shared nghttp2")
+    set(ENABLE_DOC OFF CACHE BOOL "build nghttp2 doc")
     add_subdirectory(nghttp2 EXCLUDE_FROM_ALL)
 
     add_subdirectory(libressl EXCLUDE_FROM_ALL)

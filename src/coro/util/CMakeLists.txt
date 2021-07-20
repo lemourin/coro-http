@@ -13,5 +13,4 @@ target_sources(coro-util PRIVATE
     thread_pool.cc
 )
 find_package(Threads REQUIRED)
-target_link_libraries(coro-util PRIVATE Threads::Threads)
-target_link_libraries(coro-util PUBLIC stdx event_core)
+target_link_libraries(coro-util PUBLIC stdx event_core Threads::Threads)

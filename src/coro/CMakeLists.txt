@@ -1,7 +1,7 @@
 add_subdirectory(stdx)
 add_subdirectory(util)
 
-add_library(coro OBJECT)
+add_library(coro)
 
 target_sources(coro PRIVATE
     task.h

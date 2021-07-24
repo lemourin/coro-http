@@ -12,6 +12,8 @@ if(BUILD_SHARED_LIBS)
 else()
     set(CARES_SHARED OFF CACHE BOOL "build shared c-ares")
     set(CARES_STATIC ON CACHE BOOL "build static c-ares")
+    set(CARES_INSTALL OFF CACHE BOOL "enable c-ares install targets")
+    set(CARES_BUILD_TOOLS OFF CACHE BOOL "build c-ares tools")
     unset(RANDOM_FILE CACHE)
     add_subdirectory(c-ares EXCLUDE_FROM_ALL)
 

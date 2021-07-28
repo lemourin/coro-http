@@ -8,9 +8,15 @@ namespace coro::util {
 
 class StopTokenOr {
  public:
-  StopTokenOr(stdx::stop_token fst_token, stdx::stop_token nd_token)
-      : callback_fst_(std::move(fst_token), Callback{&stop_source_}),
+  StopTokenOr(stdx::stop_source stop_source, stdx::stop_token fst_token,
+              stdx::stop_token nd_token)
+      : stop_source_(std::move(stop_source)),
+        callback_fst_(std::move(fst_token), Callback{&stop_source_}),
         callback_nd_(std::move(nd_token), Callback{&stop_source_}) {}
+
+  StopTokenOr(stdx::stop_token fst_token, stdx::stop_token nd_token)
+      : StopTokenOr(stdx::stop_source(), std::move(fst_token),
+                    std::move(nd_token)) {}
 
   stdx::stop_token GetToken() const noexcept {
     return stop_source_.get_token();

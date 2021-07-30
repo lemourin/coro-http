@@ -1,6 +1,9 @@
 #include "curl_http.h"
 
+#ifdef USE_BUNDLED_CACERT
 #include <coro/http/assets.h>
+#endif
+
 #include <coro/interrupted_exception.h>
 
 #include <sstream>
@@ -99,10 +102,12 @@ struct CurlHandle::Data {
                            MethodToString(request.method)));
     Check(curl_easy_setopt(handle.get(), CURLOPT_HTTP_VERSION,
                            CURL_HTTP_VERSION_1_1));
+#ifdef USE_BUNDLED_CACERT
     curl_blob ca_cert{.data = const_cast<void*>(reinterpret_cast<const void*>(
                           kAssetsCacertPem.data())),
                       .len = kAssetsCacertPem.size()};
     Check(curl_easy_setopt(handle.get(), CURLOPT_CAINFO_BLOB, &ca_cert));
+#endif
     std::optional<long> content_length;
     curl_slist* header_list = nullptr;
     for (const auto& [header_name, header_value] : request.headers) {

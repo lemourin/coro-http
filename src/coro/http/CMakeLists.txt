@@ -16,9 +16,12 @@ target_include_directories(coro-http PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../../)
 
 include(embed_resource)
 
-embed_resource(
-    TARGET coro-http
-    NAMESPACE coro::http
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/assets
-    INPUT ../../../assets/cacert.pem
-)
+if(USE_OPENSSL)
+    embed_resource(
+        TARGET coro-http
+        NAMESPACE coro::http
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/assets
+        INPUT ../../../assets/cacert.pem
+    )
+    target_compile_definitions(coro-http PRIVATE USE_BUNDLED_CACERT)
+endif()

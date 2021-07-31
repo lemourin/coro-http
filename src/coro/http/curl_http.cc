@@ -109,19 +109,21 @@ struct CurlHandle::Data {
     Check(curl_easy_setopt(handle.get(), CURLOPT_CAINFO_BLOB, &ca_cert));
 #endif
     std::optional<long> content_length;
-    curl_slist* header_list = nullptr;
     for (const auto& [header_name, header_value] : request.headers) {
       std::string header_line = header_name;
       header_line += ": ";
       header_line += header_value;
-      header_list = curl_slist_append(header_list, header_line.c_str());
+      header_list.reset(
+          curl_slist_append(header_list.release(), header_line.c_str()));
+      if (!header_list) {
+        throw HttpException(CURLE_OUT_OF_MEMORY, "curl_slist_append failed");
+      }
       if (ToLowerCase(header_name) == "content-length") {
         content_length = std::stol(header_value);
       }
     }
-    this->header_list =
-        std::unique_ptr<curl_slist, CurlListDeleter>(header_list);
-    Check(curl_easy_setopt(handle.get(), CURLOPT_HTTPHEADER, header_list));
+    Check(
+        curl_easy_setopt(handle.get(), CURLOPT_HTTPHEADER, header_list.get()));
 
     if (request_body) {
       if (request.method == Method::kPost) {
@@ -206,7 +208,7 @@ size_t CurlHandle::HeaderCallback(char* buffer, size_t size, size_t nitems,
   }
   auto http_operation = std::get<CurlHttpOperation*>(data->owner);
   std::string_view view(buffer, size * nitems);
-  auto index = view.find_first_of(":");
+  auto index = view.find_first_of(':');
   if (index != std::string::npos) {
     http_operation->headers_.emplace_back(
         ToLowerCase(std::string(view.begin(), view.begin() + index)),
@@ -317,18 +319,17 @@ CurlHttpBodyGenerator::CurlHttpBodyGenerator(
       handle_(std::move(other.handle_), this) {}
 
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle handle,
-                                             std::string initial_chunk)
+                                             std::string_view initial_chunk)
     : handle_(std::move(handle), this) {
   Check(event_assign(&chunk_ready_, handle_.d_->event_loop, -1, 0, OnChunkReady,
                      this));
   Check(event_assign(&body_ready_, handle_.d_->event_loop, -1, 0, OnBodyReady,
                      this));
-  ReceivedData(std::move(initial_chunk));
+  ReceivedData(initial_chunk);
 }
 
 CurlHttpBodyGenerator& CurlHttpBodyGenerator::operator=(
     CurlHttpBodyGenerator&& other) noexcept {
-  static_cast<HttpBodyGenerator&>(*this) = std::move(other);
   MoveAssignEvent(&chunk_ready_, &other.chunk_ready_, this);
   MoveAssignEvent(&body_ready_, &other.body_ready_, this);
   body_ready_fired_ = other.body_ready_fired_;
@@ -336,6 +337,7 @@ CurlHttpBodyGenerator& CurlHttpBodyGenerator::operator=(
   exception_ptr_ = other.exception_ptr_;
   data_ = std::move(other.data_);
   handle_ = CurlHandle(std::move(other.handle_), this);
+  static_cast<HttpBodyGenerator&>(*this) = std::move(other);
   return *this;
 }
 
@@ -554,8 +556,8 @@ int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
 
 CurlHttpOperation CurlHttpImpl::Fetch(Request<> request,
                                       stdx::stop_token token) const {
-  return CurlHttpOperation(curl_handle_.get(), event_loop_, std::move(request),
-                           std::move(token));
+  return {curl_handle_.get(), event_loop_, std::move(request),
+          std::move(token)};
 }
 
 }  // namespace coro::http

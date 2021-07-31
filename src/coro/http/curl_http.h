@@ -60,7 +60,7 @@ class CurlHandle {
 
 class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
  public:
-  CurlHttpBodyGenerator(CurlHandle handle, std::string initial_chunk);
+  CurlHttpBodyGenerator(CurlHandle handle, std::string_view initial_chunk);
 
   CurlHttpBodyGenerator(const CurlHttpBodyGenerator&) = delete;
   CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) noexcept;

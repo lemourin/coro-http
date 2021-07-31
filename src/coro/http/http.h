@@ -271,7 +271,7 @@ void HttpBodyGenerator<Impl>::Close(int status) {
 
 template <typename Impl>
 void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
-  exception_ptr_ = exception;
+  exception_ptr_ = std::move(exception);
   if (handle_) {
     std::exchange(handle_, nullptr).resume();
   }

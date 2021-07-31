@@ -1,8 +1,8 @@
-#include "mutex.h"
-
-#include <coro/util/raii_utils.h>
+#include "coro/mutex.h"
 
 #include <algorithm>
+
+#include "coro/util/raii_utils.h"
 
 namespace coro {
 
@@ -34,7 +34,11 @@ UniqueLock::UniqueLock(UniqueLock&& other) noexcept
 
 UniqueLock::~UniqueLock() {
   if (mutex_) {
-    mutex_->Unlock();
+    try {
+      mutex_->Unlock();
+    } catch (...) {
+      std::terminate();
+    }
   }
 }
 

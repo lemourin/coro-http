@@ -1,7 +1,7 @@
 #ifndef CORO_HTTP_STOP_CALLBACK_H
 #define CORO_HTTP_STOP_CALLBACK_H
 
-#include "stop_source.h"
+#include "coro/stdx/stop_source.h"
 
 namespace coro::stdx {
 

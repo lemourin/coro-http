@@ -1,4 +1,6 @@
-#include "stop_source.h"
+#include "coro/stdx/stop_source.h"
+
+#include <memory>
 
 namespace coro::stdx {
 
@@ -13,7 +15,7 @@ bool stop_source::request_stop() noexcept {
 
   auto state = state_;
   while (!state->stop_callback.empty()) {
-    auto cb = *state->stop_callback.begin();
+    auto* cb = *state->stop_callback.begin();
     state->stop_callback.erase(state->stop_callback.begin());
     (*cb)();
   }

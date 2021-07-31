@@ -1,4 +1,6 @@
-#include "event_loop.h"
+#include "coro/util/event_loop.h"
+
+#include <utility>
 
 namespace coro::util {
 
@@ -11,7 +13,7 @@ EventLoop::WaitTask::WaitTask(event_base *event_loop, int msec,
     event_assign(
         &event_, event_loop, -1, EV_TIMEOUT,
         [](evutil_socket_t, short, void *data) {
-          auto task = reinterpret_cast<WaitTask *>(data);
+          auto *task = reinterpret_cast<WaitTask *>(data);
           if (task->handle_) {
             std::exchange(task->handle_, nullptr).resume();
           }

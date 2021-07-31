@@ -3,7 +3,7 @@
 
 #include <unordered_set>
 
-#include "stop_token.h"
+#include "coro/stdx/stop_token.h"
 
 namespace coro::stdx {
 

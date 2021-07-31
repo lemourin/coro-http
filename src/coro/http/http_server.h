@@ -1,14 +1,6 @@
 #ifndef CORO_HTTP_HTTP_SERVER_H
 #define CORO_HTTP_HTTP_SERVER_H
 
-#include <coro/http/http.h>
-#include <coro/http/http_parse.h>
-#include <coro/promise.h>
-#include <coro/stdx/stop_callback.h>
-#include <coro/stdx/stop_source.h>
-#include <coro/task.h>
-#include <coro/util/function_traits.h>
-#include <coro/util/raii_utils.h>
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
@@ -21,7 +13,14 @@
 #include <sstream>
 #include <vector>
 
-#include "http.h"
+#include "coro/http/http.h"
+#include "coro/http/http_parse.h"
+#include "coro/promise.h"
+#include "coro/stdx/stop_callback.h"
+#include "coro/stdx/stop_source.h"
+#include "coro/task.h"
+#include "coro/util/function_traits.h"
+#include "coro/util/raii_utils.h"
 
 namespace coro::http {
 

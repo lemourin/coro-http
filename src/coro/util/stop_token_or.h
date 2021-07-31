@@ -1,8 +1,8 @@
 #ifndef CORO_UTIl_STOP_TOKEN_OR_H
 #define CORO_UTIl_STOP_TOKEN_OR_H
 
-#include <coro/stdx/stop_callback.h>
-#include <coro/stdx/stop_token.h>
+#include "coro/stdx/stop_callback.h"
+#include "coro/stdx/stop_token.h"
 
 namespace coro::util {
 

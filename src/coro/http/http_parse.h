@@ -26,7 +26,7 @@ struct Uri {
   std::optional<std::string> query;
 };
 
-Uri ParseUri(std::string_view uri);
+Uri ParseUri(std::string_view url_view);
 std::unordered_map<std::string, std::string> ParseQuery(std::string_view query);
 std::string DecodeUri(std::string_view uri);
 std::string EncodeUri(std::string_view uri);
@@ -50,7 +50,7 @@ std::string FormDataToString(const List& params) {
   return result;
 }
 
-Range ParseRange(std::string);
+Range ParseRange(std::string_view);
 std::string ToLowerCase(std::string);
 std::string TrimWhitespace(std::string_view);
 std::string GetExtension(std::string_view filename);

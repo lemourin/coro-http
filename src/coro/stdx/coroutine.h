@@ -36,6 +36,7 @@ using coro::std_ns::suspend_never;
 }  // namespace coro::stdx
 
 #define FOR_CO_AWAIT(decl_expr, container_expr)                              \
+  /*NOLINTNEXTLINE*/                                                         \
   if (auto &&coro_container = container_expr; false) {                       \
   } else if (auto coro_begin = co_await std::begin(coro_container); false) { \
   } else if (auto coro_end = std::end(coro_container); false) {              \

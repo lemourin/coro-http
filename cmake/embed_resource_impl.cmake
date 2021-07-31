@@ -19,12 +19,13 @@ function(embed_resource_impl)
 
         to_camel_case(ENTRY ${ENTRY})
         string(APPEND IMPL_CONTENT
+                "// NOLINTNEXTLINE\n"
                 "static const unsigned char ${ENTRY}Data[] = { ${CONTENT} };\n"
                 "const std::string_view ${ENTRY}(reinterpret_cast<const char*>(${ENTRY}Data), sizeof(${ENTRY}Data));\n"
         )
     endforeach()
     string(APPEND IMPL_CONTENT
-            "} // namespace ${EMBED_NAMESPACE}\n"
+            "}  // namespace ${EMBED_NAMESPACE}\n"
     )
     file(WRITE "${EMBED_OUTPUT}.cc" "${IMPL_CONTENT}")
 endfunction()

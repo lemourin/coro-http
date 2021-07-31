@@ -1,13 +1,16 @@
-#include "http_parse.h"
+#include "coro/http/http_parse.h"
 
-#include <coro/http/http.h>
-#include <coro/util/raii_utils.h>
 #include <event2/http.h>
 #include <event2/keyvalq_struct.h>
 
 #include <cmath>
+#include <memory>
 #include <regex>
 #include <sstream>
+#include <utility>
+
+#include "coro/http/http.h"
+#include "coro/util/raii_utils.h"
 
 namespace coro::http {
 
@@ -17,7 +20,7 @@ struct EvHttpUriDeleter {
   void operator()(evhttp_uri* uri) const { evhttp_uri_free(uri); }
 };
 
-const std::unordered_map<std::string, std::string> kMimeType = {
+const std::unordered_map<std::string, std::string> kMimeType = {  // NOLINT
     {"aac", "audio/aac"},           {"avi", "video/x-msvideo"},
     {"gif", "image/gif"},           {"jpeg", "image/jpeg"},
     {"jpg", "image/jpeg"},          {"mpeg", "video/mpeg"},
@@ -71,7 +74,7 @@ std::unordered_map<std::string, std::string> ParseQuery(
     throw HttpException(-1, "evhttp_parse_query_str failed");
   }
   std::unordered_map<std::string, std::string> result;
-  auto it = keyvalq.tqh_first;
+  auto* it = keyvalq.tqh_first;
   while (it != nullptr) {
     result.emplace(it->key, it->value);
     it = it->next.tqe_next;
@@ -85,9 +88,10 @@ std::string DecodeUri(std::string_view uri) {
   if (!decoded) {
     throw HttpException(-1, "evhttp_decode_uri failed");
   }
-  std::string ret_str = decoded;
-  free(decoded);
-  return ret_str;
+  auto scope_guard = util::AtScopeExit([&] {
+    free(decoded);  // NOLINT
+  });
+  return decoded;
 }
 
 std::string EncodeUri(std::string_view uri) {
@@ -95,9 +99,10 @@ std::string EncodeUri(std::string_view uri) {
   if (!encoded) {
     throw HttpException(-1, "evhttp_encode_uri failed");
   }
-  std::string ret_str = encoded;
-  free(encoded);
-  return ret_str;
+  auto scope_guard = util::AtScopeExit([&] {
+    free(encoded);  // NOLINT
+  });
+  return encoded;
 }
 
 std::string EncodeUriPath(std::string_view uri) {
@@ -132,10 +137,10 @@ std::string FormDataToString(
   return result;
 }
 
-Range ParseRange(std::string str) {
+Range ParseRange(std::string_view str) {
   std::regex regex(R"(bytes=(\d+)-(\d*))");
-  std::smatch match;
-  if (std::regex_match(str, match, regex)) {
+  std::match_results<std::string_view::const_iterator> match;
+  if (std::regex_match(str.begin(), str.end(), match, regex)) {
     return Range{.start = std::stoll(match[1].str()),
                  .end = match[2].str().empty()
                             ? std::nullopt
@@ -147,7 +152,7 @@ Range ParseRange(std::string str) {
 
 std::string ToLowerCase(std::string result) {
   for (char& c : result) {
-    c = std::tolower(c);
+    c = static_cast<char>(std::tolower(c));
   }
   return result;
 }
@@ -165,7 +170,7 @@ std::string TrimWhitespace(std::string_view str) {
 }
 
 std::string GetExtension(std::string_view filename) {
-  auto index = filename.find_last_of(".");
+  auto index = filename.find_last_of('.');
   if (index == std::string_view::npos) {
     return "";
   } else {
@@ -175,10 +180,11 @@ std::string GetExtension(std::string_view filename) {
 
 std::string GetMimeType(std::string_view extension) {
   auto it = kMimeType.find(ToLowerCase(std::string(extension)));
-  if (it == std::end(kMimeType))
+  if (it == std::end(kMimeType)) {
     return "application/octet-stream";
-  else
+  } else {
     return it->second;
+  }
 }
 
 std::string MimeTypeToExtension(std::string_view mime_type) {
@@ -194,7 +200,8 @@ std::string ToBase64(std::string_view in) {
   const char* base64_chars =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   std::string out;
-  int val = 0, valb = -6;
+  int val = 0;
+  int valb = -6;
   for (uint8_t c : in) {
     val = (val << 8) + c;
     valb += 8;
@@ -203,13 +210,17 @@ std::string ToBase64(std::string_view in) {
       valb -= 6;
     }
   }
-  if (valb > -6) out.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
-  while (out.size() % 4) out.push_back('=');
+  if (valb > -6) {
+    out.push_back(base64_chars[((val << 8) >> (valb + 8)) & 0x3F]);
+  }
+  while (out.size() % 4) {
+    out.push_back('=');
+  }
   return out;
 }
 
 std::string FromBase64(std::string_view in) {
-  const uint8_t lookup[] = {
+  const std::array<uint8_t, 80> lookup = {
       62,  255, 62,  255, 63,  52,  53, 54, 55, 56, 57, 58, 59, 60, 61, 255,
       255, 0,   255, 255, 255, 255, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
       10,  11,  12,  13,  14,  15,  16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -217,15 +228,20 @@ std::string FromBase64(std::string_view in) {
       36,  37,  38,  39,  40,  41,  42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
 
   std::string out;
-  int val = 0, valb = -8;
+  int val = 0;
+  int valb = -8;
   for (uint8_t c : in) {
-    if (c < '+' || c > 'z') break;
+    if (c < '+' || c > 'z') {
+      break;
+    }
     c -= '+';
-    if (lookup[c] >= 64) break;
+    if (lookup[c] >= 64) {
+      break;
+    }
     val = (val << 6) + lookup[c];
     valb += 6;
     if (valb >= 0) {
-      out.push_back(char((val >> valb) & 0xFF));
+      out.push_back(static_cast<char>((val >> valb) & 0xFF));
       valb -= 8;
     }
   }
@@ -238,17 +254,18 @@ std::tm gmtime(time_t time) {
   };
   auto year_size = [&](int year) { return leap_year(year) ? 366 : 365; };
 
-  const int ytab[2][12] = {{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
-                           {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}};
+  const std::array<const std::array<int, 12>, 2> ytab{
+      {{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+       {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}}};
   auto year = 1970;
   auto dayclock = time % (24 * 60 * 60);
   auto dayno = time / (24 * 60 * 60);
   std::tm tmbuf = {};
 
-  tmbuf.tm_sec = dayclock % 60;
-  tmbuf.tm_min = (dayclock % 3600) / 60;
+  tmbuf.tm_sec = static_cast<int>(dayclock % 60);
+  tmbuf.tm_min = static_cast<int>((dayclock % 3600) / 60);
   tmbuf.tm_hour = static_cast<int>(dayclock / 3600);
-  tmbuf.tm_wday = (dayno + 4) % 7;
+  tmbuf.tm_wday = static_cast<int>((dayno + 4) % 7);
   while (dayno >= year_size(year)) {
     dayno -= year_size(year);
     year++;
@@ -265,7 +282,8 @@ std::tm gmtime(time_t time) {
 
 time_t timegm(const std::tm& t) {
   const int month_count = 12;
-  const int days[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  const std::array<int, 12> days = {0,   31,  59,  90,  120, 151,
+                                    181, 212, 243, 273, 304, 334};
   int year = 1900 + t.tm_year + t.tm_mon / month_count;
   time_t result = (year - 1970) * 365 + days[t.tm_mon % month_count];
 
@@ -273,8 +291,9 @@ time_t timegm(const std::tm& t) {
   result -= (year - 1900) / 100;
   result += (year - 1600) / 400;
   if ((year % 4) == 0 && ((year % 100) != 0 || (year % 400) == 0) &&
-      (t.tm_mon % month_count) < 2)
+      (t.tm_mon % month_count) < 2) {
     result--;
+  }
   result += t.tm_mday - 1;
   result *= 24;
   result += t.tm_hour;
@@ -282,13 +301,15 @@ time_t timegm(const std::tm& t) {
   result += t.tm_min;
   result *= 60;
   result += t.tm_sec;
-  if (t.tm_isdst == 1) result -= 3600;
+  if (t.tm_isdst == 1) {
+    result -= 3600;
+  }
   return result;
 }
 
 int64_t ParseTime(std::string_view str) {
   const uint32_t SIZE = 6;
-  char buffer[SIZE + 1] = {};
+  std::array<char, SIZE + 1> buffer = {};
   float sec;
   std::tm time = {};
 #ifdef _MSC_VER
@@ -296,20 +317,23 @@ int64_t ParseTime(std::string_view str) {
                      &time.tm_year, &time.tm_mon, &time.tm_mday, &time.tm_hour,
                      &time.tm_min, &sec, buffer, SIZE + 1);
 #else
+  // NOLINTNEXTLINE
   int cnt = sscanf(std::string(str).c_str(), "%d-%d-%dT%d:%d:%f%6s",
                    &time.tm_year, &time.tm_mon, &time.tm_mday, &time.tm_hour,
-                   &time.tm_min, &sec, buffer);
+                   &time.tm_min, &sec, buffer.data());
 #endif
   if (cnt == 7) {
     time.tm_year -= 1900;
     time.tm_mon--;
-    time.tm_sec = std::lround(sec);
-    if (buffer != std::string("Z")) {
-      int offset_hour, offset_minute;
+    time.tm_sec = static_cast<int>(std::lround(sec));
+    if (std::string_view(buffer.begin()) != "Z") {
+      int offset_hour;
+      int offset_minute;
 #ifdef _MSC_VER
-      int cnt = sscanf_s(buffer, "%d:%d", &offset_hour, &offset_minute);
+      cnt = sscanf_s(buffer, "%d:%d", &offset_hour, &offset_minute);
 #else
-      int cnt = sscanf(buffer, "%d:%d", &offset_hour, &offset_minute);
+      // NOLINTNEXTLINE
+      cnt = sscanf(buffer.data(), "%d:%d", &offset_hour, &offset_minute);
 #endif
       if (cnt == 2) {
         time.tm_hour -= offset_hour;

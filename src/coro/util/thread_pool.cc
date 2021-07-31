@@ -1,19 +1,19 @@
-#include "thread_pool.h"
+#include "coro/util/thread_pool.h"
 
 #ifdef WIN32
 #include <windows.h>
 #endif
 
-#ifdef __linux__
+#if defined(__linux__)
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
 #include <pthread.h>
-#endif
-
-#ifdef __APPLE__
+#elif defined(__APPLE__)
 #include <pthread.h>
 #endif
+
+#include <string>
 
 namespace coro::util {
 
@@ -40,7 +40,7 @@ void SetThreadNameImpl(const std::string& name) {
 #pragma warning(disable : 6320 6322)
     __try {
       RaiseException(MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(ULONG_PTR),
-                     (ULONG_PTR*)&info);
+                     reinterpret_cast<ULONG_PTR*>(&info));
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
 #pragma warning(pop)

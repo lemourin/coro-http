@@ -1,8 +1,12 @@
-#include "http_server.h"
+#include "coro/http/http_server.h"
 
 #ifndef WIN32
 #include <arpa/inet.h>
 #endif
+
+#include <algorithm>
+#include <string>
+#include <utility>
 
 namespace coro::http::internal {
 
@@ -11,17 +15,17 @@ namespace {
 struct FreeDeleter {
   void operator()(char* d) const {
     if (d) {
-      free(d);
+      free(d);  // NOLINT
     }
   }
 };
 
-void WriteCallback(struct bufferevent* bev, void* user_data) {
+void WriteCallback(struct bufferevent*, void* user_data) {
   auto* context = reinterpret_cast<RequestContextBase*>(user_data);
   context->semaphore.SetValue();
 }
 
-void EventCallback(struct bufferevent* bev, short events, void* user_data) {
+void EventCallback(struct bufferevent*, short events, void* user_data) {
   auto* context = reinterpret_cast<RequestContextBase*>(user_data);
   if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
     context->stop_source.request_stop();
@@ -173,7 +177,7 @@ std::unique_ptr<evconnlistener, EvconnListenerDeleter> CreateListener(
   inet_pton(AF_INET, config.address.c_str(), &d.sin.sin_addr);
   d.sin.sin_family = AF_INET;
   d.sin.sin_port = htons(config.port);
-  auto listener = evconnlistener_new_bind(
+  auto* listener = evconnlistener_new_bind(
       event_loop, cb, userdata, LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE,
       /*backlog=*/-1, &d.sockaddr, sizeof(sockaddr_in));
   if (listener == nullptr) {
@@ -219,7 +223,7 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
             throw HttpException(HttpException::kUnknown,
                                 "evbuffer_remove failed");
           }
-          *context->current_chunk_length -= buffer.size();
+          *context->current_chunk_length -= static_cast<int64_t>(buffer.size());
           co_yield std::move(buffer);
         }
         while (true) {
@@ -260,7 +264,7 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
                           buffer.size()) != buffer.size()) {
         throw HttpException(HttpException::kUnknown, "evbuffer_remove failed");
       }
-      context->read_count += buffer.size();
+      context->read_count += static_cast<int64_t>(buffer.size());
       co_yield std::move(buffer);
     }
   }

@@ -1,15 +1,15 @@
 #ifndef CORO_HTTP_SRC_CORO_HTTP_CURL_HTTP_H_
 #define CORO_HTTP_SRC_CORO_HTTP_CURL_HTTP_H_
 
-#include <coro/promise.h>
-#include <coro/stdx/stop_callback.h>
 #include <curl/curl.h>
 #include <event2/event.h>
 #include <event2/event_struct.h>
 
 #include <variant>
 
-#include "http.h"
+#include "coro/http/http.h"
+#include "coro/promise.h"
+#include "coro/stdx/stop_callback.h"
 
 namespace coro::http {
 
@@ -42,7 +42,7 @@ class CurlHandle {
   static size_t ReadCallback(char* buffer, size_t size, size_t nitems,
                              void* userdata);
   static void OnNextRequestBodyChunkRequested(evutil_socket_t, short,
-                                              void* handle);
+                                              void* userdata);
 
   struct Data;
 

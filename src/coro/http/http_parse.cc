@@ -3,6 +3,7 @@
 #include <event2/http.h>
 #include <event2/keyvalq_struct.h>
 
+#include <array>
 #include <cmath>
 #include <memory>
 #include <regex>

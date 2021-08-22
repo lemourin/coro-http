@@ -314,9 +314,10 @@ int64_t ParseTime(std::string_view str) {
   float sec;
   std::tm time = {};
 #ifdef _MSC_VER
-  int cnt = sscanf_s(std::string(str).c_str(), "%d-%d-%dT%d:%d:%f%6s",
-                     &time.tm_year, &time.tm_mon, &time.tm_mday, &time.tm_hour,
-                     &time.tm_min, &sec, buffer, SIZE + 1);
+  int cnt =
+      sscanf_s(std::string(str).c_str(), "%d-%d-%dT%d:%d:%f%6s", &time.tm_year,
+               &time.tm_mon, &time.tm_mday, &time.tm_hour, &time.tm_min, &sec,
+               buffer.data(), static_cast<unsigned int>(buffer.size()));
 #else
   // NOLINTNEXTLINE
   int cnt = sscanf(std::string(str).c_str(), "%d-%d-%dT%d:%d:%f%6s",
@@ -327,11 +328,11 @@ int64_t ParseTime(std::string_view str) {
     time.tm_year -= 1900;
     time.tm_mon--;
     time.tm_sec = static_cast<int>(std::lround(sec));
-    if (std::string_view(buffer.begin()) != "Z") {
+    if (std::string_view(buffer.data()) != "Z") {
       int offset_hour;
       int offset_minute;
 #ifdef _MSC_VER
-      cnt = sscanf_s(buffer, "%d:%d", &offset_hour, &offset_minute);
+      cnt = sscanf_s(buffer.data(), "%d:%d", &offset_hour, &offset_minute);
 #else
       // NOLINTNEXTLINE
       cnt = sscanf(buffer.data(), "%d:%d", &offset_hour, &offset_minute);

@@ -42,7 +42,9 @@ check_cxx_source_compiles(
 )
 
 if(COROUTINE_SUPPORTED)
-    target_compile_options(stdx PUBLIC ${COROUTINE_FLAGS})
+    if(NOT MSVC)
+        target_compile_options(stdx PUBLIC ${COROUTINE_FLAGS})
+    endif()
     target_compile_definitions(stdx PUBLIC COROUTINE_SUPPORTED)
 else()
     set(CMAKE_REQUIRED_FLAGS "${EXPERIMENTAL_COROUTINE_FLAGS}")

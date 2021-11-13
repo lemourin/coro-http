@@ -1,4 +1,4 @@
-if(BUILD_SHARED_LIBS)
+if(NOT USE_BUNDLED_DEPENDENCIES)
     find_package(CURL 7.77.0 REQUIRED)
     set_target_properties(CURL::libcurl PROPERTIES IMPORTED_GLOBAL TRUE)
     add_library(libcurl ALIAS CURL::libcurl)

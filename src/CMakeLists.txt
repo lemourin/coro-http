@@ -41,7 +41,7 @@ target_sources(coro-http PRIVATE
 
 find_package(Threads REQUIRED)
 
-target_link_libraries(coro-http PUBLIC event_core event_extra Threads::Threads libcurl)
+target_link_libraries(coro-http PUBLIC libevent::core libevent::extra Threads::Threads CURL::libcurl)
 target_include_directories(coro-http PUBLIC .)
 target_include_directories(coro-http PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(coro-http PUBLIC cxx_std_20)

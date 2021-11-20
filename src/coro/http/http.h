@@ -341,9 +341,22 @@ class ToHttpClient : public Impl {
              stdx::stop_token stop_token = stdx::stop_token()) const {
     return Impl::Fetch(std::move(request), std::move(stop_token));
   }
+
   auto Fetch(std::string url,
              stdx::stop_token stop_token = stdx::stop_token()) const {
     return Fetch(Request<>{.url = std::move(url)}, std::move(stop_token));
+  }
+
+  template <typename RequestT>
+  Task<ResponseType> FetchOk(RequestT request, stdx::stop_token stop_token =
+                                                   stdx::stop_token()) const {
+    http::ResponseLike auto response =
+        co_await Fetch(std::move(request), std::move(stop_token));
+    if (response.status / 100 != 2) {
+      auto message = co_await GetBody(std::move(response.body));
+      throw coro::http::HttpException(response.status, std::move(message));
+    }
+    co_return response;
   }
 
  private:

@@ -111,7 +111,7 @@ struct CurlHandle::Data {
                       .len = kAssetsCacertPem.size()};
     Check(curl_easy_setopt(handle.get(), CURLOPT_CAINFO_BLOB, &ca_cert));
 #endif
-    std::optional<long> content_length;
+    std::optional<curl_off_t> content_length;
     for (const auto& [header_name, header_value] : request.headers) {
       std::string header_line = header_name;
       header_line += ": ";
@@ -122,7 +122,7 @@ struct CurlHandle::Data {
         throw HttpException(CURLE_OUT_OF_MEMORY, "curl_slist_append failed");
       }
       if (ToLowerCase(header_name) == "content-length") {
-        content_length = std::stol(header_value);
+        content_length = std::stoll(header_value);
       }
     }
     Check(
@@ -132,13 +132,13 @@ struct CurlHandle::Data {
       if (request.method == Method::kPost) {
         Check(curl_easy_setopt(handle.get(), CURLOPT_POST, 1L));
         if (content_length) {
-          Check(curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE,
+          Check(curl_easy_setopt(handle.get(), CURLOPT_POSTFIELDSIZE_LARGE,
                                  *content_length));
         }
       } else {
         curl_easy_setopt(handle.get(), CURLOPT_UPLOAD, 1L);
         if (content_length) {
-          Check(curl_easy_setopt(handle.get(), CURLOPT_INFILESIZE,
+          Check(curl_easy_setopt(handle.get(), CURLOPT_INFILESIZE_LARGE,
                                  *content_length));
         }
       }

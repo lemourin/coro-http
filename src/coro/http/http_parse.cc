@@ -6,16 +6,18 @@
 #include <array>
 #include <cmath>
 #include <memory>
-#include <regex>
 #include <sstream>
 #include <utility>
 
 #include "coro/http/http.h"
 #include "coro/util/raii_utils.h"
+#include "coro/util/regex.h"
 
 namespace coro::http {
 
 namespace {
+
+namespace re = util::re;
 
 struct EvHttpUriDeleter {
   void operator()(evhttp_uri* uri) const { evhttp_uri_free(uri); }
@@ -139,9 +141,9 @@ std::string FormDataToString(
 }
 
 Range ParseRange(std::string_view str) {
-  std::regex regex(R"(bytes=(\d+)-(\d*))");
-  std::match_results<std::string_view::const_iterator> match;
-  if (std::regex_match(str.begin(), str.end(), match, regex)) {
+  re::regex regex(R"(bytes=(\d+)-(\d*))");
+  re::match_results<std::string_view::const_iterator> match;
+  if (re::regex_match(str.begin(), str.end(), match, regex)) {
     return Range{.start = std::stoll(match[1].str()),
                  .end = match[2].str().empty()
                             ? std::nullopt

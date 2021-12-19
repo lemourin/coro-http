@@ -22,6 +22,7 @@ target_sources(coro-http PRIVATE
     coro/util/stop_token_or.h
     coro/util/thread_pool.h
     coro/util/thread_pool.cc
+    coro/util/regex.h
     coro/stdx/stop_callback.h
     coro/stdx/stop_source.h
     coro/stdx/stop_token.h
@@ -41,7 +42,7 @@ target_sources(coro-http PRIVATE
 
 find_package(Threads REQUIRED)
 
-target_link_libraries(coro-http PUBLIC libevent::core libevent::extra Threads::Threads CURL::libcurl)
+target_link_libraries(coro-http PUBLIC libevent::core libevent::extra Threads::Threads CURL::libcurl Boost::regex)
 target_include_directories(coro-http PUBLIC .)
 target_include_directories(coro-http PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(coro-http PUBLIC cxx_std_20)

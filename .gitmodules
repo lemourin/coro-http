@@ -13,3 +13,6 @@
 [submodule "contrib/libressl"]
 	path = contrib/libressl
 	url = https://github.com/lemourin/libressl
+[submodule "contrib/boost/regex"]
+	path = contrib/boost/regex
+	url = https://github.com/boostorg/regex

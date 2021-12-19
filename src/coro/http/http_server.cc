@@ -8,9 +8,13 @@
 #include <string>
 #include <utility>
 
+#include "coro/util/regex.h"
+
 namespace coro::http::internal {
 
 namespace {
+
+namespace re = util::re;
 
 struct FreeDeleter {
   void operator()(char* d) const {
@@ -41,10 +45,10 @@ void ReadCallback(struct bufferevent* bev, void* user_data) {
       std::unique_ptr<char, FreeDeleter> line(
           evbuffer_readln(input, &length, EVBUFFER_EOL_CRLF_STRICT));
       if (line) {
-        std::regex regex(R"(([A-Z]+) (\S+) HTTP\/1\.[01])");
+        re::regex regex(R"(([A-Z]+) (\S+) HTTP\/1\.[01])");
         std::string_view view(line.get(), length);
-        std::match_results<std::string_view::const_iterator> match;
-        if (std::regex_match(view.begin(), view.end(), match, regex)) {
+        re::match_results<std::string_view::const_iterator> match;
+        if (re::regex_match(view.begin(), view.end(), match, regex)) {
           try {
             context->method = ToMethod(match[1].str());
           } catch (const HttpException&) {
@@ -83,10 +87,10 @@ void ReadCallback(struct bufferevent* bev, void* user_data) {
           }
           context->stage = RequestContextBase::Stage::kBody;
         } else {
-          std::regex regex(R"((\S+):\s*(.+)$)");
+          re::regex regex(R"((\S+):\s*(.+)$)");
           std::string_view view(line.get(), length);
-          std::match_results<std::string_view::const_iterator> match;
-          if (std::regex_match(view.begin(), view.end(), match, regex)) {
+          re::match_results<std::string_view::const_iterator> match;
+          if (re::regex_match(view.begin(), view.end(), match, regex)) {
             context->headers.emplace_back(match[1], match[2]);
             if (context->headers.size() > kMaxHeaderCount) {
               context->semaphore.SetException(HttpException(

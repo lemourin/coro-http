@@ -8,7 +8,6 @@
 #include <event2/listener.h>
 
 #include <memory>
-#include <regex>
 #include <span>
 #include <sstream>
 #include <vector>

@@ -47,7 +47,7 @@ target_include_directories(coro-http PUBLIC .)
 target_include_directories(coro-http PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(coro-http PUBLIC cxx_std_20)
 
-if(USE_OPENSSL)
+if(USE_OPENSSL OR ANDROID)
     embed_resource(
         TARGET coro-http
         NAMESPACE coro::http

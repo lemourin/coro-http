@@ -3,6 +3,7 @@
 
 #include <ctime>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -62,6 +63,11 @@ int64_t ParseTime(std::string_view);
 std::string_view ToStatusString(int http_code);
 Method ToMethod(std::string_view method);
 std::pair<std::string, std::string> ToRangeHeader(const Range&);
+std::optional<std::string> GetCookie(std::string_view cookie_str,
+                                     std::string_view name);
+std::optional<std::string> GetCookie(
+    std::span<const std::pair<std::string, std::string>> headers,
+    std::string_view name);
 
 template <typename Collection>
 std::optional<std::string> GetHeader(const Collection& collection,

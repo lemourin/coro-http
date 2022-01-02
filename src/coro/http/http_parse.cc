@@ -507,4 +507,25 @@ std::pair<std::string, std::string> ToRangeHeader(const Range& range) {
   return {"Range", std::move(range_header).str()};
 }
 
+std::optional<std::string> GetCookie(std::string_view cookie_str,
+                                     std::string_view name) {
+  re::regex regex(std::string(name) + R"(=([^;]*);?)");
+  re::match_results<std::string_view::const_iterator> match;
+  if (re::regex_search(cookie_str.begin(), cookie_str.end(), match, regex)) {
+    return DecodeUri(match[1].str());
+  } else {
+    return std::nullopt;
+  }
+}
+
+std::optional<std::string> GetCookie(
+    std::span<const std::pair<std::string, std::string>> headers,
+    std::string_view name) {
+  if (auto cookie = GetHeader(headers, "Cookie")) {
+    return GetCookie(*cookie, name);
+  } else {
+    return std::nullopt;
+  }
+}
+
 }  // namespace coro::http

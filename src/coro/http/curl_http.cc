@@ -58,7 +58,7 @@ event MoveEvent(event* source, void* userdata) {
   Check(event_assign(&target, source->ev_base, -1, 0,
                      source->ev_evcallback.evcb_cb_union.evcb_callback,
                      userdata));
-  if (evuser_pending(source, nullptr)) {
+  if (source->ev_evcallback.evcb_flags & EVLIST_ACTIVE) {
     evuser_trigger(&target);
   }
   Check(event_del(source));

@@ -52,17 +52,19 @@ void ReadCallback(struct bufferevent* bev, void* user_data) {
           try {
             context->method = ToMethod(match[1].str());
           } catch (const HttpException&) {
+            context->stage = RequestContextBase::Stage::kInvalid;
             context->semaphore.SetException(HttpException(501));
             return;
           }
           context->url = match[2];
           context->stage = RequestContextBase::Stage::kHeaders;
         } else {
-          context->semaphore.SetException(
+          context->stage = RequestContextBase::Stage::kInvalid;
+          return context->semaphore.SetException(
               HttpException(HttpException::kBadRequest, "malformed url"));
-          return;
         }
-      } else if (evbuffer_get_length(input) >= kMaxLineLength) {
+      } else {
+        context->stage = RequestContextBase::Stage::kInvalid;
         return context->semaphore.SetException(HttpException(414));
       }
     }
@@ -93,17 +95,18 @@ void ReadCallback(struct bufferevent* bev, void* user_data) {
           if (re::regex_match(view.begin(), view.end(), match, regex)) {
             context->headers.emplace_back(match[1], match[2]);
             if (context->headers.size() > kMaxHeaderCount) {
-              context->semaphore.SetException(HttpException(
+              context->stage = RequestContextBase::Stage::kInvalid;
+              return context->semaphore.SetException(HttpException(
                   HttpException::kBadRequest, "too many headers"));
-              return;
             }
           } else {
-            context->semaphore.SetException(
+            context->stage = RequestContextBase::Stage::kInvalid;
+            return context->semaphore.SetException(
                 HttpException(HttpException::kBadRequest, "malformed header"));
-            return;
           }
         }
-      } else if (evbuffer_get_length(input) >= kMaxLineLength) {
+      } else {
+        context->stage = RequestContextBase::Stage::kInvalid;
         return context->semaphore.SetException(HttpException(431));
       }
     }
@@ -272,10 +275,6 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
       co_yield std::move(buffer);
     }
   }
-}
-
-Generator<std::string> GetBodyGenerator(std::string chunk) {
-  co_yield std::move(chunk);
 }
 
 std::unique_ptr<bufferevent, BufferEventDeleter> CreateBufferEvent(

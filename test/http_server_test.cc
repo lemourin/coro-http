@@ -25,10 +25,11 @@ struct ResponseContent {
 
 template <typename ResponseT>
 Task<ResponseContent> ToResponseContent(ResponseT r) {
+  std::string body = co_await GetBody(std::move(r.body));
   co_return ResponseContent{
       .status = r.status,
       .headers = std::move(r.headers),
-      .body = co_await GetBody(std::move(r.body)),
+      .body = std::move(body),
   };
 }
 
@@ -39,12 +40,13 @@ class HttpHandler {
       : request_(request), response_(response) {}
 
   Task<Response> operator()(Request request, stdx::stop_token) const {
-    *request_ = coro::http::Request<std::string>{
-        .url = std::move(request.url),
-        .method = request.method,
-        .headers = std::move(request.headers),
-        .body = request.body ? co_await GetBody(std::move(*request.body))
-                             : std::optional<std::string>()};
+    auto body = request.body ? co_await GetBody(std::move(*request.body))
+                             : std::optional<std::string>();
+    *request_ =
+        coro::http::Request<std::string>{.url = std::move(request.url),
+                                         .method = request.method,
+                                         .headers = std::move(request.headers),
+                                         .body = std::move(body)};
     co_return std::move(*response_);
   }
 
@@ -167,12 +169,16 @@ TEST_F(HttpServerTest, ServesManyClients) {
       if (index_ == kClientCount) {
         semaphore_->SetValue();
       }
-      co_return Response{.status = 200, .body = CreateBody(request.url)};
+      std::string message = "message" + request.url;
+      co_return Response{
+          .status = 200,
+          .headers = {{"Content-Length", std::to_string(message.size())}},
+          .body = CreateBody(std::move(message))};
     }
 
-    Generator<std::string> CreateBody(std::string url) {
+    Generator<std::string> CreateBody(std::string message) {
       co_await promise_.Get(stdx::stop_token());
-      co_yield "message" + url;
+      co_yield message;
     }
 
    private:

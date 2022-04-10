@@ -57,35 +57,18 @@ class HttpServerTest : public ::testing::Test {
  protected:
   template <typename HttpHandlerT, typename F>
   void Run(HttpHandlerT handler, F func) {
-    RunTask([&]() -> Task<> {
-      try {
-        co_await std::move(func)();
-        semaphore_.SetValue();
-      } catch (...) {
-        semaphore_.SetException(std::current_exception());
-      }
-    });
-    WaitForSemaphore(std::move(handler));
-  }
-
-  template <typename F>
-  void Run(F func) {
-    Run(HttpHandler{&last_request_, &response_}, std::move(func));
-  }
-
-  auto& http() { return http_; }
-  const auto& last_request() const { return last_request_; }
-
- private:
-  template <typename HttpHandlerT>
-  void WaitForSemaphore(HttpHandlerT handler) {
     std::exception_ptr exception;
     RunTask([&]() -> Task<> {
       try {
         HttpServer<HttpHandlerT> http_server{
-            base_.get(), HttpServerConfig{.address = "127.0.0.1", .port = 4444},
+            base_.get(), HttpServerConfig{.address = "127.0.0.1", .port = 0},
             std::move(handler)};
-        co_await semaphore_;
+        address_ = "http://127.0.0.1:" + std::to_string(http_server.GetPort());
+        try {
+          co_await std::move(func)();
+        } catch (...) {
+          exception = std::current_exception();
+        }
         co_await http_server.Quit();
       } catch (...) {
         exception = std::current_exception();
@@ -97,6 +80,16 @@ class HttpServerTest : public ::testing::Test {
     }
   }
 
+  template <typename F>
+  void Run(F func) {
+    Run(HttpHandler{&last_request_, &response_}, std::move(func));
+  }
+
+  std::string address() const { return address_.value(); }
+  auto& http() { return http_; }
+  const auto& last_request() const { return last_request_; }
+
+ private:
   std::unique_ptr<event_base, util::EventBaseDeleter> base_{event_base_new()};
   std::optional<coro::http::Request<std::string>> last_request_;
   Response response_{
@@ -104,15 +97,14 @@ class HttpServerTest : public ::testing::Test {
       .headers = {{"Content-Type", "application/octet-stream"}},
       .body = CreateBody("response"),
   };
-  Promise<void> semaphore_;
+  std::optional<std::string> address_;
   CurlHttp http_{base_.get()};
 };
 
 TEST_F(HttpServerTest, SendsExpectedResponse) {
   std::optional<ResponseContent> response;
   Run([&]() -> Task<> {
-    response = co_await ToResponseContent(
-        co_await http().Fetch("http://127.0.0.1:4444"));
+    response = co_await ToResponseContent(co_await http().Fetch(address()));
   });
 
   ASSERT_TRUE(response.has_value());
@@ -126,7 +118,7 @@ TEST_F(HttpServerTest, SendsExpectedResponse) {
 TEST_F(HttpServerTest, ReceivesExpectedRequest) {
   Run([&]() -> Task<> {
     co_await http().Fetch(
-        Request{.url = "http://127.0.0.1:4444/some_path?some_query=value",
+        Request{.url = address() + "/some_path?some_query=value",
                 .method = http::Method::kPost,
                 .body = CreateBody("input")});
   });
@@ -139,7 +131,7 @@ TEST_F(HttpServerTest, ReceivesExpectedRequest) {
 TEST_F(HttpServerTest, RejectsTooLongHeader) {
   EXPECT_THROW(Run([&]() -> Task<> {
                  co_await http().Fetch(Request{
-                     .url = "http://127.0.0.1:4444",
+                     .url = address(),
                      .headers = {{"SomeHeader", std::string(5000, 'x')}}});
                }),
                http::HttpException);
@@ -152,8 +144,8 @@ TEST_F(HttpServerTest, RejectsTooManyHeaders) {
         for (int i = 0; i < 10000; i++) {
           headers[i] = {"SomeHeader", "some_value"};
         }
-        co_await http().Fetch(Request{.url = "http://127.0.0.1:4444",
-                                      .headers = std::move(headers)});
+        co_await http().Fetch(
+            Request{.url = address(), .headers = std::move(headers)});
       }),
       http::HttpException);
 }
@@ -161,8 +153,7 @@ TEST_F(HttpServerTest, RejectsTooManyHeaders) {
 TEST_F(HttpServerTest, RejectsTooLongUrl) {
   EXPECT_THROW(Run([&]() -> Task<> {
                  co_await http().Fetch(
-                     Request{.url = std::string("http://127.0.0.1:4444/") +
-                                    std::string(5000, 'x')});
+                     Request{.url = address() + std::string(5000, 'x')});
                }),
                http::HttpException);
 }
@@ -196,10 +187,9 @@ TEST_F(HttpServerTest, ServesManyClients) {
     int index_ = 0;
   };
   Run(HttpHandler{}, [&]() -> Task<> {
-    auto [r1, r2, r3] =
-        co_await coro::WhenAll(http().Fetch("http://127.0.0.1:4444/1"),
-                               http().Fetch("http://127.0.0.1:4444/2"),
-                               http().Fetch("http://127.0.0.1:4444/3"));
+    auto [r1, r2, r3] = co_await coro::WhenAll(http().Fetch(address() + "/1"),
+                                               http().Fetch(address() + "/2"),
+                                               http().Fetch(address() + "/3"));
     EXPECT_EQ(co_await http::GetBody(std::move(r1.body)), "message/1");
     EXPECT_EQ(co_await http::GetBody(std::move(r2.body)), "message/2");
     EXPECT_EQ(co_await http::GetBody(std::move(r3.body)), "message/3");

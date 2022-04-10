@@ -173,6 +173,14 @@ std::string GetChunk(std::string_view chunk) {
   return std::move(stream).str();
 }
 
+uint16_t GetPort(evconnlistener* listener) {
+  sockaddr_in addr;
+  socklen_t length = sizeof(addr);
+  Check(getsockname(evconnlistener_get_fd(listener),
+                    reinterpret_cast<sockaddr*>(&addr), &length));
+  return ntohs(addr.sin_port);
+}
+
 std::unique_ptr<evconnlistener, EvconnListenerDeleter> CreateListener(
     event_base* event_loop, evconnlistener_cb cb, void* userdata,
     const HttpServerConfig& config) {

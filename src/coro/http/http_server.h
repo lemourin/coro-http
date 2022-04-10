@@ -100,6 +100,8 @@ std::string GetHeader(int response_status,
 
 std::string GetChunk(std::string_view chunk);
 
+uint16_t GetPort(evconnlistener*);
+
 template <Handler HandlerType>
 class HttpServer {
  public:
@@ -119,6 +121,10 @@ class HttpServer {
 
   HttpServer& operator=(const HttpServer&) = delete;
   HttpServer& operator=(HttpServer&&) = delete;
+
+  uint16_t GetPort() const {
+    return ::coro::http::internal::GetPort(listener_.get());
+  }
 
   Task<> Quit() noexcept {
     if (quitting_) {

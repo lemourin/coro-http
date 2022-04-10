@@ -55,26 +55,6 @@ class HttpHandler {
 
 class HttpServerTest : public ::testing::Test {
  protected:
-  template <typename HttpHandlerT>
-  void WaitForSemaphore(HttpHandlerT handler) {
-    std::exception_ptr exception;
-    RunTask([&]() -> Task<> {
-      try {
-        HttpServer<HttpHandlerT> http_server{
-            base_.get(), HttpServerConfig{.address = "127.0.0.1", .port = 4444},
-            std::move(handler)};
-        co_await semaphore_;
-        co_await http_server.Quit();
-      } catch (...) {
-        exception = std::current_exception();
-      }
-    });
-    event_base_dispatch(base_.get());
-    if (exception) {
-      std::rethrow_exception(exception);
-    }
-  }
-
   template <typename HttpHandlerT, typename F>
   void Run(HttpHandlerT handler, F func) {
     RunTask([&]() -> Task<> {
@@ -97,6 +77,26 @@ class HttpServerTest : public ::testing::Test {
   const auto& last_request() const { return last_request_; }
 
  private:
+  template <typename HttpHandlerT>
+  void WaitForSemaphore(HttpHandlerT handler) {
+    std::exception_ptr exception;
+    RunTask([&]() -> Task<> {
+      try {
+        HttpServer<HttpHandlerT> http_server{
+            base_.get(), HttpServerConfig{.address = "127.0.0.1", .port = 4444},
+            std::move(handler)};
+        co_await semaphore_;
+        co_await http_server.Quit();
+      } catch (...) {
+        exception = std::current_exception();
+      }
+    });
+    event_base_dispatch(base_.get());
+    if (exception) {
+      std::rethrow_exception(exception);
+    }
+  }
+
   std::unique_ptr<event_base, util::EventBaseDeleter> base_{event_base_new()};
   std::optional<coro::http::Request<std::string>> last_request_;
   Response response_{

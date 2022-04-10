@@ -176,12 +176,12 @@ TEST_F(HttpServerTest, ServesManyClients) {
       if (index_ == kClientCount) {
         semaphore_->SetValue();
       }
-      co_return Response{.status = 200, .body = CreateBody(index_)};
+      co_return Response{.status = 200, .body = CreateBody(request.url)};
     }
 
-    Generator<std::string> CreateBody(int index) {
+    Generator<std::string> CreateBody(std::string url) {
       co_await promise_.Get(stdx::stop_token());
-      co_yield "message";
+      co_yield "message" + url;
     }
 
    private:
@@ -197,12 +197,12 @@ TEST_F(HttpServerTest, ServesManyClients) {
   };
   Run(HttpHandler{}, [&]() -> Task<> {
     auto [r1, r2, r3] =
-        co_await coro::WhenAll(http().Fetch("http://127.0.0.1:4444"),
-                               http().Fetch("http://127.0.0.1:4444"),
-                               http().Fetch("http://127.0.0.1:4444"));
-    EXPECT_EQ(co_await http::GetBody(std::move(r1.body)), "message");
-    EXPECT_EQ(co_await http::GetBody(std::move(r2.body)), "message");
-    EXPECT_EQ(co_await http::GetBody(std::move(r3.body)), "message");
+        co_await coro::WhenAll(http().Fetch("http://127.0.0.1:4444/1"),
+                               http().Fetch("http://127.0.0.1:4444/2"),
+                               http().Fetch("http://127.0.0.1:4444/3"));
+    EXPECT_EQ(co_await http::GetBody(std::move(r1.body)), "message/1");
+    EXPECT_EQ(co_await http::GetBody(std::move(r2.body)), "message/2");
+    EXPECT_EQ(co_await http::GetBody(std::move(r3.body)), "message/3");
   });
 }
 

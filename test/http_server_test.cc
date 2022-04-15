@@ -170,10 +170,10 @@ TEST_F(HttpServerTest, ServesManyClients) {
         semaphore_->SetValue();
       }
       std::string message = "message" + request.url;
-      co_return Response{
-          .status = 200,
-          .headers = {{"Content-Length", std::to_string(message.size())}},
-          .body = CreateBody(std::move(message))};
+      auto size = message.size();
+      co_return Response{.status = 200,
+                         .headers = {{"Content-Length", std::to_string(size)}},
+                         .body = CreateBody(std::move(message))};
     }
 
     Generator<std::string> CreateBody(std::string message) {
@@ -238,6 +238,68 @@ TEST_F(HttpServerTest, ServesManyClientsWithNoContentLength) {
     EXPECT_EQ(co_await http::GetBody(std::move(r1.body)), "message/1");
     EXPECT_EQ(co_await http::GetBody(std::move(r2.body)), "message/2");
     EXPECT_EQ(co_await http::GetBody(std::move(r3.body)), "message/3");
+  });
+}
+
+TEST_F(HttpServerTest, ReadsResponseBodyConcurrently) {
+  class HttpHandler {
+   public:
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      co_return Response{.status = 200,
+                         .body = CreateBody("message" + request.url)};
+    }
+
+    Generator<std::string> CreateBody(std::string message) { co_yield message; }
+  };
+  Run(HttpHandler{}, [&]() -> Task<> {
+    auto [r1, r2, r3] = co_await coro::WhenAll(http().Fetch(address() + "/1"),
+                                               http().Fetch(address() + "/2"),
+                                               http().Fetch(address() + "/3"));
+    auto [b1, b2, b3] = co_await coro::WhenAll(
+        http::GetBody(std::move(r1.body)), http::GetBody(std::move(r2.body)),
+        http::GetBody(std::move(r3.body)));
+    EXPECT_EQ(b1, "message/1");
+    EXPECT_EQ(b2, "message/2");
+    EXPECT_EQ(b3, "message/3");
+  });
+}
+
+TEST_F(HttpServerTest, CancelsHttpRequest) {
+  class HttpHandler {
+   public:
+    HttpHandler(Promise<void>* semaphore, Promise<void>* request_received)
+        : semaphore_(semaphore), request_received_(request_received) {}
+
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      request_received_->SetValue();
+      co_await *semaphore_;
+      auto message = "message" + request.url;
+      auto size = message.size();
+      co_return Response{.status = 200,
+                         .headers = {{"Content-Length", std::to_string(size)}},
+                         .body = CreateBody(std::move(message))};
+    }
+
+    Generator<std::string> CreateBody(std::string message) { co_yield message; }
+
+   private:
+    Promise<void>* semaphore_;
+    Promise<void>* request_received_;
+  };
+  Promise<void> semaphore;
+  Promise<void> request_received;
+  Run(HttpHandler{&semaphore, &request_received}, [&]() -> Task<> {
+    stdx::stop_source stop_source;
+    auto cancel_task = [&]() -> Task<int> {
+      co_await request_received;
+      stop_source.request_stop();
+      co_return 0;
+    }();
+    EXPECT_THROW(
+        co_await coro::WhenAll(http().Fetch(address(), stop_source.get_token()),
+                               std::move(cancel_task)),
+        InterruptedException);
+    semaphore.SetValue();
   });
 }
 

@@ -53,23 +53,21 @@ void Check(int code) {
   }
 }
 
-event MoveEvent(event* source, void* userdata) {
-  event target;
-  Check(event_assign(&target, source->ev_base, -1, 0,
+void MoveEvent(event* target, event* source, void* userdata) {
+  Check(event_assign(target, source->ev_base, -1, 0,
                      source->ev_evcallback.evcb_cb_union.evcb_callback,
                      userdata));
   if (source->ev_evcallback.evcb_flags & EVLIST_ACTIVE) {
-    evuser_trigger(&target);
+    evuser_trigger(target);
   }
   Check(event_del(source));
-  return target;
 }
 
 void MoveAssignEvent(event* target, event* source, void* userdata) {
   if (target->ev_base) {
     event_del(target);
   }
-  *target = MoveEvent(source, userdata);
+  MoveEvent(target, source, userdata);
 }
 
 }  // namespace
@@ -319,13 +317,14 @@ CurlHandle::~CurlHandle() = default;
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(
     CurlHttpBodyGenerator&& other) noexcept
     : HttpBodyGenerator(std::move(other)),
-      chunk_ready_(MoveEvent(&other.chunk_ready_, this)),
-      body_ready_(MoveEvent(&other.body_ready_, this)),
       body_ready_fired_(other.body_ready_fired_),
       status_(other.status_),
       exception_ptr_(std::move(other.exception_ptr_)),
       data_(std::move(other.data_)),
-      handle_(std::move(other.handle_), this) {}
+      handle_(std::move(other.handle_), this) {
+  MoveEvent(&body_ready_, &other.body_ready_, this);
+  MoveEvent(&chunk_ready_, &other.chunk_ready_, this);
+}
 
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(CurlHandle handle,
                                              std::string_view initial_chunk)
@@ -404,13 +403,14 @@ CurlHttpOperation::CurlHttpOperation(CURLM* http, event_base* event_loop,
 CurlHttpOperation::CurlHttpOperation(CurlHttpOperation&& other) noexcept
     : awaiting_coroutine_(std::exchange(other.awaiting_coroutine_, nullptr)),
       exception_ptr_(std::move(other.exception_ptr_)),
-      headers_ready_(MoveEvent(&other.headers_ready_, this)),
       headers_ready_event_posted_(other.headers_ready_event_posted_),
       status_(other.status_),
       headers_(std::move(other.headers_)),
       body_(std::move(other.body_)),
       no_body_(other.no_body_),
-      handle_(std::move(other.handle_), this) {}
+      handle_(std::move(other.handle_), this) {
+  MoveEvent(&headers_ready_, &other.headers_ready_, this);
+}
 
 CurlHttpOperation::~CurlHttpOperation() {
   if (headers_ready_.ev_base) {
@@ -508,7 +508,8 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
               HttpException(message->data.result,
                             curl_easy_strerror(message->data.result)));
         }
-        if (!evuser_pending(&curl_http_body_generator->chunk_ready_, nullptr)) {
+        if (!(curl_http_body_generator->chunk_ready_.ev_evcallback.evcb_flags &
+              EVLIST_ACTIVE)) {
           curl_http_body_generator->body_ready_fired_ = true;
           evuser_trigger(&curl_http_body_generator->body_ready_);
         }

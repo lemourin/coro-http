@@ -202,5 +202,44 @@ TEST_F(HttpServerTest, ServesManyClients) {
   });
 }
 
+TEST_F(HttpServerTest, ServesManyClientsWithNoContentLength) {
+  const int kClientCount = 3;
+  class HttpHandler {
+   public:
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      index_++;
+      if (index_ == kClientCount) {
+        semaphore_->SetValue();
+      }
+      std::string message = "message" + request.url;
+      co_return Response{.status = 200, .body = CreateBody(std::move(message))};
+    }
+
+    Generator<std::string> CreateBody(std::string message) {
+      co_await promise_.Get(stdx::stop_token());
+      co_yield message;
+    }
+
+   private:
+    struct Wait {
+      Task<> operator()() const { co_await *semaphore_; }
+      Promise<void>* semaphore_;
+    };
+
+    std::unique_ptr<Promise<void>> semaphore_ =
+        std::make_unique<Promise<void>>();
+    SharedPromise<Wait> promise_{Wait{semaphore_.get()}};
+    int index_ = 0;
+  };
+  Run(HttpHandler{}, [&]() -> Task<> {
+    auto [r1, r2, r3] = co_await coro::WhenAll(http().Fetch(address() + "/1"),
+                                               http().Fetch(address() + "/2"),
+                                               http().Fetch(address() + "/3"));
+    EXPECT_EQ(co_await http::GetBody(std::move(r1.body)), "message/1");
+    EXPECT_EQ(co_await http::GetBody(std::move(r2.body)), "message/2");
+    EXPECT_EQ(co_await http::GetBody(std::move(r3.body)), "message/3");
+  });
+}
+
 }  // namespace
 }  // namespace coro::http

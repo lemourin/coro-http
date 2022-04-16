@@ -290,14 +290,15 @@ TEST_F(HttpServerTest, CancelsHttpRequest) {
   Promise<void> request_received;
   Run(HttpHandler{&semaphore, &request_received}, [&]() -> Task<> {
     stdx::stop_source stop_source;
-    auto cancel_task = [&]() -> Task<int> {
+    auto cancel_task = [](Promise<void>& request_received,
+                          stdx::stop_source& stop_source) -> Task<int> {
       co_await request_received;
       stop_source.request_stop();
       co_return 0;
-    }();
+    };
     EXPECT_THROW(
         co_await coro::WhenAll(http().Fetch(address(), stop_source.get_token()),
-                               std::move(cancel_task)),
+                               cancel_task(request_received, stop_source)),
         InterruptedException);
     semaphore.SetValue();
   });

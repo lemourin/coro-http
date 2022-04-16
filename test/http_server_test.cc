@@ -304,5 +304,102 @@ TEST_F(HttpServerTest, CancelsHttpRequest) {
   });
 }
 
+TEST_F(HttpServerTest, CancelsHttpRequestWhenReadingBody) {
+  class HttpHandler {
+   public:
+    HttpHandler(Promise<void>* semaphore, Promise<void>* request_received)
+        : semaphore_(semaphore), request_received_(request_received) {}
+
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      auto message = "message" + request.url;
+      co_return Response{.status = 200,
+                         .headers = {{"SomeHeader", "SomeValue"}},
+                         .body = CreateBody(std::move(message))};
+    }
+
+    Generator<std::string> CreateBody(std::string message) {
+      request_received_->SetValue();
+      co_yield "wtf1";
+      co_yield "wtf2";
+      co_await *semaphore_;
+      co_yield message;
+    }
+
+   private:
+    Promise<void>* semaphore_;
+    Promise<void>* request_received_;
+  };
+  Promise<void> semaphore;
+  Promise<void> request_received;
+  Run(HttpHandler{&semaphore, &request_received}, [&]() -> Task<> {
+    struct {
+      Task<int> CancelTask() {
+        co_await received_headers;
+        stop_source.request_stop();
+        co_return 0;
+      }
+
+      Task<std::string> Fetch(std::string address) {
+        auto response = co_await http.Fetch(address, stop_source.get_token());
+        co_await request_received;
+        EXPECT_THAT(response.headers,
+                    Contains(std::make_pair("someheader", "SomeValue")));
+        received_headers.SetValue();
+        co_return co_await GetBody(std::move(response.body));
+      };
+
+      CurlHttp& http;
+      Promise<void>& semaphore;
+      Promise<void>& request_received;
+      Promise<void> received_headers;
+      stdx::stop_source stop_source;
+    } state{http(), semaphore, request_received};
+
+    EXPECT_THROW(
+        co_await coro::WhenAll(state.Fetch(address()), state.CancelTask()),
+        InterruptedException);
+    semaphore.SetValue();
+  });
+}
+
+TEST_F(HttpServerTest, ReadsChunkedResponse) {
+  class HttpHandler {
+   public:
+    HttpHandler(Promise<void>* semaphore, Promise<void>* request_received)
+        : semaphore_(semaphore), request_received_(request_received) {}
+
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      auto message = "message" + request.url;
+      co_return Response{.status = 200, .body = CreateBody(std::move(message))};
+    }
+
+    Generator<std::string> CreateBody(std::string message) {
+      request_received_->SetValue();
+      co_yield "wtf1";
+      co_yield "wtf2";
+      co_await *semaphore_;
+      co_yield message;
+    }
+
+   private:
+    Promise<void>* semaphore_;
+    Promise<void>* request_received_;
+  };
+  Promise<void> semaphore;
+  Promise<void> request_received;
+  Run(HttpHandler{&semaphore, &request_received}, [&]() -> Task<> {
+    auto response = co_await http().Fetch(address() + "/test");
+    co_await request_received;
+    std::string message;
+    FOR_CO_AWAIT(std::string_view chunk, std::move(response.body)) {
+      if (message.empty()) {
+        semaphore.SetValue();
+      }
+      message += chunk;
+    }
+    EXPECT_EQ(message, "wtf1wtf2message/test");
+  });
+}
+
 }  // namespace
 }  // namespace coro::http

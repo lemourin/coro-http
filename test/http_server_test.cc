@@ -66,6 +66,7 @@ class HttpServerTest : public ::testing::Test {
             base_.get(), HttpServerConfig{.address = "127.0.0.1", .port = 0},
             std::move(handler)};
         address_ = "http://127.0.0.1:" + std::to_string(http_server.GetPort());
+        quit_ = [&] { return http_server.Quit(); };
         try {
           co_await std::move(func)();
         } catch (...) {
@@ -87,6 +88,11 @@ class HttpServerTest : public ::testing::Test {
     Run(HttpHandler{&last_request_, &response_}, std::move(func));
   }
 
+  Task<int> Quit() const {
+    co_await quit_();
+    co_return 0;
+  }
+
   std::string address() const { return address_.value(); }
   auto& http() { return http_; }
   const auto& last_request() const { return last_request_; }
@@ -100,6 +106,7 @@ class HttpServerTest : public ::testing::Test {
       .body = CreateBody("response"),
   };
   std::optional<std::string> address_;
+  std::function<Task<>()> quit_;
   CurlHttp http_{base_.get()};
 };
 
@@ -398,6 +405,40 @@ TEST_F(HttpServerTest, ReadsChunkedResponse) {
       message += chunk;
     }
     EXPECT_EQ(message, "wtf1wtf2message/test");
+  });
+}
+
+TEST_F(HttpServerTest, HandlesServerSideInterrupt) {
+  class HttpHandler {
+   public:
+    explicit HttpHandler(Promise<void>* request_received)
+        : request_received_(request_received) {}
+
+    Task<Response> operator()(Request request, stdx::stop_token stop_token) {
+      co_return Response{.status = 200,
+                         .body = CreateBody(std::move(stop_token))};
+    }
+
+    Generator<std::string> CreateBody(stdx::stop_token stop_token) {
+      Promise<void> interrupt;
+      stdx::stop_callback cb(
+          stop_token, [&] { interrupt.SetException(InterruptedException()); });
+      request_received_->SetValue();
+      co_yield "wtf1";
+      co_yield "wtf2";
+      co_await interrupt;
+    }
+
+   private:
+    Promise<void>* request_received_;
+  };
+  Promise<void> request_received;
+  Run(HttpHandler{&request_received}, [&]() -> Task<> {
+    auto response = co_await http().Fetch(address() + "/test");
+    co_await request_received;
+    EXPECT_THROW(
+        co_await WhenAll(http::GetBody(std::move(response.body)), Quit()),
+        HttpException);
   });
 }
 

@@ -75,9 +75,9 @@ class EventLoop {
     if (event_base_once(
             event_loop_, -1, EV_TIMEOUT,
             [](evutil_socket_t, short, void* d) {
-              coro::RunTask([func = reinterpret_cast<F*>(d)]() -> Task<> {
-                co_await (*func)();
-                delete func;
+              coro::RunTask([func = std::unique_ptr<F>(
+                                 reinterpret_cast<F*>(d))]() -> Task<> {
+                co_await std::move (*func)();
               });
             },
             data, nullptr) != 0) {
@@ -92,9 +92,8 @@ class EventLoop {
     if (event_base_once(
             event_loop_, -1, EV_TIMEOUT,
             [](evutil_socket_t, short, void* d) {
-              auto func = reinterpret_cast<F*>(d);
-              (*func)();
-              delete func;
+              auto func = std::unique_ptr<F>(reinterpret_cast<F*>(d));
+              std::move (*func)();
             },
             data, nullptr) != 0) {
       delete data;
@@ -112,10 +111,10 @@ class EventLoop {
     RunOnEventLoop([&result, &func]() -> Task<> {
       try {
         if constexpr (std::is_same_v<ResultType, void>) {
-          co_await func();
+          co_await std::move(func)();
           result.set_value();
         } else {
-          result.set_value(co_await func());
+          result.set_value(co_await std::move(func)());
         }
       } catch (...) {
         result.set_exception(std::current_exception());
@@ -130,10 +129,10 @@ class EventLoop {
     RunOnEventLoop([&result, &func] {
       try {
         if constexpr (std::is_same_v<ResultType, void>) {
-          func();
+          std::move(func)();
           result.set_value();
         } else {
-          result.set_value(func());
+          result.set_value(std::move(func)());
         }
       } catch (...) {
         result.set_exception(std::current_exception());

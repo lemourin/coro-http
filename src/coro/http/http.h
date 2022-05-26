@@ -279,35 +279,42 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
 
 template <typename T>
 concept HeaderCollection = requires(T v) {
-  std::begin(v);
-  std::end(v);
-  { std::get<0>(*std::begin(v)) } -> stdx::convertible_to<std::string>;
-  { std::get<1>(*std::begin(v)) } -> stdx::convertible_to<std::string>;
-};
+                             std::begin(v);
+                             std::end(v);
+                             {
+                               std::get<0>(*std::begin(v))
+                               } -> stdx::convertible_to<std::string>;
+                             {
+                               std::get<1>(*std::begin(v))
+                               } -> stdx::convertible_to<std::string>;
+                           };
 
 template <typename T>
 concept ResponseLike = requires(T v) {
-  { v.status } -> stdx::convertible_to<int>;
-  { v.headers } -> HeaderCollection;
-  { v.body } -> coro::GeneratorLike<std::string_view>;
-};
+                         { v.status } -> stdx::convertible_to<int>;
+                         { v.headers } -> HeaderCollection;
+                         { v.body } -> coro::GeneratorLike<std::string_view>;
+                       };
 
 template <typename T>
 concept HttpOperation = requires(T v) {
-  { v.await_resume() } -> ResponseLike;
-};
+                          { v.await_resume() } -> ResponseLike;
+                        };
 
 template <typename T>
-concept HttpClientImpl = requires(T v, Request<> request,
-                                  stdx::stop_token stop_token) {
-  { v.Fetch(std::move(request), stop_token) } -> HttpOperation;
-};
+concept HttpClientImpl =
+    requires(T& v, Request<> request, stdx::stop_token stop_token) {
+      { v.Fetch(std::move(request), stop_token) } -> HttpOperation;
+    };
 
 template <typename T>
-concept HttpClient = HttpClientImpl<T> && requires(T v) {
-  { v.Fetch(std::string(), stdx::stop_token()) } -> HttpOperation;
-  typename T::ResponseType;
-};
+concept HttpClient =
+    HttpClientImpl<T> && requires(T& v) {
+                           {
+                             v.Fetch(std::string(), stdx::stop_token())
+                             } -> HttpOperation;
+                           typename T::ResponseType;
+                         };
 
 template <HttpClientImpl Impl>
 class ToHttpClient : public Impl {
@@ -365,17 +372,55 @@ class ToHttpClient : public Impl {
   }
 };
 
-class FetchF : public std::function<Task<http::Response<>>(
-                   http::Request<std::string>, stdx::stop_token)> {
+class Http {
  public:
-  template <typename T>
-  explicit FetchF(const T* f)
-      : std::function<Task<http::Response<>>(http::Request<std::string>,
-                                             stdx::stop_token)>(
-            [f](http::Request<std::string> request,
-                stdx::stop_token stop_token) {
-              return f->Fetch(std::move(request), std::move(stop_token));
-            }) {}
+  using ResponseType = Response<>;
+
+  virtual ~Http() = default;
+
+  virtual Task<Response<>> Fetch(Request<>, stdx::stop_token) const = 0;
+  virtual Task<Response<>> Fetch(Request<std::string>,
+                                 stdx::stop_token) const = 0;
+  virtual Task<Response<>> Fetch(std::string url, stdx::stop_token) const = 0;
+
+  virtual Task<Response<>> FetchOk(Request<> url, stdx::stop_token) const = 0;
+  virtual Task<Response<>> FetchOk(Request<std::string> url,
+                                   stdx::stop_token) const = 0;
+};
+
+template <typename Impl>
+class HttpImpl : public Http {
+ public:
+  template <typename... Args>
+  explicit HttpImpl(Args&&... args) : impl_(std::forward<Args>(args)...) {}
+
+  Task<Response<>> Fetch(Request<> request,
+                         stdx::stop_token stop_token) const override {
+    return impl_.Fetch(std::move(request), std::move(stop_token));
+  }
+
+  Task<Response<>> Fetch(Request<std::string> request,
+                         stdx::stop_token stop_token) const override {
+    return impl_.Fetch(std::move(request), std::move(stop_token));
+  }
+
+  Task<Response<>> Fetch(std::string url,
+                         stdx::stop_token stop_token) const override {
+    return impl_.Fetch(std::move(url), std::move(stop_token));
+  }
+
+  Task<Response<>> FetchOk(Request<> request,
+                           stdx::stop_token stop_token) const override {
+    return impl_.FetchOk(std::move(request), std::move(stop_token));
+  }
+
+  Task<Response<>> FetchOk(Request<std::string> request,
+                           stdx::stop_token stop_token) const override {
+    return impl_.FetchOk(std::move(request), std::move(stop_token));
+  }
+
+ private:
+  Impl impl_;
 };
 
 }  // namespace coro::http

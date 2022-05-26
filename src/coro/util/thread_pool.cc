@@ -56,8 +56,70 @@ void SetThreadNameImpl(const std::string& name) {
 
 }  // namespace
 
+ThreadPool::ThreadPool(
+    const EventLoop* event_loop,
+    unsigned int thread_count)
+    : event_loop_(event_loop) {
+  for (unsigned int i = 0; i < std::max<unsigned int>(thread_count, 2u);
+       i++) {
+    threads_.emplace_back([&] { Work(); });
+  }
+}
+
+ThreadPool::~ThreadPool() {
+  {
+    std::unique_lock lock(mutex_);
+    quit_ = true;
+    condition_variable_.notify_all();
+  }
+  for (auto& thread : threads_) {
+    thread.join();
+  }
+}
+
 void SetThreadName(std::string_view name) {
   SetThreadNameImpl(std::string(name));
+}
+
+void ThreadPool::Work() {
+  SetThreadName("coro-threadpool");
+  while (true) {
+    std::unique_lock lock(mutex_);
+    condition_variable_.wait(lock, [&] { return !tasks_.empty() || quit_; });
+    if (quit_ && tasks_.empty()) {
+      break;
+    }
+    auto coroutine = tasks_.back();
+    tasks_.pop_back();
+    lock.unlock();
+    coroutine.resume();
+  }
+}
+
+Task<> ThreadPool::SwitchToThreadLoop() {
+  struct Awaiter {
+    bool await_ready() const { return false; }
+    void await_resume() {}
+    void await_suspend(stdx::coroutine_handle<void> continuation) {
+      std::unique_lock lock(thread_pool->mutex_);
+      thread_pool->tasks_.emplace_back(continuation);
+      thread_pool->condition_variable_.notify_one();
+    }
+    ThreadPool* thread_pool;
+  };
+  co_await Awaiter{this};
+}
+
+Task<> ThreadPool::SwitchToEventLoop() {
+  struct Awaiter {
+    bool await_ready() const { return false; }
+    void await_resume() {}
+    void await_suspend(stdx::coroutine_handle<void> continuation) {
+      event_loop->RunOnEventLoop([=]() mutable { continuation.resume(); });
+    }
+    const EventLoop* event_loop;
+  };
+  co_await Awaiter{event_loop_};
 }
 
 }  // namespace coro::util

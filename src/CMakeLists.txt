@@ -30,6 +30,7 @@ target_sources(coro-http PRIVATE
     coro/stdx/concepts.h
     coro/stdx/stop_source.cc
     coro/stdx/stop_token.cc
+    coro/stdx/any_invocable.h
     coro/http/http.h
     coro/http/curl_http.h
     coro/http/http_server.h

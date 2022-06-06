@@ -26,8 +26,8 @@ class CurlHandle {
 
  private:
   template <typename Owner>
-  CurlHandle(CURLM* http, event_base* event_loop, Request<>, stdx::stop_token,
-             Owner*);
+  CurlHandle(CURLM* http, event_base* event_loop, Request<>,
+             const std::string* cache_path, stdx::stop_token, Owner*);
 
   template <typename NewOwner>
   CurlHandle(CurlHandle, NewOwner*);
@@ -91,7 +91,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 class CurlHttpOperation {
  public:
   CurlHttpOperation(CURLM* http, event_base* event_loop, Request<>,
-                    stdx::stop_token);
+                    const std::string* cache_path, stdx::stop_token);
   CurlHttpOperation(const CurlHttpOperation&) = delete;
   CurlHttpOperation(CurlHttpOperation&&) noexcept;
   ~CurlHttpOperation();
@@ -122,7 +122,7 @@ class CurlHttpOperation {
 
 class CurlHttpImpl {
  public:
-  explicit CurlHttpImpl(event_base* event_loop);
+  CurlHttpImpl(event_base* event_loop, std::optional<std::string> cache_path);
 
   CurlHttpImpl(CurlHttpImpl&&) = delete;
   CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
@@ -155,6 +155,7 @@ class CurlHttpImpl {
   std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle_;
   event_base* event_loop_;
   event timeout_event_;
+  std::optional<std::string> cache_path_;
 };
 
 using CurlHttp = ToHttpClient<CurlHttpImpl>;

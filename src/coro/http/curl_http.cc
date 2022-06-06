@@ -15,6 +15,12 @@ namespace coro::http {
 
 namespace {
 
+#ifdef WIN32
+#define PATH_SEPARATOR "\\"
+#else
+#define PATH_SEPARATOR "/"
+#endif
+
 struct SocketData {
   event socket_event = {};
 };
@@ -75,7 +81,7 @@ void MoveAssignEvent(event* target, event* source, void* userdata) {
 struct CurlHandle::Data {
   template <typename Owner>
   Data(CURLM* http, event_base* event_loop, Request<> request,
-       stdx::stop_token stop_token, Owner* owner)
+       const std::string* cache_path, stdx::stop_token stop_token, Owner* owner)
       : http(http),
         event_loop(event_loop),
         handle(curl_easy_init()),
@@ -102,7 +108,14 @@ struct CurlHandle::Data {
     Check(curl_easy_setopt(handle.get(), CURLOPT_CUSTOMREQUEST,
                            MethodToString(request.method)));
     Check(curl_easy_setopt(handle.get(), CURLOPT_HTTP_VERSION,
-                           CURL_HTTP_VERSION_1_1));
+                           CURL_HTTP_VERSION_NONE));
+    Check(curl_easy_setopt(handle.get(), CURLOPT_HTTP_VERSION,
+                           CURL_HTTP_VERSION_NONE));
+    if (cache_path) {
+      Check(curl_easy_setopt(
+          handle.get(), CURLOPT_ALTSVC,
+          (*cache_path + PATH_SEPARATOR "alt-svc.txt").c_str()));
+    }
 #ifdef USE_BUNDLED_CACERT
     curl_blob ca_cert{.data = const_cast<void*>(reinterpret_cast<const void*>(
                           kAssetsCacertPem.data())),
@@ -302,9 +315,10 @@ void CurlHandle::OnCancel::operator()() const {
 
 template <typename Owner>
 CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
+                       const std::string* cache_path,
                        stdx::stop_token stop_token, Owner* owner)
     : d_(std::make_unique<Data>(http, event_loop, std::move(request),
-                                std::move(stop_token), owner)) {}
+                                cache_path, std::move(stop_token), owner)) {}
 
 template <typename NewOwner>
 CurlHandle::CurlHandle(CurlHandle handle, NewOwner* owner)
@@ -391,11 +405,12 @@ void CurlHttpBodyGenerator::Resume() {
 
 CurlHttpOperation::CurlHttpOperation(CURLM* http, event_base* event_loop,
                                      Request<> request,
+                                     const std::string* cache_directory,
                                      stdx::stop_token stop_token)
     : headers_ready_(),
       headers_ready_event_posted_(),
-      handle_(http, event_loop, std::move(request), std::move(stop_token),
-              this) {
+      handle_(http, event_loop, std::move(request), cache_directory,
+              std::move(stop_token), this) {
   Check(event_assign(&headers_ready_, handle_.d_->event_loop, -1, 0,
                      OnHeadersReady, this));
 }
@@ -447,10 +462,12 @@ Response<CurlHttpBodyGenerator> CurlHttpOperation::await_resume() {
           .body = std::move(body_generator)};
 }
 
-CurlHttpImpl::CurlHttpImpl(event_base* event_loop)
+CurlHttpImpl::CurlHttpImpl(event_base* event_loop,
+                           std::optional<std::string> cache_path)
     : curl_handle_(curl_multi_init()),
       event_loop_(event_loop),
-      timeout_event_() {
+      timeout_event_(),
+      cache_path_(std::move(cache_path)) {
   event_assign(&timeout_event_, event_loop, -1, 0, TimeoutEvent,
                curl_handle_.get());
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETFUNCTION,
@@ -572,7 +589,7 @@ int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
 CurlHttpOperation CurlHttpImpl::Fetch(Request<> request,
                                       stdx::stop_token token) const {
   return {curl_handle_.get(), event_loop_, std::move(request),
-          std::move(token)};
+          cache_path_ ? &*cache_path_ : nullptr, std::move(token)};
 }
 
 }  // namespace coro::http

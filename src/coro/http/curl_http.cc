@@ -109,8 +109,6 @@ struct CurlHandle::Data {
                            MethodToString(request.method)));
     Check(curl_easy_setopt(handle.get(), CURLOPT_HTTP_VERSION,
                            CURL_HTTP_VERSION_NONE));
-    Check(curl_easy_setopt(handle.get(), CURLOPT_HTTP_VERSION,
-                           CURL_HTTP_VERSION_NONE));
     if (cache_path) {
       Check(curl_easy_setopt(
           handle.get(), CURLOPT_ALTSVC,

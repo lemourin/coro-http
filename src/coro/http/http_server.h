@@ -1,11 +1,12 @@
 #ifndef CORO_HTTP_HTTP_SERVER_H
 #define CORO_HTTP_HTTP_SERVER_H
-
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
-#include <event2/event.h>
 #include <event2/event_struct.h>
 #include <event2/listener.h>
+
+#undef CreateDirectory
+#undef CreateFile
 
 #include <memory>
 #include <span>
@@ -20,6 +21,10 @@
 #include "coro/task.h"
 #include "coro/util/function_traits.h"
 #include "coro/util/raii_utils.h"
+
+struct event_base;
+struct evconnlistener;
+struct bufferevent;
 
 namespace coro::http {
 
@@ -58,19 +63,11 @@ struct RequestContextBase {
 };
 
 struct EvconnListenerDeleter {
-  void operator()(evconnlistener* listener) const {
-    if (listener) {
-      evconnlistener_free(listener);
-    }
-  }
+  void operator()(evconnlistener* listener) const;
 };
 
 struct BufferEventDeleter {
-  void operator()(bufferevent* bev) const {
-    if (bev) {
-      bufferevent_free(bev);
-    }
-  }
+  void operator()(bufferevent* bev) const;
 };
 
 Generator<std::string> GetBodyGenerator(struct bufferevent* bev,

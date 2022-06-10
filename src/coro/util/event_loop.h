@@ -1,26 +1,27 @@
 #ifndef CORO_HTTP_WAIT_TASK_H
 #define CORO_HTTP_WAIT_TASK_H
 
-#include <event2/event.h>
-#include <event2/event_struct.h>
-
 #include <functional>
 #include <future>
 #include <stdexcept>
 
 #include "coro/interrupted_exception.h"
+#include "coro/stdx/any_invocable.h"
 #include "coro/stdx/stop_callback.h"
 #include "coro/stdx/stop_token.h"
 #include "coro/task.h"
 
+struct event_base;
+struct event;
+
 namespace coro::util {
 
 struct EventBaseDeleter {
-  void operator()(event_base* event_base) const {
-    if (event_base) {
-      event_base_free(event_base);
-    }
-  }
+  void operator()(event_base* event_base) const;
+};
+
+struct EventDeleter {
+  void operator()(event*) const;
 };
 
 class EventLoop {
@@ -37,19 +38,9 @@ class EventLoop {
     WaitTask& operator=(const WaitTask&) = delete;
     WaitTask& operator=(WaitTask&&) = delete;
 
-    ~WaitTask();
-
-    bool await_ready() {
-      return interrupted_ || !event_pending(&event_, EV_TIMEOUT, nullptr);
-    }
-    void await_suspend(stdx::coroutine_handle<void> handle) {
-      handle_ = handle;
-    }
-    void await_resume() {
-      if (interrupted_) {
-        throw InterruptedException();
-      }
-    }
+    bool await_ready();
+    void await_suspend(stdx::coroutine_handle<void> handle);
+    void await_resume();
 
    private:
     struct OnCancel {
@@ -58,7 +49,7 @@ class EventLoop {
     };
 
     stdx::coroutine_handle<void> handle_;
-    event event_ = {};
+    std::unique_ptr<event, EventDeleter> event_;
     stdx::stop_token stop_token_;
     bool interrupted_ = false;
     stdx::stop_callback<OnCancel> stop_callback_;
@@ -71,34 +62,16 @@ class EventLoop {
     { func() } -> Awaitable<void>;
   }
   void RunOnEventLoop(F func) const {
-    F* data = new F(std::move(func));
-    if (event_base_once(
-            event_loop_, -1, EV_TIMEOUT,
-            [](evutil_socket_t, short, void* d) {
-              coro::RunTask([func = std::unique_ptr<F>(
-                                 reinterpret_cast<F*>(d))]() -> Task<> {
-                co_await std::move (*func)();
-              });
-            },
-            data, nullptr) != 0) {
-      delete data;
-      throw std::runtime_error("can't run on event loop");
-    }
+    RunOnce([func = std::move(func)]() mutable {
+      coro::RunTask([func = std::move(func)]() mutable -> Task<> {
+        co_await std::move(func)();
+      });
+    });
   }
 
   template <typename F>
   void RunOnEventLoop(F func) const {
-    F* data = new F(std::move(func));
-    if (event_base_once(
-            event_loop_, -1, EV_TIMEOUT,
-            [](evutil_socket_t, short, void* d) {
-              auto func = std::unique_ptr<F>(reinterpret_cast<F*>(d));
-              std::move (*func)();
-            },
-            data, nullptr) != 0) {
-      delete data;
-      throw std::runtime_error("can't run on event loop");
-    }
+    RunOnce([func = std::move(func)]() mutable { std::move(func)(); });
   }
 
   template <typename F,
@@ -142,6 +115,8 @@ class EventLoop {
   }
 
  private:
+  void RunOnce(stdx::any_invocable<void() &&>) const;
+
   event_base* event_loop_;
 };
 

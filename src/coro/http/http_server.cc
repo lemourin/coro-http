@@ -4,6 +4,11 @@
 #include <arpa/inet.h>
 #endif
 
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
+#include <event2/event_struct.h>
+#include <event2/listener.h>
+
 #include <algorithm>
 #include <string>
 #include <utility>
@@ -121,6 +126,18 @@ void ReadCallback(struct bufferevent* bev, void* user_data) {
 }
 
 }  // namespace
+
+void EvconnListenerDeleter::operator()(evconnlistener* listener) const {
+  if (listener) {
+    evconnlistener_free(listener);
+  }
+}
+
+void BufferEventDeleter::operator()(bufferevent* bev) const {
+  if (bev) {
+    bufferevent_free(bev);
+  }
+}
 
 void Check(int code) {
   if (code != 0) {

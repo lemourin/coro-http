@@ -79,8 +79,10 @@ class HttpServer {
       : on_request_(std::forward<Args>(args)...) {
     internal::InitHttpServerContext(
         &context_, event_loop, config,
-        [this](http::Request<> request, stdx::stop_token stop_token) {
-          return on_request_(std::move(request), std::move(stop_token));
+        [this](http::Request<> request,
+               stdx::stop_token stop_token) -> Task<Response<>> {
+          co_return co_await on_request_(std::move(request),
+                                         std::move(stop_token));
         });
   }
 

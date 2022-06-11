@@ -1,3 +1,5 @@
+#include <event2/event.h>
+
 #include <csignal>
 #include <memory>
 
@@ -8,16 +10,19 @@
 #include "coro/util/event_loop.h"
 #include "coro/util/raii_utils.h"
 
+#ifdef _WIN32
+#include <winsock2.h>
+#endif
+
 constexpr const char *kUrl =
     R"(http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)";
 
-template <coro::http::HttpClient HttpClient>
 class HttpHandler {
  public:
-  HttpHandler(const HttpClient &http, coro::Promise<void> *semaphore)
+  HttpHandler(const coro::http::Http *http, coro::Promise<void> *semaphore)
       : http_(http), semaphore_(semaphore) {}
 
-  coro::Task<typename HttpClient::ResponseType> operator()(
+  coro::Task<coro::http::Response<>> operator()(
       const coro::http::Request<> &request,
       coro::stdx::stop_token stop_token) const {
     coro::http::Request<> pipe_request{.url = kUrl};
@@ -28,14 +33,14 @@ class HttpHandler {
       semaphore_->SetValue();
     }
     auto pipe =
-        co_await http_.Fetch(std::move(pipe_request), std::move(stop_token));
-    co_return typename HttpClient::ResponseType{.status = pipe.status,
-                                                .headers = pipe.headers,
-                                                .body = std::move(pipe.body)};
+        co_await http_->Fetch(std::move(pipe_request), std::move(stop_token));
+    co_return coro::http::Response<>{.status = pipe.status,
+                                     .headers = pipe.headers,
+                                     .body = std::move(pipe.body)};
   }
 
  private:
-  const HttpClient &http_;
+  const coro::http::Http *http_;
   coro::Promise<void> *semaphore_;
 };
 
@@ -54,10 +59,10 @@ int main() {
   std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
       event_base_new());
   coro::RunTask([base = base.get()]() -> coro::Task<> {
-    coro::http::CurlHttp http(base);
+    coro::http::HttpImpl<coro::http::CurlHttp> http(base, std::nullopt);
     coro::Promise<void> semaphore;
-    coro::http::HttpServer<HttpHandler<coro::http::CurlHttp>> http_server(
-        base, {.address = "127.0.0.1", .port = 4444}, http, &semaphore);
+    coro::http::HttpServer<HttpHandler> http_server(
+        base, {.address = "127.0.0.1", .port = 4444}, &http, &semaphore);
     co_await semaphore;
     co_await http_server.Quit();
   });

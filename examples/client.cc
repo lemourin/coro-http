@@ -7,6 +7,12 @@
 #include "coro/stdx/stop_source.h"
 #include "coro/util/event_loop.h"
 
+#ifdef WIN32
+#include <winsock2.h>
+#endif
+
+#include <event2/event.h>
+
 class CancelRequest {
  public:
   CancelRequest(const coro::util::EventLoop &event_loop,
@@ -32,7 +38,7 @@ class CancelRequest {
 
 coro::Task<> CoMain(event_base *event_base) noexcept {
   try {
-    coro::http::CurlHttp http(event_base);
+    coro::http::CurlHttp http(event_base, std::nullopt);
     coro::util::EventLoop event_loop(event_base);
     coro::stdx::stop_source stop_source;
     CancelRequest cancel_request(event_loop, stop_source);

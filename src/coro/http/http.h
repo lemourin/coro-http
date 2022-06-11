@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "coro/generator.h"
+#include "coro/http/http_exception.h"
 #include "coro/http/http_parse.h"
-#include "coro/stdx/concepts.h"
 #include "coro/stdx/coroutine.h"
 #include "coro/stdx/stop_token.h"
 
@@ -31,36 +31,11 @@ enum class Method {
   kCopy
 };
 
-inline const char* MethodToString(Method method) {
-  switch (method) {
-    case Method::kGet:
-      return "GET";
-    case Method::kPost:
-      return "POST";
-    case Method::kPut:
-      return "PUT";
-    case Method::kHead:
-      return "HEAD";
-    case Method::kOptions:
-      return "OPTIONS";
-    case Method::kPatch:
-      return "PATCH";
-    case Method::kDelete:
-      return "DELETE";
-    case Method::kPropfind:
-      return "PROPFIND";
-    case Method::kProppatch:
-      return "PROPPATCH";
-    case Method::kMkcol:
-      return "MKCOL";
-    case Method::kMove:
-      return "MOVE";
-    case Method::kCopy:
-      return "COPY";
-    default:
-      return "UNKNOWN";
-  }
-}
+std::string_view MethodToString(Method method);
+
+Task<std::string> GetBody(Generator<std::string> body);
+
+Generator<std::string> CreateBody(std::string body);
 
 template <typename BodyGenerator = Generator<std::string>>
 struct Request {
@@ -84,253 +59,8 @@ struct Response {
   HttpBodyGenerator body;
 };
 
-inline Generator<std::string> CreateBody(std::string body) {
-  co_yield std::move(body);
-}
-
-class HttpException : public std::exception {
- public:
-  static constexpr int kAborted = -1;
-  static constexpr int kMalformedResponse = -2;
-  static constexpr int kUnknown = -3;
-  static constexpr int kInvalidMethod = -4;
-  static constexpr int kBadRequest = 400;
-  static constexpr int kNotFound = 404;
-  static constexpr int kRangeNotSatisfiable = 416;
-
-  HttpException(int status) : HttpException(status, ToString(status)) {}
-
-  HttpException(int status, std::string_view message)
-      : status_(status), message_(message) {}
-
-  [[nodiscard]] const char* what() const noexcept override {
-    return message_.c_str();
-  }
-  [[nodiscard]] int status() const noexcept { return status_; }
-
- private:
-  std::string ToString(int status) {
-    switch (status) {
-      case kAborted:
-        return "Aborted.";
-      case kNotFound:
-        return "Not found.";
-      case kMalformedResponse:
-        return "Malformed response.";
-      case kInvalidMethod:
-        return "Invalid method.";
-      case kBadRequest:
-        return "Bad request.";
-      case kRangeNotSatisfiable:
-        return "Range not satisfiable.";
-      default:
-        return "Unknown.";
-    }
-  }
-
-  int status_;
-  std::string message_;
-};
-
-template <typename Impl>
-class HttpBodyGenerator {
- public:
-  template <typename Iterator>
-  struct Awaitable {
-    [[nodiscard]] bool await_ready() const {
-      return !i.http_body_generator_->data_.empty() ||
-             i.http_body_generator_->status_ != -1 ||
-             i.http_body_generator_->exception_ptr_;
-    }
-    void await_suspend(stdx::coroutine_handle<void> handle) {
-      i.http_body_generator_->handle_ = handle;
-    }
-    Iterator await_resume() {
-      if ((i.http_body_generator_->status_ != -1 &&
-           i.http_body_generator_->data_.empty()) ||
-          i.http_body_generator_->exception_ptr_) {
-        i.offset_ = INT64_MAX;
-      }
-      i.data_ = std::move(i.http_body_generator_->data_);
-      if (i.http_body_generator_->exception_ptr_) {
-        std::rethrow_exception(i.http_body_generator_->exception_ptr_);
-      }
-      return i;
-    }
-    Iterator i;
-  };
-
-  class Iterator {
-   public:
-    Iterator(HttpBodyGenerator* http_body_generator, int64_t offset,
-             std::string data);
-
-    bool operator!=(const Iterator& iterator) const;
-    bool operator==(const Iterator& iterator) const;
-    Awaitable<Iterator&> operator++();
-    const std::string& operator*() const;
-    std::string& operator*();
-
-   private:
-    template <typename>
-    friend struct Awaitable;
-    HttpBodyGenerator* http_body_generator_;
-    int64_t offset_;
-    std::string data_;
-  };
-
-  Awaitable<Iterator> begin();
-  Iterator end();
-
- protected:
-  void ReceivedData(std::string_view data);
-  void Close(int status);
-  void Close(std::exception_ptr);
-  auto GetBufferedByteCount() const { return data_.size(); }
-
- private:
-  stdx::coroutine_handle<void> handle_;
-  std::string data_;
-  int status_ = -1;
-  std::exception_ptr exception_ptr_;
-};
-
-template <GeneratorLike<std::string_view> HttpBodyGenerator>
-Task<std::string> GetBody(HttpBodyGenerator body) {
-  std::string result;
-  FOR_CO_AWAIT(std::string & piece, body) {
-    result += std::move(piece);
-    if (result.size() > 10 * 1024 * 1024) {
-      throw HttpException(HttpException::kBadRequest, "body too large");
-    }
-  }
-  co_return result;
-}
-
-template <typename Impl>
-HttpBodyGenerator<Impl>::Iterator::Iterator(
-    HttpBodyGenerator* http_body_generator, int64_t offset, std::string data)
-    : http_body_generator_(http_body_generator),
-      offset_(offset),
-      data_(std::move(data)) {}
-
-template <typename Impl>
-bool HttpBodyGenerator<Impl>::Iterator::operator!=(
-    const Iterator& iterator) const {
-  return offset_ != iterator.offset_;
-}
-
-template <typename Impl>
-bool HttpBodyGenerator<Impl>::Iterator::operator==(
-    const Iterator& iterator) const {
-  return !this->operator!=(iterator);
-}
-
-template <typename Impl>
-auto HttpBodyGenerator<Impl>::Iterator::operator++() -> Awaitable<Iterator&> {
-  offset_++;
-  static_cast<Impl*>(http_body_generator_)->Resume();
-  return Awaitable<Iterator&>{*this};
-}
-
-template <typename Impl>
-const std::string& HttpBodyGenerator<Impl>::Iterator::operator*() const {
-  return data_;
-}
-
-template <typename Impl>
-std::string& HttpBodyGenerator<Impl>::Iterator::operator*() {
-  return data_;
-}
-
-template <typename Impl>
-auto HttpBodyGenerator<Impl>::begin() -> Awaitable<Iterator> {
-  return Awaitable<Iterator>{Iterator(this, 0, "")};
-}
-
-template <typename Impl>
-typename HttpBodyGenerator<Impl>::Iterator HttpBodyGenerator<Impl>::end() {
-  return Iterator(this, INT64_MAX, "");
-}
-
-template <typename Impl>
-void HttpBodyGenerator<Impl>::ReceivedData(std::string_view data) {
-  data_ += data;
-  if (handle_) {
-    std::exchange(handle_, nullptr).resume();
-  }
-}
-
-template <typename Impl>
-void HttpBodyGenerator<Impl>::Close(int status) {
-  status_ = status;
-  if (handle_) {
-    std::exchange(handle_, nullptr).resume();
-  }
-}
-
-template <typename Impl>
-void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
-  exception_ptr_ = std::move(exception);
-  if (handle_) {
-    std::exchange(handle_, nullptr).resume();
-  }
-}
-
-template <typename Impl>
-class ToHttpClient : public Impl {
- public:
-  using Impl::Impl;
-
-  auto Fetch(Request<std::string> request,
-             stdx::stop_token stop_token = stdx::stop_token()) const {
-    auto headers = std::move(request.headers);
-    if (request.body && !GetHeader(headers, "Content-Length")) {
-      headers.emplace_back("Content-Length",
-                           std::to_string(request.body->length()));
-    }
-    return Fetch(
-        Request<>{.url = std::move(request.url),
-                  .method = std::move(request.method),
-                  .headers = std::move(headers),
-                  .body = request.body ? std::make_optional(ToGenerator(
-                                             std::move(*request.body)))
-                                       : std::nullopt,
-                  .flags = static_cast<Request<>::Flag>(request.flags)},
-        std::move(stop_token));
-  }
-
-  auto Fetch(Request<> request,
-             stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Impl::Fetch(std::move(request), std::move(stop_token));
-  }
-
-  auto Fetch(std::string url,
-             stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Fetch(Request<>{.url = std::move(url)}, std::move(stop_token));
-  }
-
-  template <typename RequestT>
-  Task<Response<>> FetchOk(RequestT request, stdx::stop_token stop_token =
-                                                 stdx::stop_token()) const {
-    auto response = co_await Fetch(std::move(request), std::move(stop_token));
-    if (response.status / 100 != 2) {
-      auto message = co_await GetBody(std::move(response.body));
-      throw coro::http::HttpException(response.status, std::move(message));
-    }
-    co_return response;
-  }
-
- private:
-  static Generator<std::string> ToGenerator(std::string value) {
-    co_yield value;
-  }
-};
-
 class Http {
  public:
-  using ResponseType = Response<>;
-
   virtual ~Http() = default;
 
   virtual Task<Response<>> Fetch(Request<>, stdx::stop_token) const = 0;
@@ -378,19 +108,57 @@ class HttpImpl : public Http {
   Impl impl_;
 };
 
+template <typename Impl>
+class ToHttpClient : public Impl {
+ public:
+  using Impl::Impl;
+
+  auto Fetch(Request<std::string> request,
+             stdx::stop_token stop_token = stdx::stop_token()) const {
+    auto headers = std::move(request.headers);
+    if (request.body && !GetHeader(headers, "Content-Length")) {
+      headers.emplace_back("Content-Length",
+                           std::to_string(request.body->length()));
+    }
+    return Fetch(
+        Request<>{.url = std::move(request.url),
+                  .method = std::move(request.method),
+                  .headers = std::move(headers),
+                  .body = request.body ? std::make_optional(CreateBody(
+                                             std::move(*request.body)))
+                                       : std::nullopt,
+                  .flags = static_cast<Request<>::Flag>(request.flags)},
+        std::move(stop_token));
+  }
+
+  auto Fetch(Request<> request,
+             stdx::stop_token stop_token = stdx::stop_token()) const {
+    return Impl::Fetch(std::move(request), std::move(stop_token));
+  }
+
+  auto Fetch(std::string url,
+             stdx::stop_token stop_token = stdx::stop_token()) const {
+    return Fetch(Request<>{.url = std::move(url)}, std::move(stop_token));
+  }
+
+  template <typename RequestT>
+  Task<Response<>> FetchOk(RequestT request, stdx::stop_token stop_token =
+                                                 stdx::stop_token()) const {
+    auto response = co_await Fetch(std::move(request), std::move(stop_token));
+    if (response.status / 100 != 2) {
+      auto message = co_await GetBody(std::move(response.body));
+      throw coro::http::HttpException(response.status, std::move(message));
+    }
+    co_return response;
+  }
+};
+
 }  // namespace coro::http
 
 namespace std {
 template <>
 struct hash<coro::http::Request<std::string>> {
-  static size_t CombineHash(size_t lhs, size_t rhs) {
-    lhs ^= rhs + 0x9e3779b9 + (lhs << 6) + (lhs >> 2);
-    return lhs;
-  }
-  size_t operator()(const coro::http::Request<std::string>& r) const {
-    return CombineHash(std::hash<std::string>{}(r.url),
-                       std::hash<std::optional<std::string>>{}(r.body));
-  }
+  size_t operator()(const coro::http::Request<std::string>& r) const;
 };
 }  // namespace std
 

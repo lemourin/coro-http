@@ -32,6 +32,7 @@ target_sources(coro-http PRIVATE
     coro/stdx/stop_token.cc
     coro/stdx/any_invocable.h
     coro/http/http.h
+    coro/http/http.cc
     coro/http/curl_http.h
     coro/http/http_server.h
     coro/http/http_server.cc
@@ -40,7 +41,9 @@ target_sources(coro-http PRIVATE
     coro/http/http_parse.cc
     coro/http/cache_http.h
     coro/http/cache_http.cc
-)
+    coro/http/http_body_generator.h
+    coro/http/http_exception.h
+    coro/http/http_exception.cc)
 
 find_package(Threads REQUIRED)
 

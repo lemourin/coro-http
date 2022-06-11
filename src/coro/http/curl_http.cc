@@ -9,6 +9,7 @@
 #include <string>
 #include <utility>
 
+#include "coro/http/http_body_generator.h"
 #include "coro/interrupted_exception.h"
 
 #ifdef USE_BUNDLED_CACERT
@@ -248,8 +249,9 @@ struct CurlHandle::Data {
     Check(curl_easy_setopt(handle.get(), CURLOPT_READDATA, this));
     Check(curl_easy_setopt(handle.get(), CURLOPT_NOPROGRESS, 0L));
     Check(curl_easy_setopt(handle.get(), CURLOPT_SSL_VERIFYPEER, 1L));
-    Check(curl_easy_setopt(handle.get(), CURLOPT_CUSTOMREQUEST,
-                           MethodToString(request.method)));
+    Check(
+        curl_easy_setopt(handle.get(), CURLOPT_CUSTOMREQUEST,
+                         std::string(MethodToString(request.method)).c_str()));
     Check(curl_easy_setopt(handle.get(), CURLOPT_HTTP_VERSION,
                            CURL_HTTP_VERSION_NONE));
     if (cache_path) {

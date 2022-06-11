@@ -26,7 +26,9 @@ namespace coro::http {
 template <typename T>
 concept Handler = requires(T v, Request<> request,
                            stdx::stop_token stop_token) {
-  { v(std::move(request), stop_token).await_resume() } -> ResponseLike;
+  {
+    v(std::move(request), stop_token).await_resume()
+    } -> std::same_as<Response<>>;
 };
 
 template <typename T>

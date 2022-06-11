@@ -39,6 +39,7 @@ target_sources(coro-http PRIVATE
     coro/http/curl_http.cc
     coro/http/http_parse.cc
     coro/http/cache_http.h
+    coro/http/cache_http.cc
 )
 
 find_package(Threads REQUIRED)

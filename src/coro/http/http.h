@@ -277,53 +277,9 @@ void HttpBodyGenerator<Impl>::Close(std::exception_ptr exception) {
   }
 }
 
-template <typename T>
-concept HeaderCollection = requires(T v) {
-                             std::begin(v);
-                             std::end(v);
-                             {
-                               std::get<0>(*std::begin(v))
-                               } -> stdx::convertible_to<std::string>;
-                             {
-                               std::get<1>(*std::begin(v))
-                               } -> stdx::convertible_to<std::string>;
-                           };
-
-template <typename T>
-concept ResponseLike = requires(T v) {
-                         { v.status } -> stdx::convertible_to<int>;
-                         { v.headers } -> HeaderCollection;
-                         { v.body } -> coro::GeneratorLike<std::string_view>;
-                       };
-
-template <typename T>
-concept HttpOperation = requires(T v) {
-                          { v.await_resume() } -> ResponseLike;
-                        };
-
-template <typename T>
-concept HttpClientImpl =
-    requires(T& v, Request<> request, stdx::stop_token stop_token) {
-      { v.Fetch(std::move(request), stop_token) } -> HttpOperation;
-    };
-
-template <typename T>
-concept HttpClient =
-    HttpClientImpl<T> && requires(T& v) {
-                           {
-                             v.Fetch(std::string(), stdx::stop_token())
-                             } -> HttpOperation;
-                           typename T::ResponseType;
-                         };
-
-template <HttpClientImpl Impl>
+template <typename Impl>
 class ToHttpClient : public Impl {
  public:
-  using ResponseType = decltype(std::declval<Impl>()
-                                    .Fetch(std::declval<Request<>>(),
-                                           std::declval<stdx::stop_token>())
-                                    .await_resume());
-
   using Impl::Impl;
 
   auto Fetch(Request<std::string> request,
@@ -355,10 +311,9 @@ class ToHttpClient : public Impl {
   }
 
   template <typename RequestT>
-  Task<ResponseType> FetchOk(RequestT request, stdx::stop_token stop_token =
-                                                   stdx::stop_token()) const {
-    http::ResponseLike auto response =
-        co_await Fetch(std::move(request), std::move(stop_token));
+  Task<Response<>> FetchOk(RequestT request, stdx::stop_token stop_token =
+                                                 stdx::stop_token()) const {
+    auto response = co_await Fetch(std::move(request), std::move(stop_token));
     if (response.status / 100 != 2) {
       auto message = co_await GetBody(std::move(response.body));
       throw coro::http::HttpException(response.status, std::move(message));

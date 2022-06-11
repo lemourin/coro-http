@@ -13,6 +13,7 @@
 #include "coro/stdx/stop_callback.h"
 #include "coro/stdx/stop_source.h"
 #include "coro/task.h"
+#include "coro/stdx/concepts.h"
 #include "coro/util/event_loop.h"
 #include "coro/util/function_traits.h"
 #include "coro/util/raii_utils.h"
@@ -28,7 +29,7 @@ concept Handler = requires(T v, Request<> request,
                            stdx::stop_token stop_token) {
   {
     v(std::move(request), stop_token).await_resume()
-    } -> std::same_as<Response<>>;
+    } -> stdx::same_as<Response<>>;
 };
 
 template <typename T>

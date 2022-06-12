@@ -2,6 +2,7 @@
 #define CORO_HTTP_HTTP_EXCEPTION_H
 
 #include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace coro::http {

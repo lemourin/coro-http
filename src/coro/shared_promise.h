@@ -79,13 +79,13 @@ class SharedPromise {
                              F producer) {
     try {
       if constexpr (std::is_same_v<void, T>) {
-        co_await producer();
+        co_await std::move(producer)();
         shared_data->result = std::monostate();
       } else {
         if constexpr (std::is_reference_v<T>) {
-          shared_data->result = &co_await producer();
+          shared_data->result = &co_await std::move(producer)();
         } else {
-          shared_data->result = co_await producer();
+          shared_data->result = co_await std::move(producer)();
         }
       }
     } catch (...) {

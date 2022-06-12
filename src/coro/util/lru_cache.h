@@ -97,7 +97,7 @@ class LRUCache {
   }
 
   struct ProduceValue {
-    Task<Value> operator()() {
+    Task<Value> operator()() && {
       auto result = co_await d->factory_(key, std::move(stop_token));
       d->Insert(key, result);
       co_return result;

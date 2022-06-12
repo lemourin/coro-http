@@ -439,7 +439,7 @@ Task<> ListenerCallback(HttpServerContext* server_context,
       server_context->current_connections--;
       if (server_context->quitting &&
           server_context->current_connections == 0) {
-        evuser_trigger(server_context->quit_event.get());
+        OnQuit(server_context);
       }
     });
     stdx::stop_callback stop_callback1(
@@ -448,7 +448,8 @@ Task<> ListenerCallback(HttpServerContext* server_context,
     stdx::stop_callback stop_callback2(context.stop_source.get_token(), [&] {
       context.semaphore.SetException(HttpException(HttpException::kAborted));
     });
-    auto bev = CreateBufferEvent(server_context->event_loop, fd, &context);
+    auto bev = CreateBufferEvent(GetEventLoop(*server_context->event_loop), fd,
+                                 &context);
     while (true) {
       bool success = co_await HandleRequest(server_context->on_request,
                                             &context, bev.get());
@@ -489,14 +490,8 @@ std::unique_ptr<evconnlistener, EvconnListenerDeleter> CreateListener(
 
 std::unique_ptr<evconnlistener, EvconnListenerDeleter> CreateListener(
     HttpServerContext* context, const HttpServerConfig& config) {
-  return CreateListener(context->event_loop, EvListenerCallback, context,
-                        config);
-}
-
-void OnQuit(evutil_socket_t, short, void* handle) {
-  auto context = reinterpret_cast<HttpServerContext*>(handle);
-  context->listener.reset();
-  context->quit_semaphore.SetValue();
+  return CreateListener(GetEventLoop(*context->event_loop), EvListenerCallback,
+                        context, config);
 }
 
 }  // namespace
@@ -515,15 +510,20 @@ uint16_t GetPort(evconnlistener* listener) {
   return ntohs(addr.sin_port);
 }
 
-void InitHttpServerContext(HttpServerContext* context, event_base* event_loop,
+void InitHttpServerContext(HttpServerContext* context,
+                           const coro::util::EventLoop* event_loop,
                            const HttpServerConfig& config,
                            OnRequest on_request) {
   context->event_loop = event_loop;
   context->on_request = std::move(on_request);
   context->listener = CreateListener(context, config);
-  context->quit_event.reset(event_new(event_loop, -1, 0, OnQuit, context));
 }
 
-void TriggerEvent(event* e) { evuser_trigger(e); }
+void OnQuit(HttpServerContext* context) {
+  context->event_loop->RunOnEventLoop([context] {
+    context->listener.reset();
+    context->quit_semaphore.SetValue();
+  });
+}
 
 }  // namespace coro::http::internal

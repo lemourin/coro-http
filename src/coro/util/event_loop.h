@@ -24,9 +24,15 @@ struct EventDeleter {
   void operator()(event*) const;
 };
 
+enum class EventLoopType {
+  ExitOnEmpty,
+  NoExitOnEmpty,
+};
+
 class EventLoop {
  public:
-  explicit EventLoop(event_base* event_loop) : event_loop_(event_loop) {}
+  EventLoop();
+  ~EventLoop();
 
   class WaitTask {
    public:
@@ -114,10 +120,18 @@ class EventLoop {
     return std::move(result).get_future().get();
   }
 
+  void EnterLoop(EventLoopType = EventLoopType::ExitOnEmpty);
+
+  void ExitLoop();
+
  private:
+  friend event_base* GetEventLoop(const EventLoop& e) {
+    return e.event_loop_.get();
+  }
+
   void RunOnce(stdx::any_invocable<void() &&>) const;
 
-  event_base* event_loop_;
+  std::unique_ptr<event_base, EventBaseDeleter> event_loop_;
 };
 
 }  // namespace coro::util

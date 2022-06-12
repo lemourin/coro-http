@@ -1,6 +1,5 @@
 #include "coro/http/http_server.h"
 
-#include <event2/event.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -63,7 +62,7 @@ class HttpServerTest : public ::testing::Test {
     RunTask([&]() -> Task<> {
       try {
         HttpServer<HttpHandlerT> http_server{
-            base_.get(), HttpServerConfig{.address = "127.0.0.1", .port = 0},
+            &event_loop_, HttpServerConfig{.address = "127.0.0.1", .port = 0},
             std::move(handler)};
         address_ = "http://127.0.0.1:" + std::to_string(http_server.GetPort());
         quit_ = [&] { return http_server.Quit(); };
@@ -77,7 +76,7 @@ class HttpServerTest : public ::testing::Test {
         exception = std::current_exception();
       }
     });
-    event_base_dispatch(base_.get());
+    event_loop_.EnterLoop();
     if (exception) {
       std::rethrow_exception(exception);
     }
@@ -98,7 +97,7 @@ class HttpServerTest : public ::testing::Test {
   const auto& last_request() const { return last_request_; }
 
  private:
-  std::unique_ptr<event_base, util::EventBaseDeleter> base_{event_base_new()};
+  coro::util::EventLoop event_loop_;
   std::optional<coro::http::Request<std::string>> last_request_;
   Response response_{
       .status = 200,
@@ -107,7 +106,7 @@ class HttpServerTest : public ::testing::Test {
   };
   std::optional<std::string> address_;
   std::function<Task<>()> quit_;
-  CurlHttp http_{base_.get(), std::nullopt};
+  CurlHttp http_{&event_loop_, std::nullopt};
 };
 
 TEST_F(HttpServerTest, SendsExpectedResponse) {

@@ -1,6 +1,7 @@
 #include "coro/util/event_loop.h"
 
 #include <event2/event.h>
+#include <event2/thread.h>
 
 #include <utility>
 
@@ -53,7 +54,7 @@ EventLoop::WaitTask::WaitTask(event_base *event_loop, int msec,
 
 EventLoop::WaitTask EventLoop::Wait(int msec,
                                     stdx::stop_token stop_token) const {
-  return WaitTask(event_loop_, msec, std::move(stop_token));
+  return WaitTask(event_loop_.get(), msec, std::move(stop_token));
 }
 
 void EventLoop::WaitTask::OnCancel::operator()() const {
@@ -71,7 +72,7 @@ void EventLoop::RunOnce(stdx::any_invocable<void() &&> f) const {
 
   auto *data = new F(std::move(f));
   if (event_base_once(
-          event_loop_, -1, EV_TIMEOUT,
+          event_loop_.get(), -1, EV_TIMEOUT,
           [](evutil_socket_t, short, void *d) {
             std::unique_ptr<F> data(static_cast<F *>(d));
             std::move (*data)();
@@ -79,6 +80,43 @@ void EventLoop::RunOnce(stdx::any_invocable<void() &&> f) const {
           data, nullptr) != 0) {
     delete data;
     throw std::runtime_error("can't run on event loop");
+  }
+}
+
+EventLoop::EventLoop()
+    : event_loop_([] {
+        static bool init_status = [] {
+#ifdef WIN32
+          WORD version_requested = MAKEWORD(2, 2);
+          WSADATA wsa_data;
+          (void)WSAStartup(version_requested, &wsa_data);
+          return evthread_use_windows_threads();
+#else
+          return evthread_use_pthreads();
+#endif
+        }();
+        return event_base_new();
+      }()) {
+}
+
+EventLoop::~EventLoop() = default;
+
+void EventLoop::EnterLoop(EventLoopType type) {
+  if (event_base_loop(event_loop_.get(), [&] {
+        switch (type) {
+          case EventLoopType::NoExitOnEmpty:
+            return EVLOOP_NO_EXIT_ON_EMPTY;
+          case EventLoopType::ExitOnEmpty:
+            return 0;
+        }
+      }()) < 0) {
+    throw std::runtime_error("event_base_loop error");
+  }
+}
+
+void EventLoop::ExitLoop() {
+  if (event_base_loopexit(event_loop_.get(), nullptr) != 0) {
+    throw std::runtime_error("event_base_loopexit error");
   }
 }
 

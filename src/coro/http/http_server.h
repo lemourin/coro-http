@@ -10,17 +10,15 @@
 #include "coro/http/http_parse.h"
 #include "coro/promise.h"
 #include "coro/stdx/any_invocable.h"
+#include "coro/stdx/concepts.h"
 #include "coro/stdx/stop_callback.h"
 #include "coro/stdx/stop_source.h"
 #include "coro/task.h"
-#include "coro/stdx/concepts.h"
 #include "coro/util/event_loop.h"
 #include "coro/util/function_traits.h"
 #include "coro/util/raii_utils.h"
 
-struct event_base;
 struct evconnlistener;
-struct bufferevent;
 
 namespace coro::http {
 
@@ -54,20 +52,19 @@ using OnRequest =
 uint16_t GetPort(evconnlistener*);
 
 struct HttpServerContext {
-  event_base* event_loop;
+  const coro::util::EventLoop* event_loop;
   bool quitting;
   int current_connections;
   stdx::stop_source stop_source;
-  std::unique_ptr<event, coro::util::EventDeleter> quit_event;
   OnRequest on_request;
   Promise<void> quit_semaphore;
   std::unique_ptr<evconnlistener, EvconnListenerDeleter> listener;
 };
 
-void InitHttpServerContext(HttpServerContext*, event_base*,
+void InitHttpServerContext(HttpServerContext*, const coro::util::EventLoop*,
                            const HttpServerConfig&, OnRequest);
 
-void TriggerEvent(event*);
+void OnQuit(HttpServerContext*);
 
 }  // namespace internal
 
@@ -75,8 +72,8 @@ template <Handler HandlerType>
 class HttpServer {
  public:
   template <typename... Args>
-  HttpServer(event_base* event_loop, const HttpServerConfig& config,
-             Args&&... args)
+  HttpServer(const coro::util::EventLoop* event_loop,
+             const HttpServerConfig& config, Args&&... args)
       : on_request_(std::forward<Args>(args)...) {
     internal::InitHttpServerContext(
         &context_, event_loop, config,
@@ -104,7 +101,7 @@ class HttpServer {
     context_.quitting = true;
     context_.stop_source.request_stop();
     if (context_.current_connections == 0) {
-      internal::TriggerEvent(context_.quit_event.get());
+      internal::OnQuit(&context_);
     }
     if constexpr (HasQuit<HandlerType>) {
       co_await on_request_.Quit();

@@ -7,12 +7,6 @@
 #include "coro/stdx/stop_source.h"
 #include "coro/util/event_loop.h"
 
-#ifdef WIN32
-#include <winsock2.h>
-#endif
-
-#include <event2/event.h>
-
 class CancelRequest {
  public:
   CancelRequest(const coro::util::EventLoop &event_loop,
@@ -36,12 +30,11 @@ class CancelRequest {
   coro::stdx::stop_source timeout_stop_source_;
 };
 
-coro::Task<> CoMain(event_base *event_base) noexcept {
+coro::Task<> CoMain(const coro::util::EventLoop *event_loop) noexcept {
   try {
-    coro::http::CurlHttp http(event_base, std::nullopt);
-    coro::util::EventLoop event_loop(event_base);
+    coro::http::CurlHttp http(event_loop, std::nullopt);
     coro::stdx::stop_source stop_source;
-    CancelRequest cancel_request(event_loop, stop_source);
+    CancelRequest cancel_request(*event_loop, stop_source);
 
     coro::http::Response response =
         co_await http.Fetch("https://samples.ffmpeg.org/Matroska/haruhi.mkv",
@@ -55,7 +48,7 @@ coro::Task<> CoMain(event_base *event_base) noexcept {
     std::size_t size = 0;
     FOR_CO_AWAIT(const std::string &bytes, response.body) {
       std::cerr << "awaiting...\n";
-      co_await event_loop.Wait(1000, stop_source.get_token());
+      co_await event_loop->Wait(1000, stop_source.get_token());
       std::cerr << "bytes:" << bytes.size() << "\n";
       size += bytes.size();
     }
@@ -71,20 +64,12 @@ coro::Task<> CoMain(event_base *event_base) noexcept {
 }
 
 int main() {
-#ifdef _WIN32
-  WORD version_requested = MAKEWORD(2, 2);
-  WSADATA wsa_data;
-
-  (void)WSAStartup(version_requested, &wsa_data);
-#endif
-
 #ifdef SIGPIPE
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-  std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
-      event_base_new());
-  coro::RunTask(CoMain(base.get()));
-  event_base_dispatch(base.get());
+  coro::util::EventLoop event_loop;
+  coro::RunTask(CoMain(&event_loop));
+  event_loop.EnterLoop();
   return 0;
 }

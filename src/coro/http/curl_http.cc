@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "coro/http/http_body_generator.h"
 #include "coro/interrupted_exception.h"
@@ -751,9 +752,9 @@ struct CurlHttpBase::Impl {
   CurlHttpImpl impl;
 };
 
-CurlHttpBase::CurlHttpBase(event_base* event_loop,
+CurlHttpBase::CurlHttpBase(const coro::util::EventLoop* event_loop,
                            std::optional<std::string> cache_path)
-    : d_(new Impl{{event_loop, cache_path}}) {}
+    : d_(new Impl{{GetEventLoop(*event_loop), cache_path}}) {}
 
 CurlHttpBase::~CurlHttpBase() = default;
 

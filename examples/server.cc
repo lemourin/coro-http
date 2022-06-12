@@ -1,5 +1,3 @@
-#include <event2/event.h>
-
 #include <csignal>
 #include <memory>
 
@@ -9,10 +7,6 @@
 #include "coro/http/http_server.h"
 #include "coro/util/event_loop.h"
 #include "coro/util/raii_utils.h"
-
-#ifdef _WIN32
-#include <winsock2.h>
-#endif
 
 constexpr const char *kUrl =
     R"(http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)";
@@ -45,27 +39,19 @@ class HttpHandler {
 };
 
 int main() {
-#ifdef _WIN32
-  WORD version_requested = MAKEWORD(2, 2);
-  WSADATA wsa_data;
-
-  (void)WSAStartup(version_requested, &wsa_data);
-#endif
-
 #ifdef SIGPIPE
   signal(SIGPIPE, SIG_IGN);
 #endif
 
-  std::unique_ptr<event_base, coro::util::EventBaseDeleter> base(
-      event_base_new());
-  coro::RunTask([base = base.get()]() -> coro::Task<> {
-    coro::http::HttpImpl<coro::http::CurlHttp> http(base, std::nullopt);
+  coro::util::EventLoop event_loop;
+  coro::RunTask([&]() -> coro::Task<> {
+    coro::http::HttpImpl<coro::http::CurlHttp> http(&event_loop, std::nullopt);
     coro::Promise<void> semaphore;
     coro::http::HttpServer<HttpHandler> http_server(
-        base, {.address = "127.0.0.1", .port = 4444}, &http, &semaphore);
+        &event_loop, {.address = "127.0.0.1", .port = 4444}, &http, &semaphore);
     co_await semaphore;
     co_await http_server.Quit();
   });
-  event_base_dispatch(base.get());
+  event_loop.EnterLoop();
   return 0;
 }

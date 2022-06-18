@@ -1,4 +1,4 @@
-#include "coro/http/http_server.h"
+#include "coro/http/http_server_context.h"
 
 #ifndef WIN32
 #include <arpa/inet.h>
@@ -6,13 +6,14 @@
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
-#include <event2/event_struct.h>
 #include <event2/listener.h>
 
 #include <algorithm>
 #include <string>
 #include <utility>
 
+#include "coro/stdx/stop_callback.h"
+#include "coro/util/raii_utils.h"
 #include "coro/util/regex.h"
 
 namespace coro::http::internal {
@@ -299,7 +300,7 @@ std::string GetChunk(std::string_view chunk) {
   return std::move(stream).str();
 }
 
-Task<Response<>> GetResponse(const OnRequest& on_request,
+Task<Response<>> GetResponse(const HttpServerContext::OnRequest& on_request,
                              RequestContext* context, bufferevent* bev) {
   context->url.clear();
   context->method = Method::kGet;
@@ -342,8 +343,8 @@ Task<> WriteMessage(RequestContext* context, bufferevent* bev, int status,
   }
 }
 
-Task<bool> HandleRequest(const OnRequest& on_request, RequestContext* context,
-                         bufferevent* bev) {
+Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
+                         RequestContext* context, bufferevent* bev) {
   std::optional<int> error_status;
   std::optional<std::string> error_message;
   try {
@@ -431,28 +432,28 @@ Task<> ListenerCallback(HttpServerContext* server_context,
                         struct sockaddr*, int socklen) noexcept {
   RequestContext context{};
   try {
-    if (server_context->quitting) {
+    if (server_context->quitting()) {
       co_return;
     }
-    server_context->current_connections++;
+    server_context->IncreaseCurrentConnections();
     auto scope_guard = util::AtScopeExit([&] {
-      server_context->current_connections--;
-      if (server_context->quitting &&
-          server_context->current_connections == 0) {
-        OnQuit(server_context);
+      server_context->DecreaseCurrentConnections();
+      if (server_context->quitting() &&
+          server_context->current_connections() == 0) {
+        server_context->OnQuit();
       }
     });
-    stdx::stop_callback stop_callback1(
-        server_context->stop_source.get_token(),
-        [&] { context.stop_source.request_stop(); });
+    stdx::stop_callback stop_callback1(server_context->stop_token(), [&] {
+      context.stop_source.request_stop();
+    });
     stdx::stop_callback stop_callback2(context.stop_source.get_token(), [&] {
       context.semaphore.SetException(HttpException(HttpException::kAborted));
     });
-    auto bev = CreateBufferEvent(reinterpret_cast<event_base*>(
-                                     GetEventLoop(*server_context->event_loop)),
+    auto bev = CreateBufferEvent(reinterpret_cast<event_base*>(GetEventLoop(
+                                     *server_context->event_loop())),
                                  fd, &context);
     while (true) {
-      bool success = co_await HandleRequest(server_context->on_request,
+      bool success = co_await HandleRequest(server_context->on_request(),
                                             &context, bev.get());
       if (success) {
         break;
@@ -493,7 +494,7 @@ std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
 std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
     HttpServerContext* context, const HttpServerConfig& config) {
   return CreateListener(
-      reinterpret_cast<event_base*>(GetEventLoop(*context->event_loop)),
+      reinterpret_cast<event_base*>(GetEventLoop(*context->event_loop())),
       EvListenerCallback, context, config);
 }
 
@@ -505,29 +506,40 @@ void EvconnListenerDeleter::operator()(EvconnListener* listener) const {
   }
 }
 
-uint16_t GetPort(EvconnListener* listener) {
+HttpServerContext::HttpServerContext(const coro::util::EventLoop* event_loop,
+                                     const HttpServerConfig& config,
+                                     OnRequest on_request)
+    : event_loop_(event_loop),
+      on_request_(std::move(on_request)),
+      listener_(CreateListener(this, config)) {}
+
+uint16_t HttpServerContext::GetPort() const {
   sockaddr_in addr;
   socklen_t length = sizeof(addr);
   Check(getsockname(
-      evconnlistener_get_fd(reinterpret_cast<evconnlistener*>(listener)),
+      evconnlistener_get_fd(reinterpret_cast<evconnlistener*>(listener_.get())),
       reinterpret_cast<sockaddr*>(&addr), &length));
   return ntohs(addr.sin_port);
 }
 
-void InitHttpServerContext(HttpServerContext* context,
-                           const coro::util::EventLoop* event_loop,
-                           const HttpServerConfig& config,
-                           OnRequest on_request) {
-  context->event_loop = event_loop;
-  context->on_request = std::move(on_request);
-  context->listener = CreateListener(context, config);
+void HttpServerContext::OnQuit() {
+  event_loop_->RunOnEventLoop([this] {
+    listener_.reset();
+    quit_semaphore_.SetValue();
+  });
 }
 
-void OnQuit(HttpServerContext* context) {
-  context->event_loop->RunOnEventLoop([context] {
-    context->listener.reset();
-    context->quit_semaphore.SetValue();
-  });
+Task<> HttpServerContext::Quit(Task<> on_quit) noexcept {
+  if (quitting_) {
+    co_return;
+  }
+  quitting_ = true;
+  stop_source_.request_stop();
+  if (current_connections_ == 0) {
+    OnQuit();
+  }
+  co_await std::move(on_quit);
+  co_await quit_semaphore_;
 }
 
 }  // namespace coro::http::internal

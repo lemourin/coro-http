@@ -35,7 +35,8 @@ target_sources(coro-http PRIVATE
     coro/http/http.cc
     coro/http/curl_http.h
     coro/http/http_server.h
-    coro/http/http_server.cc
+    coro/http/http_server_context.h
+    coro/http/http_server_context.cc
     coro/http/http_parse.h
     coro/http/curl_http.cc
     coro/http/http_parse.cc

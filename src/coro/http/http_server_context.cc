@@ -534,8 +534,8 @@ Task<> HttpServerContext::Quit(Task<> on_quit) {
   if (quitting_) {
     co_return;
   }
-  quitting_ = true;
   stop_source_.request_stop();
+  quitting_ = true;
   if (current_connections_ == 0) {
     OnQuit();
   }

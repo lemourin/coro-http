@@ -9,6 +9,7 @@
 #include <event2/listener.h>
 
 #include <algorithm>
+#include <sstream>
 #include <string>
 #include <utility>
 

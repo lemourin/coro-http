@@ -7,20 +7,35 @@
 
 namespace coro::util {
 
-void EventBaseDeleter::operator()(event_base *event_base) const {
+namespace {
+
+template <typename T>
+event_base *ToEventBase(T *d) {
+  return reinterpret_cast<struct event_base *>(d);
+}
+
+template <typename T>
+event *ToEvent(T *d) {
+  return reinterpret_cast<struct event *>(d);
+}
+
+}  // namespace
+
+void EventLoop::EventBaseDeleter::operator()(EventBase *event_base) const {
   if (event_base) {
-    event_base_free(event_base);
+    event_base_free(ToEventBase(event_base));
   }
 }
 
-void EventDeleter::operator()(event *e) const {
+void EventLoop::EventDeleter::operator()(Event *e) const {
   if (e) {
-    event_free(e);
+    event_free(reinterpret_cast<struct event *>(e));
   }
 }
 
 bool EventLoop::WaitTask::await_ready() {
-  return interrupted_ || !event_pending(event_.get(), EV_TIMEOUT, nullptr);
+  return interrupted_ ||
+         !event_pending(ToEvent(event_.get()), EV_TIMEOUT, nullptr);
 }
 
 void EventLoop::WaitTask::await_suspend(stdx::coroutine_handle<void> handle) {
@@ -33,22 +48,22 @@ void EventLoop::WaitTask::await_resume() {
   }
 }
 
-EventLoop::WaitTask::WaitTask(event_base *event_loop, int msec,
+EventLoop::WaitTask::WaitTask(EventBase *event_loop, int msec,
                               stdx::stop_token stop_token)
     : stop_token_(std::move(stop_token)),
       stop_callback_(stop_token_, OnCancel{this}) {
   if (!interrupted_) {
     timeval tv = {.tv_sec = msec / 1000, .tv_usec = msec % 1000 * 1000};
-    event_.reset(event_new(
-        event_loop, -1, EV_TIMEOUT,
+    event_.reset(reinterpret_cast<Event *>(event_new(
+        ToEventBase(event_loop), -1, EV_TIMEOUT,
         [](evutil_socket_t, short, void *data) {
           auto *task = reinterpret_cast<WaitTask *>(data);
           if (task->handle_) {
             std::exchange(task->handle_, nullptr).resume();
           }
         },
-        this));
-    event_add(event_.get(), &tv);
+        this)));
+    event_add(ToEvent(event_.get()), &tv);
   }
 }
 
@@ -60,7 +75,7 @@ EventLoop::WaitTask EventLoop::Wait(int msec,
 void EventLoop::WaitTask::OnCancel::operator()() const {
   task->interrupted_ = true;
   if (task->event_) {
-    event_del(task->event_.get());
+    event_del(ToEvent(task->event_.get()));
   }
   if (task->handle_) {
     std::exchange(task->handle_, nullptr).resume();
@@ -72,7 +87,7 @@ void EventLoop::RunOnce(stdx::any_invocable<void() &&> f) const {
 
   auto *data = new F(std::move(f));
   if (event_base_once(
-          event_loop_.get(), -1, EV_TIMEOUT,
+          ToEventBase(event_loop_.get()), -1, EV_TIMEOUT,
           [](evutil_socket_t, short, void *d) {
             std::unique_ptr<F> data(static_cast<F *>(d));
             std::move (*data)();
@@ -85,24 +100,34 @@ void EventLoop::RunOnce(stdx::any_invocable<void() &&> f) const {
 
 EventLoop::EventLoop()
     : event_loop_([] {
-        static bool init_status = [] {
 #ifdef WIN32
-          WORD version_requested = MAKEWORD(2, 2);
-          WSADATA wsa_data;
-          (void)WSAStartup(version_requested, &wsa_data);
-          return evthread_use_windows_threads();
+        WORD version_requested = MAKEWORD(2, 2);
+        WSADATA wsa_data;
+        if (WSAStartup(version_requested, &wsa_data) != 0) {
+          throw std::runtime_error("WSAStartup error");
+        }
+        if (evthread_use_windows_threads() != 0) {
+          throw std::runtime_error("evthread_use_windows_threads error");
+        }
 #else
-          return evthread_use_pthreads();
+        if (evthread_use_pthreads() != 0) {
+          throw std::runtime_error("evthread_use_pthreads error");
+        }
 #endif
-        }();
-        return event_base_new();
+        return reinterpret_cast<EventBase *>(event_base_new());
       }()) {
 }
 
-EventLoop::~EventLoop() = default;
+EventLoop::~EventLoop() {
+#ifdef WIN32
+  if (WSACleanup() != 0) {
+    std::terminate();
+  }
+#endif
+}
 
 void EventLoop::EnterLoop(EventLoopType type) {
-  if (event_base_loop(event_loop_.get(), [&] {
+  if (event_base_loop(ToEventBase(event_loop_.get()), [&] {
         switch (type) {
           case EventLoopType::NoExitOnEmpty:
             return EVLOOP_NO_EXIT_ON_EMPTY;
@@ -115,7 +140,7 @@ void EventLoop::EnterLoop(EventLoopType type) {
 }
 
 void EventLoop::ExitLoop() {
-  if (event_base_loopexit(event_loop_.get(), nullptr) != 0) {
+  if (event_base_loopexit(ToEventBase(event_loop_.get()), nullptr) != 0) {
     throw std::runtime_error("event_base_loopexit error");
   }
 }

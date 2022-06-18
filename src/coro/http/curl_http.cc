@@ -675,7 +675,9 @@ struct CurlHttpBase::Impl {
 
 CurlHttpBase::CurlHttpBase(const coro::util::EventLoop* event_loop,
                            std::optional<std::string> cache_path)
-    : d_(new Impl{{GetEventLoop(*event_loop), cache_path}}) {}
+    : d_(new Impl{
+          {reinterpret_cast<struct event_base*>(GetEventLoop(*event_loop)),
+           cache_path}}) {}
 
 CurlHttpBase::~CurlHttpBase() = default;
 

@@ -448,8 +448,9 @@ Task<> ListenerCallback(HttpServerContext* server_context,
     stdx::stop_callback stop_callback2(context.stop_source.get_token(), [&] {
       context.semaphore.SetException(HttpException(HttpException::kAborted));
     });
-    auto bev = CreateBufferEvent(GetEventLoop(*server_context->event_loop), fd,
-                                 &context);
+    auto bev = CreateBufferEvent(reinterpret_cast<event_base*>(
+                                     GetEventLoop(*server_context->event_loop)),
+                                 fd, &context);
     while (true) {
       bool success = co_await HandleRequest(server_context->on_request,
                                             &context, bev.get());
@@ -468,7 +469,7 @@ void EvListenerCallback(struct evconnlistener* listener, evutil_socket_t socket,
   RunTask(ListenerCallback(context, listener, socket, addr, socklen));
 }
 
-std::unique_ptr<evconnlistener, EvconnListenerDeleter> CreateListener(
+std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
     event_base* event_loop, evconnlistener_cb cb, void* userdata,
     const HttpServerConfig& config) {
   union {
@@ -485,28 +486,31 @@ std::unique_ptr<evconnlistener, EvconnListenerDeleter> CreateListener(
   if (listener == nullptr) {
     throw HttpException(HttpException::kUnknown, "http server error");
   }
-  return std::unique_ptr<evconnlistener, EvconnListenerDeleter>(listener);
+  return std::unique_ptr<EvconnListener, EvconnListenerDeleter>(
+      reinterpret_cast<EvconnListener*>(listener));
 }
 
-std::unique_ptr<evconnlistener, EvconnListenerDeleter> CreateListener(
+std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
     HttpServerContext* context, const HttpServerConfig& config) {
-  return CreateListener(GetEventLoop(*context->event_loop), EvListenerCallback,
-                        context, config);
+  return CreateListener(
+      reinterpret_cast<event_base*>(GetEventLoop(*context->event_loop)),
+      EvListenerCallback, context, config);
 }
 
 }  // namespace
 
-void EvconnListenerDeleter::operator()(evconnlistener* listener) const {
+void EvconnListenerDeleter::operator()(EvconnListener* listener) const {
   if (listener) {
-    evconnlistener_free(listener);
+    evconnlistener_free(reinterpret_cast<evconnlistener*>(listener));
   }
 }
 
-uint16_t GetPort(evconnlistener* listener) {
+uint16_t GetPort(EvconnListener* listener) {
   sockaddr_in addr;
   socklen_t length = sizeof(addr);
-  Check(getsockname(evconnlistener_get_fd(listener),
-                    reinterpret_cast<sockaddr*>(&addr), &length));
+  Check(getsockname(
+      evconnlistener_get_fd(reinterpret_cast<evconnlistener*>(listener)),
+      reinterpret_cast<sockaddr*>(&addr), &length));
   return ntohs(addr.sin_port);
 }
 

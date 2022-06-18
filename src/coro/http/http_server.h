@@ -18,22 +18,20 @@
 #include "coro/util/function_traits.h"
 #include "coro/util/raii_utils.h"
 
-struct evconnlistener;
-
 namespace coro::http {
 
 template <typename T>
-concept Handler = requires(T v, Request<> request,
-                           stdx::stop_token stop_token) {
-  {
-    v(std::move(request), stop_token).await_resume()
-    } -> stdx::same_as<Response<>>;
-};
+concept Handler =
+    requires(T v, Request<> request, stdx::stop_token stop_token) {
+      {
+        v(std::move(request), stop_token).await_resume()
+        } -> stdx::same_as<Response<>>;
+    };
 
 template <typename T>
 concept HasQuit = requires(T v) {
-  { v.Quit() } -> Awaitable<void>;
-};
+                    { v.Quit() } -> Awaitable<void>;
+                  };
 
 struct HttpServerConfig {
   std::string address;
@@ -42,14 +40,14 @@ struct HttpServerConfig {
 
 namespace internal {
 
+struct EvconnListener;
+
 struct EvconnListenerDeleter {
-  void operator()(evconnlistener* listener) const;
+  void operator()(EvconnListener* listener) const;
 };
 
 using OnRequest =
     stdx::any_invocable<Task<Response<>>(Request<>, stdx::stop_token) const>;
-
-uint16_t GetPort(evconnlistener*);
 
 struct HttpServerContext {
   const coro::util::EventLoop* event_loop;
@@ -58,8 +56,10 @@ struct HttpServerContext {
   stdx::stop_source stop_source;
   OnRequest on_request;
   Promise<void> quit_semaphore;
-  std::unique_ptr<evconnlistener, EvconnListenerDeleter> listener;
+  std::unique_ptr<EvconnListener, EvconnListenerDeleter> listener;
 };
+
+uint16_t GetPort(EvconnListener*);
 
 void InitHttpServerContext(HttpServerContext*, const coro::util::EventLoop*,
                            const HttpServerConfig&, OnRequest);

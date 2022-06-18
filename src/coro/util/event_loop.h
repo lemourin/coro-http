@@ -11,18 +11,7 @@
 #include "coro/stdx/stop_token.h"
 #include "coro/task.h"
 
-struct event_base;
-struct event;
-
 namespace coro::util {
-
-struct EventBaseDeleter {
-  void operator()(event_base* event_base) const;
-};
-
-struct EventDeleter {
-  void operator()(event*) const;
-};
 
 enum class EventLoopType {
   ExitOnEmpty,
@@ -31,35 +20,10 @@ enum class EventLoopType {
 
 class EventLoop {
  public:
+  class WaitTask;
+
   EventLoop();
   ~EventLoop();
-
-  class WaitTask {
-   public:
-    WaitTask(event_base* event_loop, int msec, stdx::stop_token);
-
-    WaitTask(const WaitTask&) = delete;
-    WaitTask(WaitTask&&) = delete;
-
-    WaitTask& operator=(const WaitTask&) = delete;
-    WaitTask& operator=(WaitTask&&) = delete;
-
-    bool await_ready();
-    void await_suspend(stdx::coroutine_handle<void> handle);
-    void await_resume();
-
-   private:
-    struct OnCancel {
-      void operator()() const;
-      WaitTask* task;
-    };
-
-    stdx::coroutine_handle<void> handle_;
-    std::unique_ptr<event, EventDeleter> event_;
-    stdx::stop_token stop_token_;
-    bool interrupted_ = false;
-    stdx::stop_callback<OnCancel> stop_callback_;
-  };
 
   WaitTask Wait(int msec, stdx::stop_token = stdx::stop_token()) const;
 
@@ -125,13 +89,51 @@ class EventLoop {
   void ExitLoop();
 
  private:
-  friend event_base* GetEventLoop(const EventLoop& e) {
+  struct EventBase;
+  struct Event;
+
+  struct EventBaseDeleter {
+    void operator()(EventBase* event_base) const;
+  };
+
+  struct EventDeleter {
+    void operator()(Event*) const;
+  };
+
+  friend EventBase* GetEventLoop(const EventLoop& e) {
     return e.event_loop_.get();
   }
 
   void RunOnce(stdx::any_invocable<void() &&>) const;
 
-  std::unique_ptr<event_base, EventBaseDeleter> event_loop_;
+  std::unique_ptr<EventBase, EventBaseDeleter> event_loop_;
+};
+
+class EventLoop::WaitTask {
+ public:
+  WaitTask(EventBase* event_loop, int msec, stdx::stop_token);
+
+  WaitTask(const WaitTask&) = delete;
+  WaitTask(WaitTask&&) = delete;
+
+  WaitTask& operator=(const WaitTask&) = delete;
+  WaitTask& operator=(WaitTask&&) = delete;
+
+  bool await_ready();
+  void await_suspend(stdx::coroutine_handle<void> handle);
+  void await_resume();
+
+ private:
+  struct OnCancel {
+    void operator()() const;
+    WaitTask* task;
+  };
+
+  stdx::coroutine_handle<void> handle_;
+  std::unique_ptr<Event, EventDeleter> event_;
+  stdx::stop_token stop_token_;
+  bool interrupted_ = false;
+  stdx::stop_callback<OnCancel> stop_callback_;
 };
 
 }  // namespace coro::util

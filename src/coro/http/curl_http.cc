@@ -65,12 +65,12 @@ void Check(int code) {
   }
 }
 
+class CurlHttpImpl;
+class CurlHttpOperation;
+class CurlHttpBodyGenerator;
+
 class CurlHandle {
  public:
-  friend class CurlHttpImpl;
-  friend class CurlHttpOperation;
-  friend class CurlHttpBodyGenerator;
-
   using Owner = std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*>;
 
   CurlHandle(CURLM* http, event_base* event_loop, Request<>,
@@ -79,6 +79,10 @@ class CurlHandle {
   ~CurlHandle();
 
  private:
+  friend class CurlHttpImpl;
+  friend class CurlHttpOperation;
+  friend class CurlHttpBodyGenerator;
+
   struct OnCancel {
     void operator()() const;
     CurlHandle* data;

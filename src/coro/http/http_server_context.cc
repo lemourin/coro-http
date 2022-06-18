@@ -530,7 +530,7 @@ void HttpServerContext::OnQuit() {
   });
 }
 
-Task<> HttpServerContext::Quit(Task<> on_quit) noexcept {
+Task<> HttpServerContext::Quit(Task<> on_quit) {
   if (quitting_) {
     co_return;
   }

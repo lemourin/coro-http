@@ -33,7 +33,7 @@ class HttpServerContext {
   uint16_t GetPort() const;
 
   void OnQuit();
-  Task<> Quit(Task<> on_quit) noexcept;
+  Task<> Quit(Task<> on_quit);
 
   void IncreaseCurrentConnections() { current_connections_++; }
   void DecreaseCurrentConnections() { current_connections_--; }

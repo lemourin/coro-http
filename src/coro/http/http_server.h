@@ -10,17 +10,17 @@
 namespace coro::http {
 
 template <typename T>
-concept Handler =
-    requires(T v, Request<> request, stdx::stop_token stop_token) {
-      {
-        v(std::move(request), stop_token).await_resume()
-        } -> stdx::same_as<Response<>>;
-    };
+concept Handler = requires(T v, Request<> request,
+                           stdx::stop_token stop_token) {
+  {
+    v(std::move(request), stop_token).await_resume()
+    } -> stdx::same_as<Response<>>;
+};
 
 template <typename T>
 concept HasQuit = requires(T v) {
-                    { v.Quit() } -> Awaitable<void>;
-                  };
+  { v.Quit() } -> Awaitable<void>;
+};
 
 template <Handler HandlerType>
 class HttpServer {
@@ -64,7 +64,9 @@ uint16_t HttpServer<HandlerType>::GetPort() const {
 template <Handler HandlerType>
 Task<> HttpServer<HandlerType>::Quit() noexcept {
   if constexpr (HasQuit<HandlerType>) {
-    return context_.Quit([this]() -> Task<> { co_await on_request_.Quit(); }());
+    return context_.Quit([](HandlerType* on_request) -> Task<> {
+      co_await on_request->Quit();
+    }(&on_request_));
   } else {
     return context_.Quit([]() -> Task<> { co_return; }());
   }

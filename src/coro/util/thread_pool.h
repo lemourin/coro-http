@@ -20,7 +20,8 @@ class ThreadPool {
  public:
   explicit ThreadPool(
       const EventLoop* event_loop,
-      unsigned int thread_count = std::thread::hardware_concurrency());
+      unsigned int thread_count = std::thread::hardware_concurrency(),
+      std::string name = "coro-tpool");
   ~ThreadPool();
 
   ThreadPool(const ThreadPool&) = delete;
@@ -53,7 +54,7 @@ class ThreadPool {
   }
 
  private:
-  void Work() ;
+  void Work();
   Task<> SwitchToThreadLoop();
   Task<> SwitchToEventLoop();
 
@@ -63,6 +64,7 @@ class ThreadPool {
   std::condition_variable condition_variable_;
   std::mutex mutex_;
   const EventLoop* event_loop_;
+  std::string name_;
 };
 
 }  // namespace coro::util

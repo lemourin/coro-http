@@ -54,15 +54,41 @@ void SetThreadNameImpl(const std::string& name) {
 #endif
 }
 
+int GetDigitCount(unsigned int d) {
+  int result = 0;
+  while (d > 0) {
+    d /= 10;
+    result++;
+  }
+  return result;
+}
+
+std::string PadValue(unsigned int d, int cnt) {
+  std::string result(cnt, '0');
+  int index = cnt - 1;
+  while (d > 0) {
+    result[index--] = static_cast<char>((d % 10) + '0');
+    d /= 10;
+  }
+  return result;
+}
+
 }  // namespace
 
-ThreadPool::ThreadPool(
-    const EventLoop* event_loop,
-    unsigned int thread_count)
-    : event_loop_(event_loop) {
-  for (unsigned int i = 0; i < std::max<unsigned int>(thread_count, 2u);
-       i++) {
-    threads_.emplace_back([&] { Work(); });
+void SetThreadName(std::string_view name) {
+  SetThreadNameImpl(std::string(name));
+}
+
+ThreadPool::ThreadPool(const EventLoop* event_loop, unsigned int thread_count,
+                       std::string name)
+    : event_loop_(event_loop), name_(std::move(name)) {
+  thread_count = std::max<unsigned int>(thread_count, 2u);
+  const int cnt = GetDigitCount(thread_count);
+  for (unsigned int i = 0; i < thread_count; i++) {
+    threads_.emplace_back([&, i, cnt] {
+      SetThreadName(name_ + "-" + PadValue(i, cnt));
+      Work();
+    });
   }
 }
 
@@ -77,12 +103,7 @@ ThreadPool::~ThreadPool() {
   }
 }
 
-void SetThreadName(std::string_view name) {
-  SetThreadNameImpl(std::string(name));
-}
-
 void ThreadPool::Work() {
-  SetThreadName("coro-threadpool");
   while (true) {
     std::unique_lock lock(mutex_);
     condition_variable_.wait(lock, [&] { return !tasks_.empty() || quit_; });

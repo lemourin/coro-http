@@ -33,6 +33,8 @@ std::string DecodeUri(std::string_view uri);
 std::string EncodeUri(std::string_view uri);
 std::string EncodeUriPath(std::string_view uri);
 
+std::string ToString(const Uri&);
+
 time_t timegm(const std::tm&);
 std::tm gmtime(time_t time);
 

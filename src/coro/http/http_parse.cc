@@ -125,6 +125,56 @@ std::string EncodeUriPath(std::string_view uri) {
   return result;
 }
 
+std::string ToString(const Uri& uri) {
+  std::unique_ptr<evhttp_uri, EvHttpUriDeleter> d(evhttp_uri_new());
+  if (!d) {
+    throw HttpException(-1, "evhttp_uri_new failed");
+  }
+  evhttp_uri_set_flags(d.get(), EVHTTP_URI_NONCONFORMANT);
+  if (uri.scheme) {
+    if (evhttp_uri_set_scheme(d.get(), uri.scheme->c_str()) != 0) {
+      throw HttpException(-1, "evhttp_uri_set_scheme error");
+    }
+  }
+  if (uri.userinfo) {
+    if (evhttp_uri_set_userinfo(d.get(), uri.userinfo->c_str()) != 0) {
+      throw HttpException(-1, "evhttp_uri_set_userinfo error");
+    }
+  }
+  if (uri.host) {
+    if (evhttp_uri_set_host(d.get(), uri.host->c_str()) != 0) {
+      throw HttpException(-1, "evhttp_uri_set_host error");
+    }
+  }
+  if (uri.port) {
+    if (evhttp_uri_set_port(d.get(), *uri.port) != 0) {
+      throw HttpException(-1, "evhttp_uri_set_port error");
+    }
+  }
+  if (uri.path) {
+    if (evhttp_uri_set_path(d.get(), uri.path->c_str()) != 0) {
+      throw HttpException(-1, "evhttp_uri_set_path error");
+    }
+  }
+  if (uri.query) {
+    if (evhttp_uri_set_query(d.get(), uri.query->c_str()) != 0) {
+      throw HttpException(-1, "evhttp_uri_set_query error");
+    }
+  }
+  if (uri.fragment) {
+    if (evhttp_uri_set_fragment(d.get(), uri.fragment->c_str()) != 0) {
+      throw HttpException(-1, "evhttp_uri_set_fragment error");
+    }
+  }
+
+  char buffer[1024] = {};
+  if (evhttp_uri_join(d.get(), buffer, sizeof(buffer)) == nullptr) {
+    throw HttpException(-1, "evhttp_uri_join error");
+  }
+
+  return buffer;
+}
+
 std::string FormDataToString(
     const std::initializer_list<std::pair<std::string_view, std::string_view>>&
         params) {

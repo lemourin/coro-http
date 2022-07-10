@@ -43,7 +43,21 @@ struct Request {
   Method method = Method::kGet;
   std::vector<std::pair<std::string, std::string>> headers;
   std::optional<BodyGenerator> body;
-  enum Flag { kRead = 1 << 0, kWrite = 1 << 1 } flags;
+  bool invalidates_cache = [this] {
+    switch (method) {
+      case Method::kPost:
+      case Method::kPut:
+      case Method::kPatch:
+      case Method::kDelete:
+      case Method::kProppatch:
+      case Method::kMkcol:
+      case Method::kMove:
+      case Method::kCopy:
+        return true;
+      default:
+        return false;
+    }
+  }();
 
   friend bool operator==(const Request& r1, const Request& r2) {
     return std::tie(r1.url, r1.method, r1.headers, r1.body) ==
@@ -120,15 +134,14 @@ class ToHttpClient : public Impl {
       headers.emplace_back("Content-Length",
                            std::to_string(request.body->length()));
     }
-    return Fetch(
-        Request<>{.url = std::move(request.url),
-                  .method = std::move(request.method),
-                  .headers = std::move(headers),
-                  .body = request.body ? std::make_optional(CreateBody(
-                                             std::move(*request.body)))
-                                       : std::nullopt,
-                  .flags = static_cast<Request<>::Flag>(request.flags)},
-        std::move(stop_token));
+    return Fetch(Request<>{.url = std::move(request.url),
+                           .method = request.method,
+                           .headers = std::move(headers),
+                           .body = request.body ? std::make_optional(CreateBody(
+                                                      std::move(*request.body)))
+                                                : std::nullopt,
+                           .invalidates_cache = request.invalidates_cache},
+                 std::move(stop_token));
   }
 
   auto Fetch(Request<> request,

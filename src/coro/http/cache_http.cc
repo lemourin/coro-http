@@ -39,19 +39,14 @@ int64_t GetTime() {
 
 Task<Response<>> CacheHttpImpl::Fetch(Request<> request,
                                       stdx::stop_token stop_token) const {
-  bool should_invalidate_cache =
-      (request.method != Method::kGet && request.method != Method::kHead &&
-       request.method != Method::kOptions &&
-       request.method != Method::kPropfind &&
-       !(request.flags & Request<>::kRead)) ||
-      (request.flags & Request<>::kWrite);
-  auto at_exit = util::AtScopeExit([&] {
-    if (should_invalidate_cache) {
+  bool should_invalidate_cache = request.invalidates_cache;
+  if (!IsCacheable(request)) {
+    auto response =
+        co_await http_->Fetch(std::move(request), std::move(stop_token));
+    if (should_invalidate_cache && response.status / 100 == 2) {
       InvalidateCache();
     }
-  });
-  if (!IsCacheable(request)) {
-    co_return co_await http_->Fetch(std::move(request), std::move(stop_token));
+    co_return response;
   }
   auto r = co_await GetRequest(std::move(request));
   auto cached_response = cache_.GetCached(r);
@@ -62,6 +57,9 @@ Task<Response<>> CacheHttpImpl::Fetch(Request<> request,
   }
 
   auto response = co_await cache_.Get(std::move(r), std::move(stop_token));
+  if (should_invalidate_cache && response.status / 100 == 2) {
+    InvalidateCache();
+  }
   co_return ConvertResponse(response);
 }
 

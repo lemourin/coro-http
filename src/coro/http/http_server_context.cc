@@ -454,9 +454,10 @@ Task<> ListenerCallback(HttpServerContext* server_context,
                                      *server_context->event_loop())),
                                  fd, &context);
     while (true) {
-      bool success = co_await HandleRequest(server_context->on_request(),
-                                            &context, bev.get());
-      if (success) {
+      bool error = co_await HandleRequest(server_context->on_request(),
+                                          &context, bev.get());
+      context.response.reset();
+      if (error) {
         break;
       }
     }

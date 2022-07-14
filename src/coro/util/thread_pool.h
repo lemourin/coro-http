@@ -33,8 +33,9 @@ class ThreadPool {
   using TaskT = std::conditional_t<std::is_void_v<T>, Task<>, Task<T>>;
 
   template <typename Func, typename... Args>
-  TaskT<util::ReturnTypeT<Func>> Do(Func&& func, Args&&... args) {
-    co_await SwitchToThreadLoop();
+  TaskT<util::ReturnTypeT<Func>> Do(stdx::stop_token stop_token, Func&& func,
+                                    Args&&... args) {
+    co_await SwitchToThreadLoop(std::move(stop_token));
     std::exception_ptr exception;
     try {
       if constexpr (std::is_void_v<util::ReturnTypeT<Func>>) {
@@ -53,9 +54,14 @@ class ThreadPool {
     std::rethrow_exception(exception);
   }
 
+  template <typename... Args>
+  auto Do(Args&&... args) {
+    return Do(stdx::stop_token(), std::forward<Args>(args)...);
+  }
+
  private:
   void Work();
-  Task<> SwitchToThreadLoop();
+  Task<> SwitchToThreadLoop(stdx::stop_token);
   Task<> SwitchToEventLoop();
 
   std::vector<stdx::coroutine_handle<void>> tasks_;

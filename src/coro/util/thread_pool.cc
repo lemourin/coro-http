@@ -117,18 +117,33 @@ void ThreadPool::Work() {
   }
 }
 
-Task<> ThreadPool::SwitchToThreadLoop() {
+Task<> ThreadPool::SwitchToThreadLoop(stdx::stop_token stop_token) {
   struct Awaiter {
     bool await_ready() const { return false; }
     void await_resume() {}
-    void await_suspend(stdx::coroutine_handle<void> continuation) {
+    void await_suspend(stdx::coroutine_handle<void> handle) {
       std::unique_lock lock(thread_pool->mutex_);
-      thread_pool->tasks_.emplace_back(continuation);
+      continuation = handle;
+      thread_pool->tasks_.emplace_back(handle);
       thread_pool->condition_variable_.notify_one();
     }
     ThreadPool* thread_pool;
+    stdx::coroutine_handle<void> continuation;
   };
-  co_await Awaiter{this};
+  Awaiter awaiter{this};
+  stdx::stop_callback cb(stop_token, [&] {
+    std::unique_lock lock(mutex_);
+    if (auto it = std::find(tasks_.begin(), tasks_.end(), awaiter.continuation);
+        it != tasks_.end()) {
+      tasks_.erase(it);
+      lock.unlock();
+      awaiter.continuation.resume();
+    }
+  });
+  co_await awaiter;
+  if (stop_token.stop_requested()) {
+    throw InterruptedException();
+  }
 }
 
 Task<> ThreadPool::SwitchToEventLoop() {

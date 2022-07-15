@@ -131,17 +131,19 @@ Task<> ThreadPool::SwitchToThreadLoop(stdx::stop_token stop_token) {
     stdx::coroutine_handle<void> continuation;
   };
   Awaiter awaiter{this};
+  bool interrupted = false;
   stdx::stop_callback cb(stop_token, [&] {
     std::unique_lock lock(mutex_);
     if (auto it = std::find(tasks_.begin(), tasks_.end(), awaiter.continuation);
         it != tasks_.end()) {
       tasks_.erase(it);
       lock.unlock();
+      interrupted = true;
       awaiter.continuation.resume();
     }
   });
   co_await awaiter;
-  if (stop_token.stop_requested()) {
+  if (interrupted) {
     throw InterruptedException();
   }
 }

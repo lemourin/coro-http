@@ -35,7 +35,19 @@ class ThreadPool {
   template <typename Func, typename... Args>
   TaskT<util::ReturnTypeT<Func>> Do(stdx::stop_token stop_token, Func&& func,
                                     Args&&... args) {
-    co_await SwitchToThreadLoop(std::move(stop_token));
+    ThreadLoopAwaiter awaiter{this};
+    stdx::stop_callback cb(std::move(stop_token), [&] {
+      std::unique_lock lock(mutex_);
+      if (auto it =
+              std::find(tasks_.begin(), tasks_.end(), awaiter.continuation);
+          it != tasks_.end()) {
+        tasks_.erase(it);
+        lock.unlock();
+        awaiter.interrupted = true;
+        awaiter.continuation.resume();
+      }
+    });
+    co_await awaiter;
     std::exception_ptr exception;
     try {
       if constexpr (std::is_void_v<util::ReturnTypeT<Func>>) {
@@ -61,8 +73,25 @@ class ThreadPool {
 
  private:
   void Work();
-  Task<> SwitchToThreadLoop(stdx::stop_token);
   Task<> SwitchToEventLoop();
+
+  struct ThreadLoopAwaiter {
+    bool await_ready() const { return false; }
+    void await_resume() {
+      if (interrupted) {
+        throw InterruptedException();
+      }
+    }
+    void await_suspend(stdx::coroutine_handle<void> handle) {
+      std::unique_lock lock(thread_pool->mutex_);
+      continuation = handle;
+      thread_pool->tasks_.emplace_back(handle);
+      thread_pool->condition_variable_.notify_one();
+    }
+    ThreadPool* thread_pool;
+    stdx::coroutine_handle<void> continuation;
+    bool interrupted;
+  };
 
   std::vector<stdx::coroutine_handle<void>> tasks_;
   std::vector<std::thread> threads_;

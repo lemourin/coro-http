@@ -128,7 +128,8 @@ TEST_F(HttpServerTest, ReceivesExpectedRequest) {
     co_await http().Fetch(
         Request{.url = address() + "/some_path?some_query=value",
                 .method = http::Method::kPost,
-                .body = CreateBody("input")});
+                .body = CreateBody("input"),
+                .invalidates_cache = true});
   });
 
   ASSERT_TRUE(last_request().has_value());
@@ -140,7 +141,8 @@ TEST_F(HttpServerTest, RejectsTooLongHeader) {
   EXPECT_THROW(Run([&]() -> Task<> {
                  co_await http().Fetch(Request{
                      .url = address(),
-                     .headers = {{"SomeHeader", std::string(5000, 'x')}}});
+                     .headers = {{"SomeHeader", std::string(5000, 'x')}},
+                     .invalidates_cache = true});
                }),
                http::HttpException);
 }
@@ -152,18 +154,20 @@ TEST_F(HttpServerTest, RejectsTooManyHeaders) {
         for (int i = 0; i < 10000; i++) {
           headers[i] = {"SomeHeader", "some_value"};
         }
-        co_await http().Fetch(
-            Request{.url = address(), .headers = std::move(headers)});
+        co_await http().Fetch(Request{.url = address(),
+                                      .headers = std::move(headers),
+                                      .invalidates_cache = true});
       }),
       http::HttpException);
 }
 
 TEST_F(HttpServerTest, RejectsTooLongUrl) {
-  EXPECT_THROW(Run([&]() -> Task<> {
-                 co_await http().Fetch(
-                     Request{.url = address() + std::string(5000, 'x')});
-               }),
-               http::HttpException);
+  EXPECT_THROW(
+      Run([&]() -> Task<> {
+        co_await http().Fetch(Request{.url = address() + std::string(5000, 'x'),
+                                      .invalidates_cache = true});
+      }),
+      http::HttpException);
 }
 
 TEST_F(HttpServerTest, ServesManyClients) {

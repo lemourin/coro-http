@@ -11,6 +11,12 @@ if(NOT USE_BUNDLED_DEPENDENCIES)
 
     find_package(Boost 1.76.0 REQUIRED COMPONENTS regex)
     set_target_properties(Boost::regex PROPERTIES IMPORTED_GLOBAL TRUE)
+
+    find_path(BOOST_STACKTRACE boost/stacktrace.hpp)
+    if(BOOST_STACKTRACE)
+        add_library(boost_stacktrace INTERFACE)
+        target_include_directories(boost_stacktrace INTERFACE ${BOOST_STACKTRACE})
+    endif()
 else()
     set(CARES_SHARED OFF CACHE BOOL "build shared c-ares")
     set(CARES_STATIC ON CACHE BOOL "build static c-ares")

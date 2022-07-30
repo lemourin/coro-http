@@ -44,7 +44,9 @@ target_sources(coro-http PRIVATE
     coro/http/cache_http.cc
     coro/http/http_body_generator.h
     coro/http/http_exception.h
-    coro/http/http_exception.cc)
+    coro/http/http_exception.cc
+    coro/exception.h
+    coro/exception.cc)
 
 find_package(Threads REQUIRED)
 
@@ -57,6 +59,11 @@ endif()
 target_include_directories(coro-http PUBLIC .)
 target_include_directories(coro-http PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(coro-http PUBLIC cxx_std_20)
+
+if(BOOST_STACKTRACE)
+    target_link_libraries(coro-http PRIVATE $<$<CONFIG:Debug>:boost_stacktrace>)
+    target_compile_definitions(coro-http PRIVATE $<$<CONFIG:Debug>:HAVE_BOOST_STACKTRACE>)
+endif()
 
 if(USE_OPENSSL OR ANDROID)
     embed_resource(

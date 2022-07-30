@@ -94,7 +94,7 @@ void EventLoop::RunOnce(stdx::any_invocable<void() &&> f) const {
           },
           data, nullptr) != 0) {
     delete data;
-    throw std::runtime_error("can't run on event loop");
+    throw RuntimeError("can't run on event loop");
   }
 }
 
@@ -104,14 +104,14 @@ EventLoop::EventLoop()
         WORD version_requested = MAKEWORD(2, 2);
         WSADATA wsa_data;
         if (WSAStartup(version_requested, &wsa_data) != 0) {
-          throw std::runtime_error("WSAStartup error");
+          throw RuntimeError("WSAStartup error");
         }
         if (evthread_use_windows_threads() != 0) {
-          throw std::runtime_error("evthread_use_windows_threads error");
+          throw RuntimeError("evthread_use_windows_threads error");
         }
 #else
         if (evthread_use_pthreads() != 0) {
-          throw std::runtime_error("evthread_use_pthreads error");
+          throw RuntimeError("evthread_use_pthreads error");
         }
 #endif
         return reinterpret_cast<EventBase *>(event_base_new());
@@ -135,13 +135,13 @@ void EventLoop::EnterLoop(EventLoopType type) {
             return 0;
         }
       }()) < 0) {
-    throw std::runtime_error("event_base_loop error");
+    throw RuntimeError("event_base_loop error");
   }
 }
 
 void EventLoop::ExitLoop() {
   if (event_base_loopexit(ToEventBase(event_loop_.get()), nullptr) != 0) {
-    throw std::runtime_error("event_base_loopexit error");
+    throw RuntimeError("event_base_loopexit error");
   }
 }
 

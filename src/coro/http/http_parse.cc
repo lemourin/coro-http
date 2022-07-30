@@ -396,7 +396,7 @@ int64_t ParseTime(std::string_view str) {
     }
     return timegm(time);
   }
-  throw std::invalid_argument("can't parse time");
+  throw InvalidArgument("can't parse time");
 }
 
 Method ToMethod(std::string_view method) {

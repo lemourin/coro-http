@@ -9,6 +9,7 @@
 #include <event2/listener.h>
 
 #include <algorithm>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -76,6 +77,28 @@ Task<> Wait(RequestContextBase* context) {
   } else {
     co_await context->semaphore;
   }
+}
+
+std::string GetErrorMessage(std::string_view what,
+                            const std::string* stacktrace) {
+  std::stringstream stream;
+  stream << what;
+  if (stacktrace) {
+    stream << "<br><br>Stacktrace:<br>";
+    for (int i = 0; i < stacktrace->size();) {
+      if (i + 1 < stacktrace->size() && stacktrace->substr(i, 2) == "\r\n") {
+        i += 2;
+        stream << "<br>";
+      } else if ((*stacktrace)[i] == '\n') {
+        i++;
+        stream << "<br>";
+      } else {
+        i++;
+        stream << (*stacktrace)[i];
+      }
+    }
+  }
+  return std::move(stream).str();
 }
 
 Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
@@ -348,18 +371,30 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
                          RequestContext* context, bufferevent* bev) {
   std::optional<int> error_status;
   std::optional<std::string> error_message;
+  std::optional<std::string> stacktrace;
   try {
     context->response = co_await GetResponse(on_request, context, bev);
   } catch (const HttpException& e) {
     error_status = e.status();
     error_message = e.what();
+    if (!e.stacktrace().empty()) {
+      stacktrace = e.stacktrace();
+    }
+  } catch (const Exception& e) {
+    error_status = 500;
+    error_message = e.what();
+    if (!e.stacktrace().empty()) {
+      stacktrace = e.stacktrace();
+    }
   } catch (const std::exception& e) {
     error_status = 500;
     error_message = e.what();
   }
 
   if (error_message) {
-    co_await WriteMessage(context, bev, *error_status, *error_message);
+    co_await WriteMessage(
+        context, bev, *error_status,
+        GetErrorMessage(*error_message, stacktrace ? &*stacktrace : nullptr));
     co_return IsInvalidStage(context->stage);
   }
 
@@ -398,11 +433,18 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
       }
       co_await Write(context, bev, chunk_to_send(chunk));
     }
+  } catch (const Exception& e) {
+    error_message = e.what();
+    if (!e.stacktrace().empty()) {
+      stacktrace = e.stacktrace();
+    }
   } catch (const std::exception& e) {
     error_message = e.what();
   }
   if (error_message) {
-    co_await Write(context, bev, chunk_to_send(*error_message));
+    co_await Write(context, bev,
+                   chunk_to_send(GetErrorMessage(
+                       *error_message, stacktrace ? &*stacktrace : nullptr)));
   }
   if (is_chunked) {
     if (!error_message) {

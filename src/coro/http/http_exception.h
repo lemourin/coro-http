@@ -5,9 +5,11 @@
 #include <string>
 #include <string_view>
 
+#include "coro/exception.h"
+
 namespace coro::http {
 
-class HttpException : public std::exception {
+class HttpException : public Exception {
  public:
   static constexpr int kAborted = -1;
   static constexpr int kMalformedResponse = -2;

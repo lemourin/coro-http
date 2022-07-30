@@ -21,7 +21,7 @@ class RuntimeError : public Exception {
  public:
   explicit RuntimeError(std::string message) : message_(std::move(message)) {}
 
-  const char* what() const override { return message_.c_str(); }
+  const char* what() const noexcept override { return message_.c_str(); }
 
  private:
   std::string message_;
@@ -31,7 +31,7 @@ class LogicError : public Exception {
  public:
   explicit LogicError(std::string message) : message_(std::move(message)) {}
 
-  const char* what() const override { return message_.c_str(); }
+  const char* what() const noexcept override { return message_.c_str(); }
 
  private:
   std::string message_;

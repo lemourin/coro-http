@@ -60,7 +60,7 @@ target_include_directories(coro-http PUBLIC .)
 target_include_directories(coro-http PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(coro-http PUBLIC cxx_std_20)
 
-if(BOOST_STACKTRACE)
+if(TARGET boost_stacktrace)
     target_link_libraries(coro-http PRIVATE $<$<CONFIG:Debug>:boost_stacktrace>)
     target_compile_definitions(coro-http PRIVATE $<$<CONFIG:Debug>:HAVE_BOOST_STACKTRACE>)
 endif()

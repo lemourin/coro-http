@@ -10,7 +10,7 @@ namespace {
 std::string GetStackTrace() {
 #ifdef HAVE_BOOST_STACKTRACE
   return boost::stacktrace::to_string(
-      boost::stacktrace::stacktrace(/*skip=*/5, /*max_depth=*/128));
+      boost::stacktrace::stacktrace(/*skip=*/0, /*max_depth=*/128));
 #else
   return "";
 #endif

@@ -396,8 +396,9 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
       stacktrace = std::move(trace);
       html_stacktrace = e.html_stacktrace();
     }
-  } catch (...) {
-    std::terminate();
+  } catch (const std::exception& e) {
+    error_status = 500;
+    error_message = e.what();
   }
 
   if (error_message) {
@@ -452,8 +453,8 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
       stacktrace = std::move(trace);
       html_stacktrace = e.html_stacktrace();
     }
-  } catch (...) {
-    std::terminate();
+  } catch (const std::exception& e) {
+    error_message = e.what();
   }
   if (error_message) {
     co_await Write(

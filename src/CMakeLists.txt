@@ -88,13 +88,6 @@ endif()
 set(CMAKE_REQUIRED_FLAGS "${COROUTINE_FLAGS}")
 check_cxx_source_compiles(
     "
-    #include <version>
-    #if defined(__clang__) && !defined(__cpp_impl_coroutine)
-    #define __cpp_impl_coroutine 1
-    #endif
-    #if defined(_MSC_VER) && !defined(__cpp_lib_coroutine)
-    #define __cpp_lib_coroutine 1
-    #endif
     #include <coroutine>
     using std::coroutine_handle;
     int main() {}

@@ -2,20 +2,7 @@
 #define CORO_HTTP_COROUTINE_H
 
 #if defined(COROUTINE_SUPPORTED)
-#include <version>
-#if defined(__clang__) && !defined(__cpp_impl_coroutine)
-#define __cpp_impl_coroutine 1
-#if defined(_MSC_VER) && !defined(__cpp_lib_coroutine)
-#define __cpp_lib_coroutine 1
-#endif
-#endif
 #include <coroutine>
-#if defined(__clang__)
-namespace std::experimental {
-using std::coroutine_handle;
-using std::coroutine_traits;
-}  // namespace std::experimental
-#endif
 namespace coro {
 namespace std_ns = std;
 }

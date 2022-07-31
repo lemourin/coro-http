@@ -13,6 +13,8 @@ class Exception : public std::exception {
 
   std::string_view stacktrace() const { return stacktrace_; }
 
+  std::string html_stacktrace() const;
+
  private:
   std::string stacktrace_;
 };

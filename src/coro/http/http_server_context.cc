@@ -79,24 +79,22 @@ Task<> Wait(RequestContextBase* context) {
   }
 }
 
+std::string GetHtmlErrorMessage(std::string_view what,
+                                const std::string* formatted_stacktrace) {
+  std::stringstream stream;
+  stream << what;
+  if (formatted_stacktrace) {
+    stream << "<br><br>Stacktrace:<br>" << *formatted_stacktrace;
+  }
+  return std::move(stream).str();
+}
+
 std::string GetErrorMessage(std::string_view what,
                             const std::string* stacktrace) {
   std::stringstream stream;
   stream << what;
   if (stacktrace) {
-    stream << "<br><br>Stacktrace:<br>";
-    for (int i = 0; i < stacktrace->size();) {
-      if (i + 1 < stacktrace->size() && stacktrace->substr(i, 2) == "\r\n") {
-        i += 2;
-        stream << "<br>";
-      } else if ((*stacktrace)[i] == '\n') {
-        i++;
-        stream << "<br>";
-      } else {
-        i++;
-        stream << (*stacktrace)[i];
-      }
-    }
+    stream << "\n\nStacktrace:\n" << *stacktrace;
   }
   return std::move(stream).str();
 }
@@ -357,13 +355,22 @@ Task<> WriteMessage(RequestContext* context, bufferevent* bev, int status,
   if (!IsInvalidStage(context->stage)) {
     co_await FlushInput(context, bev);
   }
+  std::stringstream stream;
+  stream << "<!DOCTYPE html>"
+            "<html>"
+            "<body>"
+         << message
+         << "</body>"
+            "</html>";
+  std::string data = std::move(stream).str();
   std::vector<std::pair<std::string, std::string>> headers{
-      {"Content-Length", std::to_string(message.size())},
+      {"Content-Type", "text/html; charset=UTF-8"},
+      {"Content-Length", std::to_string(data.size())},
       {"Connection", IsInvalidStage(context->stage) ? "close" : "keep-alive"}};
   co_await Write(context, bev, GetHeader(status, headers));
   if (context->method != Method::kHead &&
       HasBody(status, /*content_length=*/std::nullopt)) {
-    co_await Write(context, bev, message);
+    co_await Write(context, bev, data);
   }
 }
 
@@ -372,34 +379,40 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
   std::optional<int> error_status;
   std::optional<std::string> error_message;
   std::optional<std::string> stacktrace;
+  std::optional<std::string> html_stacktrace;
   try {
     context->response = co_await GetResponse(on_request, context, bev);
   } catch (const HttpException& e) {
     error_status = e.status();
     error_message = e.what();
-    if (!e.stacktrace().empty()) {
-      stacktrace = e.stacktrace();
+    if (std::string trace{e.stacktrace()}; !trace.empty()) {
+      stacktrace = std::move(trace);
+      html_stacktrace = e.html_stacktrace();
     }
   } catch (const Exception& e) {
     error_status = 500;
     error_message = e.what();
-    if (!e.stacktrace().empty()) {
-      stacktrace = e.stacktrace();
+    if (std::string trace{e.stacktrace()}; !trace.empty()) {
+      stacktrace = std::move(trace);
+      html_stacktrace = e.html_stacktrace();
     }
-  } catch (const std::exception& e) {
-    error_status = 500;
-    error_message = e.what();
+  } catch (...) {
+    std::terminate();
   }
 
   if (error_message) {
     co_await WriteMessage(
         context, bev, *error_status,
-        GetErrorMessage(*error_message, stacktrace ? &*stacktrace : nullptr));
+        GetHtmlErrorMessage(*error_message,
+                            html_stacktrace ? &*html_stacktrace : nullptr));
     co_return IsInvalidStage(context->stage);
   }
 
   bool is_chunked = IsChunked(context->response->headers);
   bool has_body = HasBody(context->response->status, context->content_length);
+  bool is_html = http::GetHeader(context->response->headers, "Content-Type")
+                     .value_or("")
+                     .find("text/html") != std::string::npos;
   if (context->method == Method::kHead || !has_body) {
     co_await FlushInput(context, bev);
   }
@@ -435,16 +448,22 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
     }
   } catch (const Exception& e) {
     error_message = e.what();
-    if (!e.stacktrace().empty()) {
-      stacktrace = e.stacktrace();
+    if (std::string trace{e.stacktrace()}; !trace.empty()) {
+      stacktrace = std::move(trace);
+      html_stacktrace = e.html_stacktrace();
     }
-  } catch (const std::exception& e) {
-    error_message = e.what();
+  } catch (...) {
+    std::terminate();
   }
   if (error_message) {
-    co_await Write(context, bev,
-                   chunk_to_send(GetErrorMessage(
-                       *error_message, stacktrace ? &*stacktrace : nullptr)));
+    co_await Write(
+        context, bev,
+        chunk_to_send(
+            is_html ? GetHtmlErrorMessage(
+                          *error_message,
+                          html_stacktrace ? &*html_stacktrace : nullptr)
+                    : GetErrorMessage(*error_message,
+                                      stacktrace ? &*stacktrace : nullptr)));
   }
   if (is_chunked) {
     if (!error_message) {

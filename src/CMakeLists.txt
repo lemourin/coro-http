@@ -130,4 +130,33 @@ check_cxx_source_compiles(
 )
 if(SOURCE_LOCATION_SUPPORTED)
     target_compile_definitions(coro-http PUBLIC SOURCE_LOCATION_SUPPORTED)
+else()
+    check_c_source_compiles(
+        "int main() { return __builtin_FILE() == 0; }"
+        HAVE_BUILTIN_FILE
+    )
+    check_c_source_compiles(
+        "int main() { return __builtin_FUNCTION() == 0; }"
+        HAVE_BUILTIN_FUNCTION
+    )
+    check_c_source_compiles(
+        "int main() { return __builtin_LINE(); }"
+        HAVE_BUILTIN_LINE
+    )
+    check_c_source_compiles(
+        "int main() { return __builtin_COLUMN(); }"
+        HAVE_BUILTIN_COLUMN
+    )
+    if(HAVE_BUILTIN_FILE)
+        target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_FILE)
+    endif()
+    if(HAVE_BUILTIN_FUNCTION)
+        target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_FUNCTION)
+    endif()
+    if(HAVE_BUILTIN_LINE)
+        target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_LINE)
+    endif()
+    if(HAVE_BUILTIN_COLUMN)
+        target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_COLUMN)
+    endif()
 endif()

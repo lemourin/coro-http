@@ -5,23 +5,33 @@
 #include <string>
 #include <string_view>
 
+#include "coro/stdx/source_location.h"
+
 namespace coro {
 
 class Exception : public std::exception {
  public:
-  Exception();
+  Exception(stdx::source_location location = stdx::source_location::current());
 
   std::string_view stacktrace() const { return stacktrace_; }
 
   std::string html_stacktrace() const;
 
+  const stdx::source_location& source_location() const {
+    return source_location_;
+  }
+
  private:
   std::string stacktrace_;
+  stdx::source_location source_location_;
 };
 
 class RuntimeError : public Exception {
  public:
-  explicit RuntimeError(std::string message) : message_(std::move(message)) {}
+  explicit RuntimeError(
+      std::string message,
+      stdx::source_location location = stdx::source_location::current())
+      : Exception(std::move(location)), message_(std::move(message)) {}
 
   const char* what() const noexcept override { return message_.c_str(); }
 
@@ -31,7 +41,9 @@ class RuntimeError : public Exception {
 
 class LogicError : public Exception {
  public:
-  explicit LogicError(std::string message) : message_(std::move(message)) {}
+  explicit LogicError(std::string message, stdx::source_location location =
+                                               stdx::source_location::current())
+      : Exception(std::move(location)), message_(std::move(message)) {}
 
   const char* what() const noexcept override { return message_.c_str(); }
 
@@ -41,7 +53,10 @@ class LogicError : public Exception {
 
 class InvalidArgument : public LogicError {
  public:
-  using LogicError::LogicError;
+  explicit InvalidArgument(
+      std::string message,
+      stdx::source_location location = stdx::source_location::current())
+      : LogicError(std::move(message), std::move(location)) {}
 };
 
 }  // namespace coro

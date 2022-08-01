@@ -7,6 +7,10 @@ namespace coro {
 
 class InterruptedException : public Exception {
  public:
+  explicit InterruptedException(
+      stdx::source_location location = stdx::source_location::current())
+      : Exception(std::move(location)) {}
+
   [[nodiscard]] const char* what() const noexcept final {
     return "interrupted";
   }

@@ -37,7 +37,8 @@ std::string GetFormattedStacktrace(std::string_view stacktrace) {
 
 }  // namespace
 
-Exception::Exception() : stacktrace_(GetStackTrace()) {}
+Exception::Exception(stdx::source_location location)
+    : stacktrace_(GetStackTrace()), source_location_(std::move(location)) {}
 
 std::string Exception::html_stacktrace() const {
   return GetFormattedStacktrace(stacktrace_);

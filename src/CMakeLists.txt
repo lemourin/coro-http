@@ -31,6 +31,8 @@ target_sources(coro-http PRIVATE
     coro/stdx/stop_source.cc
     coro/stdx/stop_token.cc
     coro/stdx/any_invocable.h
+    coro/stdx/source_location.h
+    coro/stdx/source_location.cc
     coro/http/http.h
     coro/http/http.cc
     coro/http/curl_http.h
@@ -116,4 +118,16 @@ else()
     else()
         message(FATAL_ERROR "Coroutines not supported.")
     endif()
+endif()
+
+check_cxx_source_compiles(
+    "
+    #include <source_location>
+    using std::source_location;
+    int main() {}
+    "
+    SOURCE_LOCATION_SUPPORTED
+)
+if(SOURCE_LOCATION_SUPPORTED)
+    target_compile_definitions(coro-http PUBLIC SOURCE_LOCATION_SUPPORTED)
 endif()

@@ -461,6 +461,7 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
     }
   } catch (const Exception& e) {
     error_message = e.what();
+    source_location = e.source_location();
     if (std::string trace{e.stacktrace()}; !trace.empty()) {
       stacktrace = std::move(trace);
       html_stacktrace = e.html_stacktrace();

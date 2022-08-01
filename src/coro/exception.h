@@ -15,8 +15,6 @@ class Exception : public std::exception {
 
   std::string_view stacktrace() const { return stacktrace_; }
 
-  std::string html_stacktrace() const;
-
   const stdx::source_location& source_location() const {
     return source_location_;
   }
@@ -58,6 +56,8 @@ class InvalidArgument : public LogicError {
       stdx::source_location location = stdx::source_location::current())
       : LogicError(std::move(message), std::move(location)) {}
 };
+
+std::string GetHtmlStacktrace(std::string_view stacktrace);
 
 }  // namespace coro
 

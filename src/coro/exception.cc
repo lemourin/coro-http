@@ -18,7 +18,12 @@ std::string GetStackTrace() {
 #endif
 }
 
-std::string GetFormattedStacktrace(std::string_view stacktrace) {
+}  // namespace
+
+Exception::Exception(stdx::source_location location)
+    : stacktrace_(GetStackTrace()), source_location_(std::move(location)) {}
+
+std::string GetHtmlStacktrace(std::string_view stacktrace) {
   std::stringstream stream;
   for (int i = 0; i < stacktrace.size();) {
     if (i + 1 < stacktrace.size() && stacktrace.substr(i, 2) == "\r\n") {
@@ -33,15 +38,6 @@ std::string GetFormattedStacktrace(std::string_view stacktrace) {
     }
   }
   return std::move(stream).str();
-}
-
-}  // namespace
-
-Exception::Exception(stdx::source_location location)
-    : stacktrace_(GetStackTrace()), source_location_(std::move(location)) {}
-
-std::string Exception::html_stacktrace() const {
-  return GetFormattedStacktrace(stacktrace_);
 }
 
 }  // namespace coro

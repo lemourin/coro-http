@@ -33,6 +33,8 @@ target_sources(coro-http PRIVATE
     coro/stdx/any_invocable.h
     coro/stdx/source_location.h
     coro/stdx/source_location.cc
+    coro/stdx/stacktrace.h
+    coro/stdx/stacktrace.cc
     coro/http/http.h
     coro/http/http.cc
     coro/http/curl_http.h
@@ -47,8 +49,7 @@ target_sources(coro-http PRIVATE
     coro/http/http_body_generator.h
     coro/http/http_exception.h
     coro/http/http_exception.cc
-    coro/exception.h
-    coro/exception.cc)
+    coro/exception.h)
 
 find_package(Threads REQUIRED)
 

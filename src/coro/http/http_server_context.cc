@@ -80,29 +80,29 @@ Task<> Wait(RequestContextBase* context) {
 }
 
 std::string GetHtmlErrorMessage(std::string_view what,
-                                const std::string* stacktrace,
+                                const stdx::stacktrace* stacktrace,
                                 const stdx::source_location* source_location) {
   std::stringstream stream;
   stream << what;
   if (source_location) {
     stream << "<br><br>Source location: " << coro::ToString(*source_location);
   }
-  if (stacktrace) {
+  if (stacktrace && !stacktrace->empty()) {
     stream << "<br><br>Stacktrace:<br>" << GetHtmlStacktrace(*stacktrace);
   }
   return std::move(stream).str();
 }
 
 std::string GetErrorMessage(std::string_view what,
-                            const std::string* stacktrace,
+                            const stdx::stacktrace* stacktrace,
                             const stdx::source_location* source_location) {
   std::stringstream stream;
   stream << what;
   if (source_location) {
     stream << "\n\nSource location: " << coro::ToString(*source_location);
   }
-  if (stacktrace) {
-    stream << "\n\nStacktrace:\n" << *stacktrace;
+  if (stacktrace && !stacktrace->empty()) {
+    stream << "\n\nStacktrace:\n" << coro::ToString(*stacktrace);
   }
   return std::move(stream).str();
 }
@@ -386,7 +386,7 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
                          RequestContext* context, bufferevent* bev) {
   std::optional<int> error_status;
   std::optional<std::string> error_message;
-  std::optional<std::string> stacktrace;
+  std::optional<stdx::stacktrace> stacktrace;
   std::optional<stdx::source_location> source_location;
   try {
     context->response = co_await GetResponse(on_request, context, bev);
@@ -394,16 +394,12 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
     error_status = e.status();
     error_message = e.what();
     source_location = e.source_location();
-    if (std::string trace{e.stacktrace()}; !trace.empty()) {
-      stacktrace = std::move(trace);
-    }
+    stacktrace = e.stacktrace();
   } catch (const Exception& e) {
     error_status = 500;
     error_message = e.what();
     source_location = e.source_location();
-    if (std::string trace{e.stacktrace()}; !trace.empty()) {
-      stacktrace = std::move(trace);
-    }
+    stacktrace = e.stacktrace();
   } catch (const std::exception& e) {
     error_status = 500;
     error_message = e.what();
@@ -458,9 +454,7 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
   } catch (const Exception& e) {
     error_message = e.what();
     source_location = e.source_location();
-    if (std::string trace{e.stacktrace()}; !trace.empty()) {
-      stacktrace = std::move(trace);
-    }
+    stacktrace = e.stacktrace();
   } catch (const std::exception& e) {
     error_message = e.what();
   }

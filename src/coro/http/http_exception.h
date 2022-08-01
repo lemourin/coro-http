@@ -19,14 +19,19 @@ class HttpException : public Exception {
   static constexpr int kNotFound = 404;
   static constexpr int kRangeNotSatisfiable = 416;
 
-  HttpException(int status, stdx::source_location location =
-                                stdx::source_location::current())
-      : HttpException(status, ToString(status)) {}
+  HttpException(
+      int status,
+      stdx::source_location location = stdx::source_location::current(),
+      stdx::stacktrace stacktrace = stdx::stacktrace::current())
+      : HttpException(status, ToString(status), location, stacktrace) {}
 
   HttpException(
       int status, std::string_view message,
-      stdx::source_location location = stdx::source_location::current())
-      : Exception(std::move(location)), status_(status), message_(message) {}
+      stdx::source_location location = stdx::source_location::current(),
+      stdx::stacktrace stacktrace = stdx::stacktrace::current())
+      : Exception(std::move(location), std::move(stacktrace)),
+        status_(status),
+        message_(message) {}
 
   [[nodiscard]] const char* what() const noexcept override {
     return message_.c_str();

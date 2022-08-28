@@ -12,16 +12,17 @@ namespace coro {
 
 class Exception : public std::exception {
  public:
-  Exception(stdx::source_location location = stdx::source_location::current(),
-            stdx::stacktrace stacktrace = stdx::stacktrace::current())
-      : stacktrace_(std::move(stacktrace)),
-        source_location_(std::move(location)) {}
-
-  const stdx::stacktrace& stacktrace() const { return stacktrace_; }
+  explicit Exception(
+      stdx::source_location location = stdx::source_location::current(),
+      stdx::stacktrace stacktrace = stdx::stacktrace::current())
+      : source_location_(std::move(location)),
+        stacktrace_(std::move(stacktrace)) {}
 
   const stdx::source_location& source_location() const {
     return source_location_;
   }
+
+  const stdx::stacktrace& stacktrace() const { return stacktrace_; }
 
  private:
   stdx::source_location source_location_;

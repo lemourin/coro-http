@@ -5,51 +5,37 @@ include(CheckCXXSourceCompiles)
 add_library(coro-http)
 
 target_sources(coro-http PRIVATE
-    coro/task.h
-    coro/generator.h
-    coro/promise.h
-    coro/shared_promise.h
-    coro/interrupted_exception.h
-    coro/when_all.h
-    coro/mutex.h
     coro/mutex.cc
-    coro/util/function_traits.h
-    coro/util/type_list.h
-    coro/util/raii_utils.h
-    coro/util/lru_cache.h
-    coro/util/event_loop.h
     coro/util/event_loop.cc
-    coro/util/stop_token_or.h
-    coro/util/thread_pool.h
     coro/util/thread_pool.cc
-    coro/util/regex.h
-    coro/stdx/stop_callback.h
-    coro/stdx/stop_source.h
-    coro/stdx/stop_token.h
-    coro/stdx/coroutine.h
-    coro/stdx/concepts.h
     coro/stdx/stop_source.cc
     coro/stdx/stop_token.cc
-    coro/stdx/any_invocable.h
-    coro/stdx/source_location.h
     coro/stdx/source_location.cc
-    coro/stdx/stacktrace.h
     coro/stdx/stacktrace.cc
-    coro/http/http.h
     coro/http/http.cc
-    coro/http/curl_http.h
-    coro/http/http_server.h
-    coro/http/http_server_context.h
     coro/http/http_server_context.cc
-    coro/http/http_parse.h
     coro/http/curl_http.cc
     coro/http/http_parse.cc
-    coro/http/cache_http.h
     coro/http/cache_http.cc
-    coro/http/http_body_generator.h
-    coro/http/http_exception.h
     coro/http/http_exception.cc
-    coro/exception.h)
+)
+
+target_sources(coro-http
+    INTERFACE FILE_SET public_headers TYPE HEADERS FILES
+        coro/task.h
+        coro/generator.h
+        coro/promise.h
+        coro/shared_promise.h
+        coro/interrupted_exception.h
+        coro/when_all.h
+        coro/mutex.h
+        coro/exception.h
+        coro/util/function_traits.h
+        coro/util/type_list.h
+        coro/util/raii_utils.h
+        coro/util/lru_cache.h
+        coro/util/event_loop.h
+)
 
 find_package(Threads REQUIRED)
 
@@ -59,8 +45,7 @@ if (NOT WIN32)
     target_link_libraries(coro-http PRIVATE libevent::pthreads)
 endif()
 
-target_include_directories(coro-http PUBLIC .)
-target_include_directories(coro-http PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(coro-http PRIVATE . ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(coro-http PUBLIC cxx_std_20)
 
 if(TARGET boost_stacktrace)
@@ -161,3 +146,7 @@ else()
         target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_COLUMN)
     endif()
 endif()
+
+include(GNUInstallDirs)
+install(TARGETS coro-http EXPORT coro-http FILE_SET public_headers)
+install(EXPORT coro-http DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})

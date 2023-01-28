@@ -30,11 +30,30 @@ target_sources(coro-http
         coro/when_all.h
         coro/mutex.h
         coro/exception.h
+        coro/util/event_loop.h
+        coro/util/thread_pool.h
+        coro/util/raii_utils.h
+        coro/util/stop_token_or.h
+        coro/util/regex.h
         coro/util/function_traits.h
         coro/util/type_list.h
-        coro/util/raii_utils.h
         coro/util/lru_cache.h
-        coro/util/event_loop.h
+        coro/http/http_body_generator.h
+        coro/http/http_parse.h
+        coro/http/curl_http.h
+        coro/http/http_server.h
+        coro/http/http_exception.h
+        coro/http/http.h
+        coro/http/cache_http.h
+        coro/http/http_server_context.h
+        coro/stdx/coroutine.h
+        coro/stdx/stop_callback.h
+        coro/stdx/concepts.h
+        coro/stdx/stacktrace.h
+        coro/stdx/stop_token.h
+        coro/stdx/any_invocable.h
+        coro/stdx/source_location.h
+        coro/stdx/stop_source.h
 )
 
 find_package(Threads REQUIRED)
@@ -148,12 +167,19 @@ else()
 endif()
 
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 install(TARGETS coro-http EXPORT coro-http FILE_SET public_headers)
-install(EXPORT coro-http DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+install(EXPORT coro-http NAMESPACE coro:: DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME})
+configure_package_config_file(
+        ../cmake/coro-http-config.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/cmake/coro-http-config.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME}
+)
 install(
     FILES
         ../cmake/embed_resource.cmake
         ../cmake/embed_resource_header.cmake
         ../cmake/embed_resource_impl.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/cmake/coro-http-config.cmake
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME}
 )

@@ -1,0 +1,11 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(Threads)
+find_dependency(CURL 7.77.0)
+find_dependency(Libevent 2.1.12)
+find_dependency(Boost 1.76.0 REQUIRED COMPONENTS regex)
+
+include("${CMAKE_CURRENT_LIST_DIR}/coro-http.cmake")
+check_required_components("@PROJECT_NAME@")

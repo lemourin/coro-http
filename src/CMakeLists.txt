@@ -150,3 +150,10 @@ endif()
 include(GNUInstallDirs)
 install(TARGETS coro-http EXPORT coro-http FILE_SET public_headers)
 install(EXPORT coro-http DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+install(
+    FILES
+        ../cmake/embed_resource.cmake
+        ../cmake/embed_resource_header.cmake
+        ../cmake/embed_resource_impl.cmake
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME}
+)

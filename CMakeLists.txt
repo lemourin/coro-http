@@ -1,5 +1,5 @@
-project(coro-http)
 cmake_minimum_required(VERSION 3.23)
+project(coro-http)
 
 option(BUILD_SHARED_LIBS "build shared libs" OFF)
 option(BUILD_TESTING "build testing" OFF)

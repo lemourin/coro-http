@@ -2,7 +2,11 @@
   "name": "coro-http",
   "version-string": "0.1.0",
   "dependencies": [
-    "curl",
+    {
+      "name": "curl",
+      "default-features": false,
+      "features": ["ssl", "http2", "c-ares"]
+    },
     "libevent",
     "boost-regex"
   ]

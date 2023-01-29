@@ -3,6 +3,7 @@ project(coro-http)
 
 option(BUILD_SHARED_LIBS "build shared libs" OFF)
 option(BUILD_TESTING "build testing" OFF)
+option(BUILD_EXAMPLES "build examples" ON)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 find_package(CURL 7.77.0 REQUIRED)
@@ -26,7 +27,9 @@ if(BOOST_STACKTRACE)
 endif()
 
 add_subdirectory(src)
-add_subdirectory(examples)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 if(BUILD_TESTING)
     enable_testing()

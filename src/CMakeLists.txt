@@ -72,7 +72,7 @@ if(TARGET boost_stacktrace)
     target_compile_definitions(coro-http PRIVATE $<$<CONFIG:Debug>:HAVE_BOOST_STACKTRACE>)
 endif()
 
-if(USE_OPENSSL OR ANDROID)
+if((CMAKE_SYSTEM_NAME STREQUAL "WindowsStore") OR ANDROID)
     embed_resource(
         TARGET coro-http
         NAMESPACE coro::http

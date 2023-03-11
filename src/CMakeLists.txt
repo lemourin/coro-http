@@ -1,4 +1,4 @@
-include(embed_resource)
+include(EmbedResource)
 include(CheckCXXCompilerFlag)
 include(CheckCXXSourceCompiles)
 
@@ -73,13 +73,16 @@ if(TARGET boost_stacktrace)
 endif()
 
 if((CMAKE_SYSTEM_NAME STREQUAL "WindowsStore") OR ANDROID)
-    embed_resource(
-        TARGET coro-http
+    add_resource_library(
+        coro-http-resource
         NAMESPACE coro::http
-        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/coro/http/assets
-        INPUT ../assets/cacert.pem
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/coro/http/assets.h
+        INPUT
+            kCaCert ../assets/cacert.pem
     )
+    target_link_libraries(coro-http PRIVATE coro-http-resource)
     target_compile_definitions(coro-http PRIVATE USE_BUNDLED_CACERT)
+    install(TARGETS coro-http-resource EXPORT coro-http)
 endif()
 
 if(MSVC)
@@ -177,9 +180,8 @@ configure_package_config_file(
 )
 install(
     FILES
-        ../cmake/embed_resource.cmake
-        ../cmake/embed_resource_header.cmake
-        ../cmake/embed_resource_impl.cmake
+        ../cmake/EmbedResource.cmake
+        ../cmake/EmbedResourceImpl.cmake
         ${CMAKE_CURRENT_BINARY_DIR}/cmake/coro-http-config.cmake
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/${PROJECT_NAME}
 )

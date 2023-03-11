@@ -375,9 +375,9 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
                          (*cache_path + PATH_SEPARATOR "alt-svc.txt").c_str()));
   }
 #ifdef USE_BUNDLED_CACERT
-  curl_blob ca_cert{.data = const_cast<void*>(
-                        reinterpret_cast<const void*>(kAssetsCacertPem.data())),
-                    .len = kAssetsCacertPem.size()};
+  curl_blob ca_cert{
+      .data = const_cast<void*>(reinterpret_cast<const void*>(kCaCert.data())),
+      .len = kCaCert.size()};
   Check(curl_easy_setopt(handle_.get(), CURLOPT_CAINFO_BLOB, &ca_cert));
 #endif
   std::optional<curl_off_t> content_length;

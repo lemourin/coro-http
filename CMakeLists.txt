@@ -24,6 +24,7 @@ if(BOOST_STACKTRACE)
             target_compile_definitions(boost_stacktrace INTERFACE BOOST_STACKTRACE_USE_BACKTRACE)
         endif()
     endif()
+    add_library(Boost::stacktrace ALIAS boost_stacktrace)
 endif()
 
 add_subdirectory(src)

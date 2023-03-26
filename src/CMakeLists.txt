@@ -109,7 +109,7 @@ if(COROUTINE_SUPPORTED)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         target_compile_options(coro-http PUBLIC ${COROUTINE_FLAGS})
     endif()
-    target_compile_definitions(coro-http PUBLIC COROUTINE_SUPPORTED)
+    target_compile_definitions(coro-http PUBLIC CORO_HTTP_COROUTINE_SUPPORTED)
 else()
     set(CMAKE_REQUIRED_FLAGS "${EXPERIMENTAL_COROUTINE_FLAGS}")
     check_cxx_source_compiles(
@@ -122,7 +122,7 @@ else()
     )
     if(EXPERIMENTAL_COROUTINE_SUPPORTED)
         target_compile_options(coro-http PUBLIC ${EXPERIMENTAL_COROUTINE_FLAGS})
-        target_compile_definitions(coro-http PUBLIC EXPERIMENTAL_COROUTINE_SUPPORTED)
+        target_compile_definitions(coro-http PUBLIC CORO_HTTP_EXPERIMENTAL_COROUTINE_SUPPORTED)
     else()
         message(FATAL_ERROR "Coroutines not supported.")
     endif()
@@ -137,35 +137,35 @@ check_cxx_source_compiles(
     SOURCE_LOCATION_SUPPORTED
 )
 if(SOURCE_LOCATION_SUPPORTED)
-    target_compile_definitions(coro-http PUBLIC SOURCE_LOCATION_SUPPORTED)
+    target_compile_definitions(coro-http PUBLIC CORO_HTTP_SOURCE_LOCATION_SUPPORTED)
 else()
-    check_c_source_compiles(
+    check_cxx_source_compiles(
         "int main() { return __builtin_FILE() == 0; }"
         HAVE_BUILTIN_FILE
     )
-    check_c_source_compiles(
+    check_cxx_source_compiles(
         "int main() { return __builtin_FUNCTION() == 0; }"
         HAVE_BUILTIN_FUNCTION
     )
-    check_c_source_compiles(
+    check_cxx_source_compiles(
         "int main() { return __builtin_LINE(); }"
         HAVE_BUILTIN_LINE
     )
-    check_c_source_compiles(
+    check_cxx_source_compiles(
         "int main() { return __builtin_COLUMN(); }"
         HAVE_BUILTIN_COLUMN
     )
     if(HAVE_BUILTIN_FILE)
-        target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_FILE)
+        target_compile_definitions(coro-http PUBLIC CORO_HTTP_HAVE_BUILTIN_FILE)
     endif()
     if(HAVE_BUILTIN_FUNCTION)
-        target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_FUNCTION)
+        target_compile_definitions(coro-http PUBLIC CORO_HTTP_HAVE_BUILTIN_FUNCTION)
     endif()
     if(HAVE_BUILTIN_LINE)
-        target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_LINE)
+        target_compile_definitions(coro-http PUBLIC CORO_HTTP_HAVE_BUILTIN_LINE)
     endif()
     if(HAVE_BUILTIN_COLUMN)
-        target_compile_definitions(coro-http PUBLIC HAVE_BUILTIN_COLUMN)
+        target_compile_definitions(coro-http PUBLIC CORO_HTTP_HAVE_BUILTIN_COLUMN)
     endif()
 endif()
 

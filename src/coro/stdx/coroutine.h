@@ -1,12 +1,12 @@
 #ifndef CORO_HTTP_COROUTINE_H
 #define CORO_HTTP_COROUTINE_H
 
-#if defined(COROUTINE_SUPPORTED)
+#if defined(CORO_HTTP_COROUTINE_SUPPORTED)
 #include <coroutine>
 namespace coro {
 namespace std_ns = std;
 }
-#elif defined(EXPERIMENTAL_COROUTINE_SUPPORTED)
+#elif defined(CORO_HTTP_EXPERIMENTAL_COROUTINE_SUPPORTED)
 #include <experimental/coroutine>
 namespace coro {
 namespace std_ns = std::experimental;

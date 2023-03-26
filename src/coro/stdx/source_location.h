@@ -3,7 +3,7 @@
 
 #include <string>
 
-#ifdef SOURCE_LOCATION_SUPPORTED
+#ifdef CORO_HTTP_SOURCE_LOCATION_SUPPORTED
 
 #include <source_location>
 
@@ -22,28 +22,28 @@ namespace coro::stdx {
 class source_location {
  public:
   static constexpr source_location current(const char* file_name =
-#ifdef HAVE_BUILTIN_FILE
+#ifdef CORO_HTTP_HAVE_BUILTIN_FILE
                                                __builtin_FILE()
 #else
                                                "unknown"
 #endif
                                                ,
                                            const char* function_name =
-#ifdef HAVE_BUILTIN_FUNCTION
+#ifdef CORO_HTTP_HAVE_BUILTIN_FUNCTION
                                                __builtin_FUNCTION()
 #else
                                                "unknown"
 #endif
                                                ,
                                            uint_least32_t line_number =
-#ifdef HAVE_BUILTIN_LINE
+#ifdef CORO_HTTP_HAVE_BUILTIN_LINE
                                                __builtin_LINE()
 #else
                                                0
 #endif
                                                ,
                                            uint_least32_t column_offset =
-#ifdef HAVE_BUILTIN_COLUMN
+#ifdef CORO_HTTP_HAVE_BUILTIN_COLUMN
                                                __builtin_COLUMN()
 #else
                                                0

@@ -9,5 +9,13 @@
     },
     "libevent",
     "boost-regex"
-  ]
+  ],
+  "features": {
+    "stacktrace": {
+      "description": "Enable stacktraces in exceptions.",
+      "dependencies": [
+        "boost-stacktrace"
+      ]
+    }
+  }
 }

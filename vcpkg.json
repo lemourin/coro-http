@@ -14,7 +14,11 @@
     "stacktrace": {
       "description": "Enable stacktraces in exceptions.",
       "dependencies": [
-        "boost-stacktrace"
+        "boost-stacktrace",
+        {
+          "name": "libbacktrace",
+          "platform": "!windows | mingw"
+        }
       ]
     }
   }

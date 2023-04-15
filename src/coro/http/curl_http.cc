@@ -32,18 +32,12 @@ struct SocketData {
 };
 
 struct CurlHandleDeleter {
-  void operator()(CURL* handle) const {
-    if (handle) {
-      curl_easy_cleanup(handle);
-    }
-  }
+  void operator()(CURL* handle) const noexcept { curl_easy_cleanup(handle); }
 };
 
 struct CurlListDeleter {
-  void operator()(curl_slist* list) const {
-    if (list) {
-      curl_slist_free_all(list);
-    }
+  void operator()(curl_slist* list) const noexcept {
+    curl_slist_free_all(list);
   }
 };
 
@@ -346,7 +340,7 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
                        stdx::stop_token stop_token, Owner owner)
     : http_(http),
       event_loop_(event_loop),
-      handle_(curl_easy_init()),
+      handle_(CheckNotNull(curl_easy_init())),
       header_list_(),
       request_body_(std::move(request.body)),
       stop_token_(std::move(stop_token)),
@@ -387,11 +381,8 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
     std::string header_line = header_name;
     header_line += ": ";
     header_line += header_value;
-    header_list_.reset(
-        curl_slist_append(header_list_.release(), header_line.c_str()));
-    if (!header_list_) {
-      throw HttpException(CURLE_OUT_OF_MEMORY, "curl_slist_append failed");
-    }
+    header_list_.reset(CheckNotNull(
+        curl_slist_append(header_list_.release(), header_line.c_str())));
     if (ToLowerCase(header_name) == "content-length") {
       content_length = std::stoll(header_value);
     }
@@ -530,7 +521,7 @@ CurlHttpOperation::await_resume() {
 
 CurlHttpImpl::CurlHttpImpl(event_base* event_loop,
                            std::optional<std::string> cache_path)
-    : curl_handle_(curl_multi_init()),
+    : curl_handle_(CheckNotNull(curl_multi_init())),
       event_loop_(event_loop),
       timeout_event_(),
       cache_path_(std::move(cache_path)) {
@@ -660,7 +651,7 @@ CurlHttpOperation CurlHttpImpl::Fetch(Request<> request,
 
 void CurlHttpImpl::CurlMultiDeleter::operator()(CURLM* handle) const {
   if (handle) {
-    curl_multi_cleanup(handle);
+    Check(curl_multi_cleanup(handle));
   }
 }
 

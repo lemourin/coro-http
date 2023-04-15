@@ -114,7 +114,11 @@ EventLoop::EventLoop()
           throw RuntimeError("evthread_use_pthreads error");
         }
 #endif
-        return reinterpret_cast<EventBase *>(event_base_new());
+        event_base *event_base = event_base_new();
+        if (!event_base) {
+          throw RuntimeError("event_base_new error");
+        }
+        return reinterpret_cast<EventBase *>(event_base);
       }()) {
 }
 

@@ -47,6 +47,14 @@ struct CurlListDeleter {
   }
 };
 
+template <typename T>
+T* CheckNotNull(T* p) {
+  if (!p) {
+    throw std::runtime_error("Unexpected null pointer.");
+  }
+  return p;
+}
+
 void Check(CURLMcode code) {
   if (code != CURLM_OK) {
     throw HttpException(code, curl_multi_strerror(code));
@@ -76,7 +84,7 @@ class CurlHandle {
   CurlHandle(CURLM* http, event_base* event_loop, Request<>,
              const std::string* cache_path, stdx::stop_token, Owner);
 
-  ~CurlHandle();
+  ~CurlHandle() noexcept;
 
  private:
   friend class CurlHttpImpl;
@@ -124,7 +132,7 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 
   CurlHttpBodyGenerator(const CurlHttpBodyGenerator&) = delete;
   CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) = delete;
-  ~CurlHttpBodyGenerator();
+  ~CurlHttpBodyGenerator() noexcept;
 
   CurlHttpBodyGenerator& operator=(const CurlHttpBodyGenerator&) = delete;
   CurlHttpBodyGenerator& operator=(CurlHttpBodyGenerator&&) = delete;
@@ -214,13 +222,7 @@ class CurlHttpImpl {
   std::optional<std::string> cache_path_;
 };
 
-CurlHandle::~CurlHandle() {
-  try {
-    Cleanup();
-  } catch (...) {
-    std::terminate();
-  }
-}
+CurlHandle::~CurlHandle() noexcept { Cleanup(); }
 
 void CurlHandle::Cleanup() {
   if (http_) {
@@ -462,14 +464,10 @@ void CurlHttpBodyGenerator::OnBodyReady(evutil_socket_t, short, void* handle) {
   }
 }
 
-CurlHttpBodyGenerator::~CurlHttpBodyGenerator() {
+CurlHttpBodyGenerator::~CurlHttpBodyGenerator() noexcept {
   if (chunk_ready_.ev_base) {
-    try {
-      Check(event_del(&chunk_ready_));
-      Check(event_del(&body_ready_));
-    } catch (...) {
-      std::terminate();
-    }
+    Check(event_del(&chunk_ready_));
+    Check(event_del(&body_ready_));
   }
 }
 

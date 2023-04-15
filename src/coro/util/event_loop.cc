@@ -118,13 +118,15 @@ EventLoop::EventLoop()
       }()) {
 }
 
-EventLoop::~EventLoop() {
 #ifdef WIN32
+EventLoop::~EventLoop() {
   if (WSACleanup() != 0) {
     std::terminate();
   }
-#endif
 }
+#else
+EventLoop::~EventLoop() = default;
+#endif
 
 void EventLoop::EnterLoop(EventLoopType type) {
   if (event_base_loop(ToEventBase(event_loop_.get()), [&] {

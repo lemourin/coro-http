@@ -34,13 +34,9 @@ UniqueLock::UniqueLock(Mutex* mutex) : mutex_(mutex) {}
 UniqueLock::UniqueLock(UniqueLock&& other) noexcept
     : mutex_(std::exchange(other.mutex_, nullptr)) {}
 
-UniqueLock::~UniqueLock() {
+UniqueLock::~UniqueLock() noexcept {
   if (mutex_) {
-    try {
-      mutex_->Unlock();
-    } catch (...) {
-      std::terminate();
-    }
+    mutex_->Unlock();
   }
 }
 
@@ -117,13 +113,9 @@ Task<ReadLock> ReadLock::Create(ReadWriteMutex* mutex) {
   co_return ReadLock(mutex);
 }
 
-ReadLock::~ReadLock() {
+ReadLock::~ReadLock() noexcept {
   if (mutex_) {
-    try {
-      mutex_->ReadUnlock();
-    } catch (...) {
-      std::terminate();
-    }
+    mutex_->ReadUnlock();
   }
 }
 
@@ -135,13 +127,9 @@ WriteLock& WriteLock::operator=(WriteLock&& other) noexcept {
   return *this;
 }
 
-WriteLock::~WriteLock() {
+WriteLock::~WriteLock() noexcept {
   if (mutex_) {
-    try {
-      mutex_->WriteUnlock();
-    } catch (...) {
-      std::terminate();
-    }
+    mutex_->WriteUnlock();
   }
 }
 

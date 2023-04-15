@@ -31,7 +31,7 @@ class UniqueLock {
   UniqueLock& operator=(const UniqueLock&) = delete;
   UniqueLock& operator=(UniqueLock&&) noexcept;
 
-  ~UniqueLock();
+  ~UniqueLock() noexcept;
 
   static Task<UniqueLock> Create(Mutex*);
 
@@ -69,7 +69,7 @@ class ReadLock {
   ReadLock& operator=(const ReadLock&) = delete;
   ReadLock& operator=(ReadLock&&) noexcept;
 
-  ~ReadLock();
+  ~ReadLock() noexcept;
 
   static Task<ReadLock> Create(ReadWriteMutex*);
 
@@ -86,7 +86,7 @@ class WriteLock {
   WriteLock& operator=(const WriteLock&) = delete;
   WriteLock& operator=(WriteLock&&) noexcept;
 
-  ~WriteLock();
+  ~WriteLock() noexcept;
 
   static Task<WriteLock> Create(ReadWriteMutex*);
 

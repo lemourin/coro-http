@@ -23,14 +23,19 @@ class EventLoop {
   class WaitTask;
 
   EventLoop();
-  ~EventLoop();
+  ~EventLoop() noexcept;
+
+  EventLoop(const EventLoop&) = delete;
+  EventLoop(EventLoop&&) = delete;
+  EventLoop& operator=(const EventLoop&) = delete;
+  EventLoop& operator=(EventLoop&&) = delete;
 
   WaitTask Wait(int msec, stdx::stop_token = stdx::stop_token()) const;
 
   template <typename F>
-  requires requires(F func) {
-    { func() } -> Awaitable<void>;
-  }
+    requires requires(F func) {
+      { func() } -> Awaitable<void>;
+    }
   void RunOnEventLoop(F func) const {
     RunOnce([func = std::move(func)]() mutable {
       coro::RunTask([func = std::move(func)]() mutable -> Task<> {
@@ -46,9 +51,9 @@ class EventLoop {
 
   template <typename F,
             typename ResultType = typename decltype(std::declval<F>()())::type>
-  requires requires(F func) {
-    { func() } -> Awaitable<ResultType>;
-  }
+    requires requires(F func) {
+      { func() } -> Awaitable<ResultType>;
+    }
   ResultType Do(F func) const {
     std::promise<ResultType> result;
     RunOnEventLoop([&result, &func]() -> Task<> {

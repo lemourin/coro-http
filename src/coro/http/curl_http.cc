@@ -27,18 +27,26 @@ namespace {
 #define PATH_SEPARATOR "/"
 #endif
 
-struct SocketData {
-  event socket_event = {};
-};
+class CurlHttpImpl;
+class CurlHttpOperation;
+class CurlHttpBodyGenerator;
 
-struct CurlHandleDeleter {
-  void operator()(CURL* handle) const noexcept { curl_easy_cleanup(handle); }
-};
+class EventData {
+ public:
+  EventData(struct event_base* base, evutil_socket_t fd, short events,
+            event_callback_fn callback, void* callback_arg);
 
-struct CurlListDeleter {
-  void operator()(curl_slist* list) const noexcept {
-    curl_slist_free_all(list);
-  }
+  ~EventData() noexcept;
+  EventData(const EventData&) = delete;
+  EventData(EventData&&) = delete;
+  EventData& operator=(const EventData&) = delete;
+  EventData& operator=(EventData&&) = delete;
+
+  struct event* event() { return &event_; }
+  const struct event* event() const { return &event_; }
+
+ private:
+  struct event event_ {};
 };
 
 template <typename T>
@@ -67,14 +75,39 @@ void Check(int code) {
   }
 }
 
-class CurlHttpImpl;
-class CurlHttpOperation;
-class CurlHttpBodyGenerator;
+struct CurlHandleDeleter {
+  void operator()(CURL* handle) const noexcept {
+    Check(curl_multi_remove_handle(multi_handle, handle));
+    curl_easy_cleanup(handle);
+  }
+  CURLM* multi_handle;
+};
+
+struct CurlListDeleter {
+  void operator()(curl_slist* list) const noexcept {
+    curl_slist_free_all(list);
+  }
+};
+
+EventData::EventData(struct event_base* base, evutil_socket_t fd, short events,
+                     event_callback_fn callback, void* callback_arg) {
+  Check(event_assign(&event_, base, fd, events, callback, callback_arg));
+}
+
+EventData::~EventData() noexcept {
+  if (event_.ev_base) {
+    Check(event_del(&event_));
+  }
+}
 
 class CurlGlobalInitializer {
  public:
   CurlGlobalInitializer() { Check(curl_global_init(CURL_GLOBAL_DEFAULT)); }
   ~CurlGlobalInitializer() noexcept { curl_global_cleanup(); }
+  CurlGlobalInitializer(const CurlGlobalInitializer&) = delete;
+  CurlGlobalInitializer(CurlGlobalInitializer&&) = delete;
+  CurlGlobalInitializer& operator=(const CurlGlobalInitializer&) = delete;
+  CurlGlobalInitializer& operator=(CurlGlobalInitializer&&) = delete;
 };
 
 class CurlHandle {
@@ -83,8 +116,6 @@ class CurlHandle {
 
   CurlHandle(CURLM* http, event_base* event_loop, Request<>,
              const std::string* cache_path, stdx::stop_token, Owner);
-
-  ~CurlHandle() noexcept;
 
  private:
   friend class CurlHttpImpl;
@@ -121,7 +152,7 @@ class CurlHandle {
   std::optional<size_t> request_body_chunk_index_;
   stdx::stop_token stop_token_;
   Owner owner_;
-  event next_request_body_chunk_;
+  EventData next_request_body_chunk_;
   stdx::stop_callback<OnCancel> stop_callback_;
 };
 
@@ -129,13 +160,6 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
  public:
   CurlHttpBodyGenerator(std::unique_ptr<CurlHandle> handle,
                         std::string_view initial_chunk);
-
-  CurlHttpBodyGenerator(const CurlHttpBodyGenerator&) = delete;
-  CurlHttpBodyGenerator(CurlHttpBodyGenerator&&) = delete;
-  ~CurlHttpBodyGenerator() noexcept;
-
-  CurlHttpBodyGenerator& operator=(const CurlHttpBodyGenerator&) = delete;
-  CurlHttpBodyGenerator& operator=(CurlHttpBodyGenerator&&) = delete;
 
   void Resume();
 
@@ -147,8 +171,8 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
   friend class CurlHandle;
   friend class CurlHttpImpl;
 
-  event chunk_ready_;
-  event body_ready_;
+  EventData chunk_ready_;
+  EventData body_ready_;
   bool body_ready_fired_ = false;
   int status_ = -1;
   std::exception_ptr exception_ptr_;
@@ -160,12 +184,6 @@ class CurlHttpOperation {
  public:
   CurlHttpOperation(CURLM* http, event_base* event_loop, Request<>,
                     const std::string* cache_path, stdx::stop_token);
-  CurlHttpOperation(const CurlHttpOperation&) = delete;
-  CurlHttpOperation(CurlHttpOperation&&) = delete;
-  ~CurlHttpOperation();
-
-  CurlHttpOperation& operator=(const CurlHttpOperation&) = delete;
-  CurlHttpOperation& operator=(CurlHttpOperation&&) = delete;
 
   bool await_ready();
   void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine);
@@ -179,8 +197,8 @@ class CurlHttpOperation {
 
   stdx::coroutine_handle<void> awaiting_coroutine_;
   std::exception_ptr exception_ptr_;
-  event headers_ready_;
-  bool headers_ready_event_posted_;
+  EventData headers_ready_;
+  bool headers_ready_event_posted_ = false;
   int status_ = -1;
   std::vector<std::pair<std::string, std::string>> headers_;
   std::string body_;
@@ -191,11 +209,6 @@ class CurlHttpOperation {
 class CurlHttpImpl {
  public:
   CurlHttpImpl(event_base* event_loop, std::optional<std::string> cache_path);
-
-  CurlHttpImpl(CurlHttpImpl&&) = delete;
-  CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
-
-  ~CurlHttpImpl();
 
   CurlHttpOperation Fetch(Request<> request,
                           stdx::stop_token = stdx::stop_token()) const;
@@ -219,19 +232,17 @@ class CurlHttpImpl {
   CurlGlobalInitializer initializer_;
   std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle_;
   event_base* event_loop_;
-  event timeout_event_;
+  EventData timeout_event_;
   std::optional<std::string> cache_path_;
 };
-
-CurlHandle::~CurlHandle() noexcept { Cleanup(); }
 
 void CurlHandle::Cleanup() {
   if (http_) {
     Check(curl_multi_remove_handle(http_, handle_.get()));
     http_ = nullptr;
   }
-  if (next_request_body_chunk_.ev_base) {
-    event_del(&next_request_body_chunk_);
+  if (next_request_body_chunk_.event()->ev_base) {
+    Check(event_del(next_request_body_chunk_.event()));
   }
 }
 
@@ -280,7 +291,7 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
     auto* http_operation = std::get<CurlHttpOperation*>(data->owner_);
     if (!http_operation->headers_ready_event_posted_) {
       http_operation->headers_ready_event_posted_ = true;
-      evuser_trigger(&http_operation->headers_ready_);
+      evuser_trigger(http_operation->headers_ready_.event());
     }
     http_operation->body_ += std::string(ptr, ptr + size * nmemb);
   } else if (std::holds_alternative<CurlHttpBodyGenerator*>(data->owner_)) {
@@ -290,7 +301,7 @@ size_t CurlHandle::WriteCallback(char* ptr, size_t size, size_t nmemb,
       return CURL_WRITEFUNC_PAUSE;
     }
     http_body_generator->data_ += std::string(ptr, ptr + size * nmemb);
-    evuser_trigger(&http_body_generator->chunk_ready_);
+    evuser_trigger(http_body_generator->chunk_ready_.event());
   }
   return size * nmemb;
 }
@@ -320,7 +331,7 @@ size_t CurlHandle::ReadCallback(char* buffer, size_t size, size_t nitems,
   }
   if (data->request_body_chunk_index_ == current_chunk.size()) {
     data->request_body_chunk_index_ = std::nullopt;
-    evuser_trigger(&data->next_request_body_chunk_);
+    evuser_trigger(data->next_request_body_chunk_.event());
   }
   return offset > 0 ? offset : CURL_READFUNC_PAUSE;
 }
@@ -347,12 +358,14 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
                        stdx::stop_token stop_token, Owner owner)
     : http_(http),
       event_loop_(event_loop),
-      handle_(CheckNotNull(curl_easy_init())),
+      handle_(CheckNotNull(curl_easy_init()),
+              CurlHandleDeleter{.multi_handle = http}),
       header_list_(),
       request_body_(std::move(request.body)),
       stop_token_(std::move(stop_token)),
       owner_(owner),
-      next_request_body_chunk_(),
+      next_request_body_chunk_(event_loop, -1, 0,
+                               OnNextRequestBodyChunkRequested, this),
       stop_callback_(stop_token_, OnCancel{this}) {
   Check(curl_easy_setopt(handle_.get(), CURLOPT_URL, request.url.data()));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));
@@ -422,20 +435,15 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
     });
   }
 
-  Check(event_assign(&next_request_body_chunk_, event_loop, -1, 0,
-                     OnNextRequestBodyChunkRequested, this));
-
   Check(curl_multi_add_handle(http, handle_.get()));
 }
 
 CurlHttpBodyGenerator::CurlHttpBodyGenerator(std::unique_ptr<CurlHandle> handle,
                                              std::string_view initial_chunk)
-    : handle_(std::move(handle)) {
+    : chunk_ready_(handle->event_loop_, -1, 0, OnChunkReady, this),
+      body_ready_(handle->event_loop_, -1, 0, OnBodyReady, this),
+      handle_(std::move(handle)) {
   handle_->owner_ = this;
-  Check(event_assign(&chunk_ready_, handle_->event_loop_, -1, 0, OnChunkReady,
-                     this));
-  Check(event_assign(&body_ready_, handle_->event_loop_, -1, 0, OnBodyReady,
-                     this));
   ReceivedData(initial_chunk);
 }
 
@@ -447,7 +455,7 @@ void CurlHttpBodyGenerator::OnChunkReady(evutil_socket_t, short, void* handle) {
   if (curl_http_body_generator->status_ != -1 &&
       !curl_http_body_generator->body_ready_fired_) {
     curl_http_body_generator->body_ready_fired_ = true;
-    evuser_trigger(&curl_http_body_generator->body_ready_);
+    evuser_trigger(curl_http_body_generator->body_ready_.event());
   }
   curl_http_body_generator->ReceivedData(std::move(data));
 }
@@ -462,13 +470,6 @@ void CurlHttpBodyGenerator::OnBodyReady(evutil_socket_t, short, void* handle) {
   }
 }
 
-CurlHttpBodyGenerator::~CurlHttpBodyGenerator() noexcept {
-  if (chunk_ready_.ev_base) {
-    Check(event_del(&chunk_ready_));
-    Check(event_del(&body_ready_));
-  }
-}
-
 void CurlHttpBodyGenerator::Resume() {
   if (status_ == -1 && !exception_ptr_) {
     curl_easy_pause(handle_->handle_.get(), CURLPAUSE_RECV_CONT);
@@ -479,20 +480,10 @@ CurlHttpOperation::CurlHttpOperation(CURLM* http, event_base* event_loop,
                                      Request<> request,
                                      const std::string* cache_directory,
                                      stdx::stop_token stop_token)
-    : headers_ready_(),
-      headers_ready_event_posted_(),
+    : headers_ready_(event_loop, -1, 0, OnHeadersReady, this),
       handle_(std::make_unique<CurlHandle>(http, event_loop, std::move(request),
                                            cache_directory,
-                                           std::move(stop_token), this)) {
-  Check(event_assign(&headers_ready_, handle_->event_loop_, -1, 0,
-                     OnHeadersReady, this));
-}
-
-CurlHttpOperation::~CurlHttpOperation() {
-  if (headers_ready_.ev_base) {
-    event_del(&headers_ready_);
-  }
-}
+                                           std::move(stop_token), this)) {}
 
 void CurlHttpOperation::OnHeadersReady(evutil_socket_t, short, void* handle) {
   auto* http_operation = reinterpret_cast<CurlHttpOperation*>(handle);
@@ -530,10 +521,8 @@ CurlHttpImpl::CurlHttpImpl(event_base* event_loop,
                            std::optional<std::string> cache_path)
     : curl_handle_(CheckNotNull(curl_multi_init())),
       event_loop_(event_loop),
-      timeout_event_(),
+      timeout_event_(event_loop, -1, 0, TimeoutEvent, curl_handle_.get()),
       cache_path_(std::move(cache_path)) {
-  Check(event_assign(&timeout_event_, event_loop, -1, 0, TimeoutEvent,
-                     curl_handle_.get()));
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETFUNCTION,
                           SocketCallback));
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERFUNCTION,
@@ -541,8 +530,6 @@ CurlHttpImpl::CurlHttpImpl(event_base* event_loop,
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, this));
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
 }
-
-CurlHttpImpl::~CurlHttpImpl() { event_del(&timeout_event_); }
 
 void CurlHttpImpl::TimeoutEvent(evutil_socket_t, short, void* handle) {
   int running_handles;
@@ -589,10 +576,11 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
               HttpException(message->data.result,
                             curl_easy_strerror(message->data.result)));
         }
-        if (!(curl_http_body_generator->chunk_ready_.ev_evcallback.evcb_flags &
+        if (!(curl_http_body_generator->chunk_ready_.event()
+                  ->ev_evcallback.evcb_flags &
               EVLIST_ACTIVE)) {
           curl_http_body_generator->body_ready_fired_ = true;
-          evuser_trigger(&curl_http_body_generator->body_ready_);
+          evuser_trigger(curl_http_body_generator->body_ready_.event());
         }
       }
     }
@@ -613,26 +601,22 @@ int CurlHttpImpl::SocketCallback(CURL*, curl_socket_t socket, int what,
                                  void* userp, void* socketp) {
   auto* http = reinterpret_cast<CurlHttpImpl*>(userp);
   if (what == CURL_POLL_REMOVE) {
-    auto* data = reinterpret_cast<SocketData*>(socketp);
-    if (data) {
-      Check(event_del(&data->socket_event));
-      delete data;
-    }
+    delete reinterpret_cast<EventData*>(socketp);
   } else {
-    auto* data = reinterpret_cast<SocketData*>(socketp);
+    auto* data = reinterpret_cast<EventData*>(socketp);
+    auto events = static_cast<short>(((what & CURL_POLL_IN) ? EV_READ : 0) |
+                                     ((what & CURL_POLL_OUT) ? EV_WRITE : 0) |
+                                     EV_PERSIST);
     if (!data) {
-      data = new SocketData;
+      data = new EventData(http->event_loop_, socket, events, SocketEvent,
+                           http->curl_handle_.get());
       Check(curl_multi_assign(http->curl_handle_.get(), socket, data));
     } else {
-      Check(event_del(&data->socket_event));
+      Check(event_del(data->event()));
+      Check(event_assign(data->event(), http->event_loop_, socket, events,
+                         SocketEvent, http->curl_handle_.get()));
     }
-    Check(event_assign(
-        &data->socket_event, http->event_loop_, socket,
-        static_cast<short>(((what & CURL_POLL_IN) ? EV_READ : 0) |
-                           ((what & CURL_POLL_OUT) ? EV_WRITE : 0) |
-                           EV_PERSIST),
-        SocketEvent, http->curl_handle_.get()));
-    Check(event_add(&data->socket_event, nullptr));
+    Check(event_add(data->event(), /*timeout=*/nullptr));
   }
   return 0;
 }
@@ -640,12 +624,12 @@ int CurlHttpImpl::SocketCallback(CURL*, curl_socket_t socket, int what,
 int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
   auto* http = reinterpret_cast<CurlHttpImpl*>(userp);
   if (timeout_ms == -1) {
-    Check(event_del(&http->timeout_event_));
+    Check(event_del(http->timeout_event_.event()));
   } else {
     timeval tv = {
         .tv_sec = static_cast<decltype(tv.tv_sec)>(timeout_ms / 1000),
         .tv_usec = static_cast<decltype(tv.tv_usec)>(timeout_ms % 1000 * 1000)};
-    Check(event_add(&http->timeout_event_, &tv));
+    Check(event_add(http->timeout_event_.event(), &tv));
   }
   return 0;
 }
@@ -657,9 +641,7 @@ CurlHttpOperation CurlHttpImpl::Fetch(Request<> request,
 }
 
 void CurlHttpImpl::CurlMultiDeleter::operator()(CURLM* handle) const {
-  if (handle) {
-    Check(curl_multi_cleanup(handle));
-  }
+  Check(curl_multi_cleanup(handle));
 }
 
 Generator<std::string> ToBody(

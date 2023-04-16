@@ -119,13 +119,13 @@ EventLoop::EventLoop()
 }
 
 #ifdef WIN32
-EventLoop::~EventLoop() {
+EventLoop::~EventLoop() noexcept {
   if (WSACleanup() != 0) {
     std::terminate();
   }
 }
 #else
-EventLoop::~EventLoop() = default;
+EventLoop::~EventLoop() noexcept = default;
 #endif
 
 void EventLoop::EnterLoop(EventLoopType type) {

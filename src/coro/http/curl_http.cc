@@ -71,6 +71,12 @@ class CurlHttpImpl;
 class CurlHttpOperation;
 class CurlHttpBodyGenerator;
 
+class CurlGlobalInitializer {
+ public:
+  CurlGlobalInitializer() { Check(curl_global_init(CURL_GLOBAL_DEFAULT)); }
+  ~CurlGlobalInitializer() noexcept { curl_global_cleanup(); }
+};
+
 class CurlHandle {
  public:
   using Owner = std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*>;
@@ -210,6 +216,7 @@ class CurlHttpImpl {
     void operator()(CURLM* handle) const;
   };
 
+  CurlGlobalInitializer initializer_;
   std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle_;
   event_base* event_loop_;
   event timeout_event_;
@@ -525,8 +532,8 @@ CurlHttpImpl::CurlHttpImpl(event_base* event_loop,
       event_loop_(event_loop),
       timeout_event_(),
       cache_path_(std::move(cache_path)) {
-  event_assign(&timeout_event_, event_loop, -1, 0, TimeoutEvent,
-               curl_handle_.get());
+  Check(event_assign(&timeout_event_, event_loop, -1, 0, TimeoutEvent,
+                     curl_handle_.get()));
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETFUNCTION,
                           SocketCallback));
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERFUNCTION,

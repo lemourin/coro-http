@@ -22,15 +22,11 @@ event *ToEvent(T *d) {
 }  // namespace
 
 void EventLoop::EventBaseDeleter::operator()(EventBase *event_base) const {
-  if (event_base) {
-    event_base_free(ToEventBase(event_base));
-  }
+  event_base_free(ToEventBase(event_base));
 }
 
 void EventLoop::EventDeleter::operator()(Event *e) const {
-  if (e) {
-    event_free(reinterpret_cast<struct event *>(e));
-  }
+  event_free(reinterpret_cast<struct event *>(e));
 }
 
 bool EventLoop::WaitTask::await_ready() {

@@ -6,31 +6,47 @@
 
 namespace coro::util {
 
+namespace internal {
+struct StopTokenOrOnCancel {
+  void operator()() const { stop_source->request_stop(); }
+  stdx::stop_source* stop_source;
+};
+}  // namespace internal
+
+template <int N>
 class StopTokenOr {
  public:
-  StopTokenOr(stdx::stop_source stop_source, stdx::stop_token fst_token,
-              stdx::stop_token nd_token)
-      : stop_source_(std::move(stop_source)),
-        callback_fst_(std::move(fst_token), Callback{&stop_source_}),
-        callback_nd_(std::move(nd_token), Callback{&stop_source_}) {}
+  template <typename... Args>
+  explicit StopTokenOr(Args&&... args)
+      : stop_callbacks_{{{std::forward<Args>(args),
+                          internal::StopTokenOrOnCancel{&stop_source_}}...}} {}
 
-  StopTokenOr(stdx::stop_token fst_token, stdx::stop_token nd_token)
-      : StopTokenOr(stdx::stop_source(), std::move(fst_token),
-                    std::move(nd_token)) {}
+  template <typename... Args>
+  explicit StopTokenOr(stdx::stop_source stop_source, Args&&... args)
+      : stop_source_(std::move(stop_source)),
+        stop_callbacks_{{{std::forward<Args>(args),
+                          internal::StopTokenOrOnCancel{&stop_source_}}...}} {}
 
   stdx::stop_token GetToken() const noexcept {
     return stop_source_.get_token();
   }
 
  private:
-  struct Callback {
-    void operator()() { stop_source->request_stop(); }
-    stdx::stop_source* stop_source;
-  };
   stdx::stop_source stop_source_;
-  stdx::stop_callback<Callback> callback_fst_;
-  stdx::stop_callback<Callback> callback_nd_;
+  std::array<stdx::stop_callback<internal::StopTokenOrOnCancel>, N>
+      stop_callbacks_;
 };
+
+template <typename... Args>
+auto MakeUniqueStopTokenOr(Args&&... stop_token) {
+  return std::make_unique<StopTokenOr<sizeof...(Args)>>(
+      std::forward<Args>(stop_token)...);
+}
+
+template <typename... Args>
+auto MakeStopTokenOr(Args&&... stop_token) {
+  return StopTokenOr<sizeof...(Args)>(std::forward<Args>(stop_token)...);
+}
 
 }  // namespace coro::util
 

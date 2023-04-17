@@ -31,6 +31,10 @@ struct BufferEventDeleter {
   void operator()(bufferevent* bev) const noexcept { bufferevent_free(bev); }
 };
 
+struct EvBufferDeleter {
+  void operator()(evbuffer* buffer) const noexcept { evbuffer_free(buffer); }
+};
+
 struct RequestContextBase {
   std::string url;
   Method method;
@@ -291,7 +295,14 @@ Task<> Write(RequestContextBase* context, bufferevent* bev,
              std::string_view chunk) {
   Check(bufferevent_enable(bev, EV_WRITE));
   context->semaphore = Promise<void>();
-  Check(bufferevent_write(bev, chunk.data(), chunk.size()));
+  std::unique_ptr<evbuffer, EvBufferDeleter> buffer{evbuffer_new()};
+  if (!buffer) {
+    throw HttpException(HttpException::kUnknown, "evbuffer_new error");
+  }
+  Check(evbuffer_add_reference(buffer.get(), chunk.data(), chunk.size(),
+                               /*cleanupfn=*/nullptr,
+                               /*cleanupfnarg=*/nullptr));
+  Check(bufferevent_write_buffer(bev, buffer.get()));
   co_await Wait(context);
   Check(bufferevent_disable(bev, EV_WRITE));
 }
@@ -305,9 +316,16 @@ Task<> WriteHttpChunk(RequestContextBase* context, bufferevent* bev,
     stream << std::hex << chunk.size() << "\r\n";
     return std::move(stream).str();
   }();
-  Check(bufferevent_write(bev, length.data(), length.size()));
-  Check(bufferevent_write(bev, chunk.data(), chunk.size()));
-  Check(bufferevent_write(bev, "\r\n", 2));
+  std::unique_ptr<evbuffer, EvBufferDeleter> buffer{evbuffer_new()};
+  if (!buffer) {
+    throw HttpException(HttpException::kUnknown, "evbuffer_new error");
+  }
+  Check(evbuffer_add(buffer.get(), length.data(), length.size()));
+  Check(evbuffer_add_reference(buffer.get(), chunk.data(), chunk.size(),
+                               /*cleanupfn=*/nullptr,
+                               /*cleanupfnarg=*/nullptr));
+  Check(evbuffer_add(buffer.get(), "\r\n", 2));
+  Check(bufferevent_write_buffer(bev, buffer.get()));
   co_await Wait(context);
   Check(bufferevent_disable(bev, EV_WRITE));
 }
@@ -561,9 +579,7 @@ std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
 }  // namespace
 
 void EvconnListenerDeleter::operator()(EvconnListener* listener) const {
-  if (listener) {
-    evconnlistener_free(reinterpret_cast<evconnlistener*>(listener));
-  }
+  evconnlistener_free(reinterpret_cast<evconnlistener*>(listener));
 }
 
 HttpServerContext::HttpServerContext(const coro::util::EventLoop* event_loop,

@@ -135,6 +135,8 @@ void EventLoop::EnterLoop(EventLoopType type) {
             return EVLOOP_NO_EXIT_ON_EMPTY;
           case EventLoopType::ExitOnEmpty:
             return 0;
+          default:
+            throw RuntimeError("Unknown EventLoopType.");
         }
       }()) < 0) {
     throw RuntimeError("event_base_loop error");

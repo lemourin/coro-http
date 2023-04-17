@@ -28,11 +28,7 @@ constexpr int kMaxLineLength = 16192;
 constexpr int kMaxHeaderCount = 128;
 
 struct BufferEventDeleter {
-  void operator()(bufferevent* bev) const {
-    if (bev) {
-      bufferevent_free(bev);
-    }
-  }
+  void operator()(bufferevent* bev) const noexcept { bufferevent_free(bev); }
 };
 
 struct RequestContextBase {
@@ -53,10 +49,8 @@ struct RequestContext : RequestContextBase {
 };
 
 struct FreeDeleter {
-  void operator()(char* d) const {
-    if (d) {
-      free(d);  // NOLINT
-    }
+  void operator()(char* d) const noexcept {
+    free(d);  // NOLINT
   }
 };
 
@@ -302,6 +296,22 @@ Task<> Write(RequestContextBase* context, bufferevent* bev,
   Check(bufferevent_disable(bev, EV_WRITE));
 }
 
+Task<> WriteHttpChunk(RequestContextBase* context, bufferevent* bev,
+                      std::string_view chunk) {
+  Check(bufferevent_enable(bev, EV_WRITE));
+  context->semaphore = Promise<void>();
+  std::string length = [&] {
+    std::stringstream stream;
+    stream << std::hex << chunk.size() << "\r\n";
+    return std::move(stream).str();
+  }();
+  Check(bufferevent_write(bev, length.data(), length.size()));
+  Check(bufferevent_write(bev, chunk.data(), chunk.size()));
+  Check(bufferevent_write(bev, "\r\n", 2));
+  co_await Wait(context);
+  Check(bufferevent_disable(bev, EV_WRITE));
+}
+
 bool HasBody(int response_status, std::optional<int64_t> content_length) {
   return (response_status / 100 != 1 && response_status != 204 &&
           response_status != 304) ||
@@ -322,12 +332,6 @@ std::string GetHeader(int response_status,
   }
   header << "\r\n";
   return std::move(header).str();
-}
-
-std::string GetChunk(std::string_view chunk) {
-  std::stringstream stream;
-  stream << std::hex << chunk.size() << "\r\n" << chunk << "\r\n";
-  return std::move(stream).str();
 }
 
 Task<Response<>> GetResponse(const HttpServerContext::OnRequest& on_request,
@@ -434,13 +438,6 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
     co_return false;
   }
 
-  auto chunk_to_send = [&](std::string_view chunk) {
-    if (is_chunked) {
-      return GetChunk(chunk);
-    } else {
-      return std::string(chunk);
-    }
-  };
   try {
     auto it = co_await context->response->body.begin();
     while (it != context->response->body.end()) {
@@ -449,7 +446,7 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
       if (it == context->response->body.end() && !is_chunked) {
         co_await FlushInput(context, bev);
       }
-      co_await Write(context, bev, chunk_to_send(chunk));
+      co_await (is_chunked ? WriteHttpChunk : Write)(context, bev, chunk);
     }
   } catch (const Exception& e) {
     error_message = e.what();
@@ -459,11 +456,11 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
     error_message = e.what();
   }
   if (error_message) {
-    co_await Write(
+    co_await (is_chunked ? WriteHttpChunk : Write)(
         context, bev,
-        chunk_to_send((is_html ? GetHtmlErrorMessage : GetErrorMessage)(
+        (is_html ? GetHtmlErrorMessage : GetErrorMessage)(
             *error_message, stacktrace ? &*stacktrace : nullptr,
-            source_location ? &*source_location : nullptr)));
+            source_location ? &*source_location : nullptr));
   }
   if (is_chunked) {
     if (!error_message) {

@@ -102,6 +102,7 @@ std::string GetErrorMessage(std::string_view what,
   if (stacktrace && !stacktrace->empty()) {
     stream << "\n\nStacktrace:\n" << coro::ToString(*stacktrace);
   }
+  stream << '\n';
   return std::move(stream).str();
 }
 
@@ -455,6 +456,15 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
       }
       co_await (is_chunked ? WriteHttpChunk : Write)(context, bev, chunk);
     }
+  } catch (const HttpException& e) {
+    error_message = "HTTP ";
+    *error_message += std::to_string(e.status());
+    *error_message += ' ';
+    *error_message += ToStatusString(e.status());
+    *error_message += '\n';
+    *error_message += e.what();
+    source_location = e.source_location();
+    stacktrace = e.stacktrace();
   } catch (const Exception& e) {
     error_message = e.what();
     source_location = e.source_location();

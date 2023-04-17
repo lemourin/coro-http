@@ -5,7 +5,7 @@
     {
       "name": "curl",
       "default-features": false,
-      "features": ["ssl", "c-ares"]
+      "features": ["ssl", "http2", "c-ares"]
     },
     "libevent",
     "boost-regex"

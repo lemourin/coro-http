@@ -309,25 +309,14 @@ Task<> Write(RequestContextBase* context, bufferevent* bev,
 
 Task<> WriteHttpChunk(RequestContextBase* context, bufferevent* bev,
                       std::string_view chunk) {
-  Check(bufferevent_enable(bev, EV_WRITE));
-  context->semaphore = Promise<void>();
   std::string length = [&] {
     std::stringstream stream;
     stream << std::hex << chunk.size() << "\r\n";
     return std::move(stream).str();
   }();
-  std::unique_ptr<evbuffer, EvBufferDeleter> buffer{evbuffer_new()};
-  if (!buffer) {
-    throw HttpException(HttpException::kUnknown, "evbuffer_new error");
-  }
-  Check(evbuffer_add(buffer.get(), length.data(), length.size()));
-  Check(evbuffer_add_reference(buffer.get(), chunk.data(), chunk.size(),
-                               /*cleanupfn=*/nullptr,
-                               /*cleanupfnarg=*/nullptr));
-  Check(evbuffer_add(buffer.get(), "\r\n", 2));
-  Check(bufferevent_write_buffer(bev, buffer.get()));
-  co_await Wait(context);
-  Check(bufferevent_disable(bev, EV_WRITE));
+  co_await Write(context, bev, length);
+  co_await Write(context, bev, chunk);
+  co_await Write(context, bev, "\r\n");
 }
 
 bool HasBody(int response_status, std::optional<int64_t> content_length) {

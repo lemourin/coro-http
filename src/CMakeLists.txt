@@ -60,7 +60,11 @@ find_package(Threads REQUIRED)
 
 target_link_libraries(coro-http PRIVATE libevent::core libevent::extra Threads::Threads CURL::libcurl Boost::regex)
 
-if (NOT WIN32)
+if(APPLE)
+    target_link_libraries(coro-http PRIVATE resolv)
+endif()
+
+if(NOT WIN32)
     target_link_libraries(coro-http PRIVATE libevent::pthreads)
 endif()
 

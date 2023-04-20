@@ -368,7 +368,7 @@ Task<Response<>> GetResponse(const HttpServerContext::OnRequest& on_request,
 }
 
 Task<> WriteMessage(RequestContext* context, bufferevent* bev, int status,
-                    std::string_view message) {
+                    std::string message) {
   if (status < 100 || status >= 600) {
     status = 500;
   }
@@ -379,7 +379,7 @@ Task<> WriteMessage(RequestContext* context, bufferevent* bev, int status,
   stream << "<!DOCTYPE html>"
             "<html>"
             "<body>"
-         << message
+         << std::move(message)
          << "</body>"
             "</html>";
   std::string data = std::move(stream).str();
@@ -438,9 +438,9 @@ Task<bool> HandleRequest(const HttpServerContext::OnRequest& on_request,
     context->response->headers.emplace_back("Transfer-Encoding", "chunked");
   }
   context->response->headers.emplace_back("Connection", "keep-alive");
-  co_await Write(
-      context, bev,
-      GetHeader(context->response->status, context->response->headers));
+  std::string http_header =
+      GetHeader(context->response->status, context->response->headers);
+  co_await Write(context, bev, http_header);
 
   if (context->method == Method::kHead || !has_body) {
     co_return false;

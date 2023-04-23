@@ -387,7 +387,8 @@ Task<> WriteMessage(RequestContext* context, bufferevent* bev, int status,
       {"Content-Type", "text/html; charset=UTF-8"},
       {"Content-Length", std::to_string(data.size())},
       {"Connection", IsInvalidStage(context->stage) ? "close" : "keep-alive"}};
-  co_await Write(context, bev, GetHeader(status, headers));
+  std::string http_header = GetHeader(status, headers);
+  co_await Write(context, bev, http_header);
   if (context->method != Method::kHead &&
       HasBody(status, /*content_length=*/std::nullopt)) {
     co_await Write(context, bev, data);

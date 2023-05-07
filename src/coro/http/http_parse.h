@@ -62,6 +62,7 @@ std::string MimeTypeToExtension(std::string_view mime_type);
 std::string ToBase64(std::string_view);
 std::string FromBase64(std::string_view);
 int64_t ParseTime(std::string_view);
+std::string ToTimeString(time_t);
 std::string_view ToStatusString(int http_code);
 Method ToMethod(std::string_view method);
 std::pair<std::string, std::string> ToRangeHeader(const Range&);

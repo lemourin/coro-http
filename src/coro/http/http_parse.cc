@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cmath>
+#include <iomanip>
 #include <memory>
 #include <sstream>
 #include <utility>
@@ -397,6 +398,13 @@ int64_t ParseTime(std::string_view str) {
     return timegm(time);
   }
   throw InvalidArgument("can't parse time");
+}
+
+std::string ToTimeString(time_t timestamp) {
+  auto time = http::gmtime(timestamp);
+  std::stringstream ss;
+  ss << std::put_time(&time, "%Y-%m-%dT%H:%M:%SZ");
+  return ss.str();
 }
 
 Method ToMethod(std::string_view method) {

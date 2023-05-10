@@ -82,7 +82,6 @@ void SetThreadName(std::string_view name) {
 ThreadPool::ThreadPool(const EventLoop* event_loop, unsigned int thread_count,
                        std::string name)
     : event_loop_(event_loop), name_(std::move(name)) {
-  thread_count = std::max<unsigned int>(thread_count, 2u);
   const int cnt = GetDigitCount(thread_count);
   for (unsigned int i = 0; i < thread_count; i++) {
     threads_.emplace_back([&, i, cnt] {

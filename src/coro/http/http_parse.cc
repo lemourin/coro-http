@@ -465,6 +465,8 @@ std::string_view ToStatusString(int http_code) {
       return "Already Reported";
     case 300:
       return "Multiple Choice";
+    case 301:
+      return "Moved Permanently";
     case 302:
       return "Found";
     case 303:

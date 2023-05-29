@@ -19,6 +19,10 @@ event *ToEvent(T *d) {
   return reinterpret_cast<struct event *>(d);
 }
 
+struct EventConfigDeleter {
+  void operator()(event_config *config) const { event_config_free(config); }
+};
+
 }  // namespace
 
 void EventLoop::EventBaseDeleter::operator()(EventBase *event_base) const {
@@ -110,7 +114,21 @@ EventLoop::EventLoop()
           throw RuntimeError("evthread_use_pthreads error");
         }
 #endif
-        event_base *event_base = event_base_new();
+        std::unique_ptr<event_config, EventConfigDeleter> config(
+            event_config_new());
+        if (!config) {
+          throw RuntimeError("event_config_new error");
+        }
+        if (event_config_require_features(config.get(), EV_FEATURE_O1) != 0) {
+          throw RuntimeError("event_config_require_features error");
+        }
+        if (event_config_set_flag(config.get(), 0) != 0) {
+          throw RuntimeError("event_config_set_flag error");
+        }
+        event_base *event_base = event_base_new_with_config(config.get());
+        if (!event_base) {
+          event_base = event_base_new();
+        }
         if (!event_base) {
           throw RuntimeError("event_base_new error");
         }

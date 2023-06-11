@@ -139,7 +139,7 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
                   static_cast<size_t>(*context->current_chunk_length)),
               0);
           if (evbuffer_remove(input, buffer.data(), buffer.size()) !=
-              buffer.size()) {
+              static_cast<int>(buffer.size())) {
             throw HttpException(HttpException::kUnknown,
                                 "evbuffer_remove failed");
           }
@@ -181,7 +181,7 @@ Generator<std::string> GetBodyGenerator(struct bufferevent* bev,
                                                context->read_count)),
           0);
       if (evbuffer_remove(input, reinterpret_cast<void*>(buffer.data()),
-                          buffer.size()) != buffer.size()) {
+                          buffer.size()) != static_cast<int>(buffer.size())) {
         throw HttpException(HttpException::kUnknown, "evbuffer_remove failed");
       }
       context->read_count += static_cast<int64_t>(buffer.size());

@@ -35,7 +35,7 @@ class ThreadPool {
   template <typename Func, typename... Args>
   TaskT<util::ReturnTypeT<Func>> Do(stdx::stop_token stop_token, Func&& func,
                                     Args&&... args) {
-    ThreadLoopAwaiter awaiter{this};
+    ThreadLoopAwaiter awaiter{this, stdx::coroutine_handle<void>(), false};
     stdx::stop_callback cb(std::move(stop_token), [&] {
       std::unique_lock lock(mutex_);
       if (auto it =

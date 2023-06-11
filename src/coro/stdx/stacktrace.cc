@@ -75,6 +75,7 @@ std::string GetHtmlStacktrace(const stdx::stacktrace& d) {
   }
   return std::move(stream).str();
 #else
+  (void)d;
   return "";
 #endif
 }
@@ -83,6 +84,7 @@ std::string ToString(const stdx::stacktrace& d) {
 #ifdef HAVE_BOOST_STACKTRACE
   return boost::stacktrace::to_string(GetImpl(&d)->stacktrace);
 #else
+  (void)d;
   return "";
 #endif
 }

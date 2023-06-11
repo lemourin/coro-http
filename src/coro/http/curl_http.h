@@ -15,7 +15,7 @@ class CurlHttpBase {
   Task<Response<>> Fetch(Request<> request, stdx::stop_token stop_token) const;
 
  private:
-  class Impl;
+  struct Impl;
 
   std::unique_ptr<Impl> d_;
 };

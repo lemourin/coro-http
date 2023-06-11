@@ -34,7 +34,7 @@ void SetThreadNameImpl(const std::string& name) {
     THREADNAME_INFO info;
     info.dwType = 0x1000;
     info.szName = name.c_str();
-    info.dwThreadID = -1;
+    info.dwThreadID = static_cast<DWORD>(-1);
     info.dwFlags = 0;
 #pragma warning(push)
 #pragma warning(disable : 6320 6322)

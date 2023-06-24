@@ -359,12 +359,12 @@ Task<Response<>> GetResponse(const HttpServerContext::OnRequest& on_request,
   if (HasHeader(context->headers, "Expect", "100-continue")) {
     co_await Write(context, bev, "HTTP/1.1 100 Continue\r\n\r\n");
   }
-  co_return co_await on_request(
-      Request<>{.url = std::move(context->url),
-                .method = context->method,
-                .headers = std::move(context->headers),
-                .body = std::move(context->body)},
-      context->stop_source.get_token());
+  Request<> request{.url = std::move(context->url),
+                    .method = context->method,
+                    .headers = std::move(context->headers),
+                    .body = std::move(context->body)};
+  co_return co_await on_request(std::move(request),
+                                context->stop_source.get_token());
 }
 
 Task<> WriteMessage(RequestContext* context, bufferevent* bev, int status,

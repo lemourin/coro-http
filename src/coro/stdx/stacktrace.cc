@@ -3,7 +3,9 @@
 #include <sstream>
 
 #ifdef HAVE_BOOST_STACKTRACE
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <boost/stacktrace.hpp>
 #endif
 

@@ -64,13 +64,16 @@ struct ReturnValue {
           T(std::forward<V>(v));
     }
     d->result.type = TaskResultType::kValue;
+    d->continuation.resume();
   }
 };
 
 template <typename Derived>
 struct ReturnValue<Derived, void> {
   void return_void() {
-    static_cast<Derived*>(this)->result.type = TaskResultType::kValue;
+    auto* d = static_cast<Derived*>(this);
+    d->result.type = TaskResultType::kValue;
+    d->continuation.resume();
   }
 };
 
@@ -83,23 +86,16 @@ class [[nodiscard]] Task<T> {
   using type = T;
 
   struct promise_type : ReturnValue<promise_type, T> {
-    struct final_awaitable {
-      bool await_ready() noexcept { return false; }
-      auto await_suspend(stdx::coroutine_handle<promise_type> coro) noexcept {
-        return coro.promise().continuation;
-      }
-      void await_resume() noexcept {}
-    };
-
     Task get_return_object() {
       return Task(stdx::coroutine_handle<promise_type>::from_promise(*this));
     }
     stdx::suspend_always initial_suspend() { return {}; }
-    final_awaitable final_suspend() noexcept { return {}; }
+    stdx::suspend_never final_suspend() noexcept { return {}; }
     void unhandled_exception() {
       new (static_cast<void*>(std::addressof(result.exception)))
           std::exception_ptr(std::current_exception());
       result.type = TaskResultType::kException;
+      continuation.resume();
     }
 
     stdx::coroutine_handle<void> continuation = stdx::noop_coroutine();
@@ -108,11 +104,6 @@ class [[nodiscard]] Task<T> {
 
   Task(const Task&) = delete;
   Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
-  ~Task() {
-    if (handle_) {
-      handle_.destroy();
-    }
-  }
   Task& operator=(const Task&) = delete;
   Task& operator=(Task&& task) noexcept {
     this->~Task();
@@ -120,9 +111,7 @@ class [[nodiscard]] Task<T> {
     return *this;
   }
 
-  bool await_ready() {
-    return handle_.promise().result.type != TaskResultType::kNone;
-  }
+  bool await_ready() { return false; }
   auto await_suspend(stdx::coroutine_handle<void> continuation) {
     handle_.promise().continuation = continuation;
     return handle_;

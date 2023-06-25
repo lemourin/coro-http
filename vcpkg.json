@@ -8,7 +8,8 @@
       "features": ["ssl", "http2", "c-ares"]
     },
     "libevent",
-    "boost-regex"
+    "boost-regex",
+    "gtest"
   ],
   "features": {
     "stacktrace": {

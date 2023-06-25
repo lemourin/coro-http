@@ -104,6 +104,11 @@ class [[nodiscard]] Task<T> {
 
   Task(const Task&) = delete;
   Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
+  ~Task() noexcept {
+    if (handle_) {
+      handle_.destroy();
+    }
+  }
   Task& operator=(const Task&) = delete;
   Task& operator=(Task&& task) noexcept {
     this->~Task();
@@ -118,14 +123,16 @@ class [[nodiscard]] Task<T> {
   }
   T await_resume() {
     if (handle_.promise().result.type == TaskResultType::kException) {
-      std::rethrow_exception(handle_.promise().result.exception);
+      std::rethrow_exception(
+          std::exchange(handle_, nullptr).promise().result.exception);
     }
     if constexpr (std::is_reference_v<T>) {
-      return *handle_.promise().result.value;
+      return *std::exchange(handle_, nullptr).promise().result.value;
     } else if constexpr (std::is_void_v<T>) {
+      handle_ = nullptr;
       return;
     } else {
-      return std::move(handle_.promise().result.value);
+      return std::move(std::exchange(handle_, nullptr).promise().result.value);
     }
   }
 

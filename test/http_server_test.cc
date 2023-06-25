@@ -139,10 +139,11 @@ TEST_F(HttpServerTest, ReceivesExpectedRequest) {
 
 TEST_F(HttpServerTest, RejectsTooLongHeader) {
   EXPECT_THROW(Run([&]() -> Task<> {
-                 co_await http().Fetch(Request{
+                 Request request{
                      .url = address(),
-                     .headers = {{"SomeHeader", std::string(5000, 'x')}},
-                     .invalidates_cache = true});
+                     .headers = {{"SomeHeader", std::string(20000, 'x')}},
+                     .invalidates_cache = true};
+                 co_await http().Fetch(std::move(request));
                }),
                http::HttpException);
 }

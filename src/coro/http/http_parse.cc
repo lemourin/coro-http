@@ -391,8 +391,9 @@ int64_t ParseTime(std::string_view str) {
       cnt = sscanf(buffer.data(), "%d:%d", &offset_hour, &offset_minute);
 #endif
       if (cnt == 2) {
-        time.tm_hour -= offset_hour;
-        time.tm_min -= offset_minute;
+        return timegm(time) +
+               (offset_hour >= 0 ? -1 : 1) *
+                   (std::abs(offset_hour) * 60 * 60 + offset_minute * 60);
       }
     }
     return timegm(time);

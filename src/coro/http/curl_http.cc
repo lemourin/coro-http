@@ -385,6 +385,9 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
                          std::string(MethodToString(request.method)).c_str()));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_HTTP_VERSION,
                          CURL_HTTP_VERSION_NONE));
+  if (request.method == Method::kHead) {
+    Check(curl_easy_setopt(handle_.get(), CURLOPT_NOBODY, 1L));
+  }
   if (cache_path) {
     Check(
         curl_easy_setopt(handle_.get(), CURLOPT_ALTSVC,

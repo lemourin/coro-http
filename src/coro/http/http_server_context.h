@@ -5,30 +5,20 @@
 #include "coro/promise.h"
 #include "coro/stdx/any_invocable.h"
 #include "coro/stdx/stop_source.h"
+#include "coro/util/base_server.h"
 #include "coro/util/event_loop.h"
 
 namespace coro::http {
 
-struct HttpServerConfig {
-  std::string address;
-  uint16_t port;
-};
-
 namespace internal {
-
-struct EvconnListener;
-
-struct EvconnListenerDeleter {
-  void operator()(EvconnListener* listener) const;
-};
 
 class HttpServerContext {
  public:
   using OnRequest =
       stdx::any_invocable<Task<Response<>>(Request<>, stdx::stop_token) const>;
 
-  HttpServerContext(const coro::util::EventLoop*, const HttpServerConfig&,
-                    OnRequest);
+  HttpServerContext(const coro::util::EventLoop*,
+                    const coro::util::ServerConfig&, OnRequest);
 
   uint16_t GetPort() const;
 
@@ -51,7 +41,8 @@ class HttpServerContext {
   stdx::stop_source stop_source_;
   OnRequest on_request_;
   Promise<void> quit_semaphore_;
-  std::unique_ptr<EvconnListener, EvconnListenerDeleter> listener_;
+  std::unique_ptr<coro::util::EvconnListener, coro::util::EvconnListenerDeleter>
+      listener_;
 };
 
 }  // namespace internal

@@ -5,17 +5,18 @@
 #include "coro/http/http_server_context.h"
 #include "coro/stdx/concepts.h"
 #include "coro/task.h"
+#include "coro/util/base_server.h"
 #include "coro/util/event_loop.h"
 
 namespace coro::http {
 
 template <typename T>
-concept Handler = requires(T v, Request<> request,
-                           stdx::stop_token stop_token) {
-  {
-    v(std::move(request), stop_token).await_resume()
-    } -> stdx::same_as<Response<>>;
-};
+concept Handler =
+    requires(T v, Request<> request, stdx::stop_token stop_token) {
+      {
+        v(std::move(request), stop_token).await_resume()
+      } -> stdx::same_as<Response<>>;
+    };
 
 template <typename T>
 concept HasQuit = requires(T v) {
@@ -27,7 +28,7 @@ class HttpServer {
  public:
   template <typename... Args>
   HttpServer(const coro::util::EventLoop* event_loop,
-             const HttpServerConfig& config, Args&&... args);
+             const coro::util::ServerConfig& config, Args&&... args);
 
   HttpServer(const HttpServer&) = delete;
   HttpServer(HttpServer&&) = delete;
@@ -46,7 +47,7 @@ class HttpServer {
 template <Handler HandlerType>
 template <typename... Args>
 HttpServer<HandlerType>::HttpServer(const coro::util::EventLoop* event_loop,
-                                    const HttpServerConfig& config,
+                                    const coro::util::ServerConfig& config,
                                     Args&&... args)
     : on_request_(std::forward<Args>(args)...),
       context_(event_loop, config,

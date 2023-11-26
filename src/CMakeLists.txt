@@ -8,6 +8,7 @@ target_sources(coro-http PRIVATE
     coro/mutex.cc
     coro/util/event_loop.cc
     coro/util/thread_pool.cc
+    coro/util/base_server.cc
     coro/stdx/stop_source.cc
     coro/stdx/stop_token.cc
     coro/stdx/source_location.cc
@@ -18,6 +19,8 @@ target_sources(coro-http PRIVATE
     coro/http/http_parse.cc
     coro/http/cache_http.cc
     coro/http/http_exception.cc
+    coro/rpc/rpc_server.cc
+    coro/rpc/rpc_exception.cc
 )
 
 target_sources(coro-http
@@ -38,6 +41,7 @@ target_sources(coro-http
         coro/util/function_traits.h
         coro/util/type_list.h
         coro/util/lru_cache.h
+        coro/util/base_server.h
         coro/http/http_body_generator.h
         coro/http/http_parse.h
         coro/http/curl_http.h
@@ -46,6 +50,8 @@ target_sources(coro-http
         coro/http/http.h
         coro/http/cache_http.h
         coro/http/http_server_context.h
+        coro/rpc/rpc_server.h
+        coro/rpc/rpc_exception.h
         coro/stdx/coroutine.h
         coro/stdx/stop_callback.h
         coro/stdx/concepts.h

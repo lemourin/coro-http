@@ -24,6 +24,10 @@ namespace {
 
 namespace re = util::re;
 
+using ::coro::util::EvconnListener;
+using ::coro::util::EvconnListenerDeleter;
+using ::coro::util::ServerConfig;
+
 constexpr int kMaxLineLength = 16192;
 constexpr int kMaxHeaderCount = 128;
 
@@ -550,7 +554,7 @@ void EvListenerCallback(struct evconnlistener* listener, evutil_socket_t socket,
 
 std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
     event_base* event_loop, evconnlistener_cb cb, void* userdata,
-    const HttpServerConfig& config) {
+    const ServerConfig& config) {
   union {
     struct sockaddr_in sin;
     struct sockaddr sockaddr;
@@ -570,7 +574,7 @@ std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
 }
 
 std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
-    HttpServerContext* context, const HttpServerConfig& config) {
+    HttpServerContext* context, const ServerConfig& config) {
   return CreateListener(
       reinterpret_cast<event_base*>(GetEventLoop(*context->event_loop())),
       EvListenerCallback, context, config);
@@ -578,12 +582,8 @@ std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
 
 }  // namespace
 
-void EvconnListenerDeleter::operator()(EvconnListener* listener) const {
-  evconnlistener_free(reinterpret_cast<evconnlistener*>(listener));
-}
-
 HttpServerContext::HttpServerContext(const coro::util::EventLoop* event_loop,
-                                     const HttpServerConfig& config,
+                                     const ServerConfig& config,
                                      OnRequest on_request)
     : event_loop_(event_loop),
       on_request_(std::move(on_request)),

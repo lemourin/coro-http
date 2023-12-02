@@ -17,8 +17,7 @@ class HttpHandler {
       : http_(http), semaphore_(semaphore) {}
 
   coro::Task<coro::http::Response<>> operator()(
-      const coro::http::Request<> &request,
-      coro::stdx::stop_token stop_token) const {
+      coro::http::Request<> request, coro::stdx::stop_token stop_token) const {
     coro::http::Request<> pipe_request{.url = kUrl};
     if (auto range_header = coro::http::GetHeader(request.headers, "Range")) {
       pipe_request.headers.emplace_back("Range", std::move(*range_header));
@@ -47,8 +46,9 @@ int main() {
   coro::RunTask([&]() -> coro::Task<> {
     coro::http::HttpImpl<coro::http::CurlHttp> http(&event_loop, std::nullopt);
     coro::Promise<void> semaphore;
-    coro::http::HttpServer<HttpHandler> http_server(
-        &event_loop, {.address = "127.0.0.1", .port = 4444}, &http, &semaphore);
+    auto http_server = coro::http::CreateHttpServer(
+        HttpHandler{&http, &semaphore}, &event_loop,
+        {.address = "127.0.0.1", .port = 4444});
     co_await semaphore;
     co_await http_server.Quit();
   });

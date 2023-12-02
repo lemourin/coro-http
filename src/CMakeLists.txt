@@ -14,6 +14,7 @@ target_sources(coro-http PRIVATE
     coro/stdx/source_location.cc
     coro/stdx/stacktrace.cc
     coro/http/http.cc
+    coro/http/http_server.cc
     coro/http/http_server_context.cc
     coro/http/curl_http.cc
     coro/http/http_parse.cc

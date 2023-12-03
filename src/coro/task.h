@@ -13,135 +13,237 @@ namespace coro {
 
 namespace detail {
 
-enum class TaskResultType { kNone, kValue, kException };
+template <typename T>
+class Task;
+
+class TaskPromiseBase {
+ public:
+  TaskPromiseBase() noexcept {}
+
+  auto initial_suspend() noexcept { return stdx::suspend_always{}; }
+
+  auto final_suspend() noexcept { return FinalAwaitable{}; }
+
+  void set_continuation(stdx::coroutine_handle<> continuation) noexcept {
+    continuation_ = continuation;
+  }
+
+ private:
+  struct FinalAwaitable {
+    bool await_ready() const noexcept { return false; }
+
+    template <typename Promise>
+    stdx::coroutine_handle<> await_suspend(
+        stdx::coroutine_handle<Promise> coro) noexcept {
+      return coro.promise().continuation_;
+    }
+
+    void await_resume() noexcept {}
+  };
+
+  stdx::coroutine_handle<> continuation_;
+};
 
 template <typename T>
-struct TaskResult {
-  TaskResult() noexcept {}
-  TaskResult(const TaskResult&) = delete;
-  TaskResult(TaskResult&&) = delete;
-  TaskResult& operator=(const TaskResult&) = delete;
-  TaskResult& operator=(TaskResult&&) = delete;
+class TaskPromise final : public TaskPromiseBase {
+ public:
+  TaskPromise() noexcept {}
 
-  ~TaskResult() {
-    switch (type) {
-      case TaskResultType::kValue:
-        if constexpr (!std::is_reference_v<T>) {
-          value.~T();
-        }
+  ~TaskPromise() {
+    switch (result_type_) {
+      case ResultType::kValue:
+        value_.~T();
         break;
-      case TaskResultType::kException:
-        exception.~exception_ptr();
+      case ResultType::kException:
+        exception_.~exception_ptr();
         break;
       default:
         break;
     }
   }
 
+  Task<T> get_return_object() noexcept;
+
+  void unhandled_exception() noexcept {
+    ::new (static_cast<void*>(std::addressof(exception_)))
+        std::exception_ptr(std::current_exception());
+    result_type_ = ResultType::kException;
+  }
+
+  template <typename Value,
+            typename = std::enable_if_t<std::is_convertible_v<Value&&, T>>>
+  void return_value(Value&& value) noexcept(
+      std::is_nothrow_constructible_v<T, Value&&>) {
+    ::new (static_cast<void*>(std::addressof(value_)))
+        T(std::forward<Value>(value));
+    result_type_ = ResultType::kValue;
+  }
+
+  T& result() & {
+    if (result_type_ == ResultType::kException) {
+      std::rethrow_exception(exception_);
+    }
+    return value_;
+  }
+
+  T&& result() && {
+    if (result_type_ == ResultType::kException) {
+      std::rethrow_exception(exception_);
+    }
+    return std::move(value_);
+  }
+
+ private:
+  enum class ResultType {
+    kEmpty,
+    kValue,
+    kException
+  } result_type_ = ResultType::kEmpty;
+
   union {
-    std::conditional_t<std::is_reference_v<T>, std::remove_reference_t<T>*, T>
-        value;
-    std::exception_ptr exception;
+    T value_;
+    std::exception_ptr exception_;
   };
-  TaskResultType type = TaskResultType::kNone;
 };
 
 template <>
-struct TaskResult<void> {
-  std::exception_ptr exception;
-  TaskResultType type = TaskResultType::kNone;
-};
-
-template <typename Derived, typename T>
-struct ReturnValue {
-  template <typename V>
-  void return_value(V&& v) {
-    auto* d = static_cast<Derived*>(this);
-    if constexpr (std::is_reference_v<T>) {
-      d->result.value = &v;
-    } else {
-      new (static_cast<void*>(std::addressof(d->result.value)))
-          T(std::forward<V>(v));
-    }
-    d->result.type = TaskResultType::kValue;
-    d->continuation.resume();
-  }
-};
-
-template <typename Derived>
-struct ReturnValue<Derived, void> {
-  void return_void() {
-    auto* d = static_cast<Derived*>(this);
-    d->result.type = TaskResultType::kValue;
-    d->continuation.resume();
-  }
-};
-
-template <typename... Ts>
-class Task;
-
-template <typename T>
-class [[nodiscard]] Task<T> {
+class TaskPromise<void> : public TaskPromiseBase {
  public:
-  using type = T;
+  TaskPromise() noexcept = default;
 
-  struct promise_type : ReturnValue<promise_type, T> {
-    Task get_return_object() {
-      return Task(stdx::coroutine_handle<promise_type>::from_promise(*this));
-    }
-    stdx::suspend_always initial_suspend() { return {}; }
-    stdx::suspend_never final_suspend() noexcept { return {}; }
-    void unhandled_exception() {
-      new (static_cast<void*>(std::addressof(result.exception)))
-          std::exception_ptr(std::current_exception());
-      result.type = TaskResultType::kException;
-      continuation.resume();
-    }
+  Task<void> get_return_object() noexcept;
 
-    stdx::coroutine_handle<void> continuation = stdx::noop_coroutine();
-    TaskResult<T> result;
-  };
+  void return_void() noexcept {}
 
-  Task(const Task&) = delete;
-  Task(Task&& task) noexcept : handle_(std::exchange(task.handle_, nullptr)) {}
-  ~Task() noexcept {
-    if (handle_) {
-      handle_.destroy();
-    }
-  }
-  Task& operator=(const Task&) = delete;
-  Task& operator=(Task&& task) noexcept {
-    this->~Task();
-    handle_ = std::exchange(task.handle_, nullptr);
-    return *this;
-  }
+  void unhandled_exception() noexcept { exception_ = std::current_exception(); }
 
-  bool await_ready() { return false; }
-  auto await_suspend(stdx::coroutine_handle<void> continuation) {
-    handle_.promise().continuation = continuation;
-    return handle_;
-  }
-  T await_resume() {
-    if (handle_.promise().result.type == TaskResultType::kException) {
-      std::rethrow_exception(
-          std::exchange(handle_, nullptr).promise().result.exception);
-    }
-    if constexpr (std::is_reference_v<T>) {
-      return *std::exchange(handle_, nullptr).promise().result.value;
-    } else if constexpr (std::is_void_v<T>) {
-      handle_ = nullptr;
-      return;
-    } else {
-      return std::move(std::exchange(handle_, nullptr).promise().result.value);
+  void result() {
+    if (exception_) {
+      std::rethrow_exception(exception_);
     }
   }
 
  private:
-  explicit Task(stdx::coroutine_handle<promise_type> handle)
-      : handle_(handle) {}
-
-  stdx::coroutine_handle<promise_type> handle_;
+  std::exception_ptr exception_;
 };
+
+template <typename T>
+class TaskPromise<T&> : public TaskPromiseBase {
+ public:
+  TaskPromise() noexcept = default;
+
+  Task<T&> get_return_object() noexcept;
+
+  void unhandled_exception() noexcept { exception_ = std::current_exception(); }
+
+  void return_value(T& value) noexcept { value_ = std::addressof(value); }
+
+  T& result() {
+    if (exception_) {
+      std::rethrow_exception(exception_);
+    }
+    return *value_;
+  }
+
+ private:
+  T* value_ = nullptr;
+  std::exception_ptr exception_;
+};
+
+template <typename T = void>
+class [[nodiscard]] Task {
+ public:
+  using promise_type = TaskPromise<T>;
+  using value_type = T;
+  using type = T;
+
+  Task() noexcept : coroutine_(nullptr) {}
+
+  explicit Task(stdx::coroutine_handle<promise_type> coroutine)
+      : coroutine_(coroutine) {}
+
+  Task(Task&& t) noexcept : coroutine_(t.coroutine_) { t.coroutine_ = nullptr; }
+
+  Task(const Task&) = delete;
+  Task& operator=(const Task&) = delete;
+
+  ~Task() {
+    if (coroutine_) {
+      coroutine_.destroy();
+    }
+  }
+
+  Task& operator=(Task&& other) noexcept {
+    if (std::addressof(other) != this) {
+      if (coroutine_) {
+        coroutine_.destroy();
+      }
+      coroutine_ = other.coroutine_;
+      other.coroutine_ = nullptr;
+    }
+    return *this;
+  }
+
+  auto operator co_await() const& noexcept {
+    class Awaitable : public AwaitableBase {
+     public:
+      using AwaitableBase::AwaitableBase;
+
+      decltype(auto) await_resume() {
+        return this->coroutine_.promise().result();
+      }
+    };
+    return Awaitable{coroutine_};
+  }
+
+  auto operator co_await() const&& noexcept {
+    class Awaitable : public AwaitableBase {
+     public:
+      using AwaitableBase::AwaitableBase;
+
+      decltype(auto) await_resume() {
+        return std::move(this->coroutine_.promise()).result();
+      }
+    };
+    return Awaitable{coroutine_};
+  }
+
+ private:
+  class AwaitableBase {
+   public:
+    AwaitableBase(stdx::coroutine_handle<promise_type> coroutine) noexcept
+        : coroutine_(coroutine) {}
+
+    bool await_ready() const noexcept {
+      return !coroutine_ || coroutine_.done();
+    }
+
+    stdx::coroutine_handle<> await_suspend(
+        stdx::coroutine_handle<> awaiting_coroutine) noexcept {
+      coroutine_.promise().set_continuation(awaiting_coroutine);
+      return coroutine_;
+    }
+
+   protected:
+    stdx::coroutine_handle<promise_type> coroutine_;
+  };
+
+  stdx::coroutine_handle<promise_type> coroutine_;
+};
+
+template <typename T>
+Task<T> TaskPromise<T>::get_return_object() noexcept {
+  return Task<T>{stdx::coroutine_handle<TaskPromise>::from_promise(*this)};
+}
+
+inline Task<void> TaskPromise<void>::get_return_object() noexcept {
+  return Task<void>{stdx::coroutine_handle<TaskPromise>::from_promise(*this)};
+}
+
+template <typename T>
+Task<T&> TaskPromise<T&>::get_return_object() noexcept {
+  return Task<T&>{stdx::coroutine_handle<TaskPromise>::from_promise(*this)};
+}
 
 template <typename...>
 struct TaskT;
@@ -163,9 +265,9 @@ using Task = typename detail::TaskT<Ts...>::type;
 
 template <typename T, typename Result>
 concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
-  { v.await_resume() } -> stdx::convertible_to<Result>;
-  v.await_suspend(handle);
-  { v.await_ready() } -> stdx::same_as<bool>;
+  { v.operator co_await().await_resume() } -> stdx::convertible_to<Result>;
+  v.operator co_await().await_suspend(handle);
+  { v.operator co_await().await_ready() } -> stdx::same_as<bool>;
 };
 
 struct RunTaskT {

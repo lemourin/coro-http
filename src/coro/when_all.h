@@ -17,17 +17,16 @@ struct WhenAll;
 template <size_t... Index>
 struct WhenAll<std::index_sequence<Index...>> {
   template <typename... T>
-  auto operator()(T... tasks)
-      -> Task<std::tuple<decltype(tasks.await_resume())...>> {
+  auto operator()(T... tasks) -> Task<std::tuple<typename T::type...>> {
     static_assert(sizeof...(T) > 0);
-    std::tuple<std::optional<decltype(tasks.await_resume())>...> result;
+    std::tuple<std::optional<typename T::type>...> result;
     std::optional<std::exception_ptr> exception;
     Promise<void> semaphore;
     size_t ready = 0;
     (RunTask(
          [&](auto task, auto& result) -> Task<> {
            try {
-             result.emplace(co_await task);
+             result.emplace(co_await std::move(task));
            } catch (...) {
              exception = std::current_exception();
            }

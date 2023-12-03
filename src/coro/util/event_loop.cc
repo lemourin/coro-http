@@ -100,7 +100,7 @@ void EventLoop::RunOnce(stdx::any_invocable<void() &&> f) const {
 
 EventLoop::EventLoop()
     : event_loop_([] {
-#ifdef WIN32
+#ifdef _WIN32
         WORD version_requested = MAKEWORD(2, 2);
         WSADATA wsa_data;
         if (WSAStartup(version_requested, &wsa_data) != 0) {
@@ -136,7 +136,7 @@ EventLoop::EventLoop()
       }()) {
 }
 
-#ifdef WIN32
+#ifdef _WIN32
 EventLoop::~EventLoop() noexcept {
   if (WSACleanup() != 0) {
     std::terminate();

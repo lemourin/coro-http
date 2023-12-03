@@ -17,21 +17,12 @@ inline constexpr uint32_t kMaxBufferSize = 1024;
 using BaseRequestDataProvider =
     stdx::any_invocable<Task<std::vector<uint8_t>>(uint32_t byte_cnt)>;
 
-Task<> DrainDataProvider(BaseRequestDataProvider);
-
 class BaseResponseChunk {
  public:
   BaseResponseChunk(std::vector<uint8_t> chunk) : chunk_(std::move(chunk)) {}
   BaseResponseChunk(std::string chunk) : chunk_(std::move(chunk)) {}
 
-  std::span<const uint8_t> chunk() const {
-    if (auto* chunk = std::get_if<std::string>(&chunk_)) {
-      return std::span<const uint8_t>(
-          reinterpret_cast<const uint8_t*>(chunk->data()), chunk->size());
-    } else {
-      return std::get<std::vector<uint8_t>>(chunk_);
-    }
-  }
+  std::span<const uint8_t> chunk() const;
 
  private:
   std::variant<std::vector<uint8_t>, std::string> chunk_;
@@ -43,12 +34,6 @@ using BaseRequestHandler = stdx::any_invocable<Generator<BaseResponseChunk>(
 struct ServerConfig {
   std::string address;
   uint16_t port;
-};
-
-struct EvconnListener;
-
-struct EvconnListenerDeleter {
-  void operator()(EvconnListener* listener) const noexcept;
 };
 
 class BaseServer {
@@ -63,20 +48,28 @@ class BaseServer {
   BaseServer& operator=(const BaseServer&) = delete;
   BaseServer& operator=(BaseServer&&) = delete;
 
-  void OnQuit();
+  uint16_t GetPort() const;
   Task<> Quit();
 
-  BaseRequestHandler& request_handler() { return request_handler_; }
-  const coro::util::EventLoop* event_loop() const { return event_loop_; }
-  bool quitting() const { return quitting_; }
-  int current_connections() const { return current_connections_; }
-  stdx::stop_token stop_token() const { return stop_source_.get_token(); }
-  uint16_t port() const;
-
-  void IncreaseCurrentConnections() { current_connections_++; }
-  void DecreaseCurrentConnections() { current_connections_--; }
-
  private:
+  struct EvconnListener;
+
+  struct EvconnListenerDeleter {
+    void operator()(EvconnListener* listener) const noexcept;
+  };
+
+#ifdef _WIN32
+  using socket_t = intptr_t;
+#else
+  using socket_t = int;
+#endif
+
+  std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
+      const ServerConfig& config);
+  Task<> ListenerCallback(EvconnListener*, socket_t fd, void* sockaddr,
+                          int socklen) noexcept;
+  void OnQuit();
+
   BaseRequestHandler request_handler_;
   const coro::util::EventLoop* event_loop_;
   bool quitting_ = false;
@@ -85,6 +78,8 @@ class BaseServer {
   Promise<void> quit_semaphore_;
   std::unique_ptr<EvconnListener, EvconnListenerDeleter> listener_;
 };
+
+Task<> DrainDataProvider(BaseRequestDataProvider);
 
 }  // namespace coro::util
 

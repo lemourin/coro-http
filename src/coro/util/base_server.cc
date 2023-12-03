@@ -14,11 +14,6 @@ namespace coro::util {
 
 namespace {
 
-using ::coro::util::AtScopeExit;
-using ::coro::util::EvconnListener;
-using ::coro::util::EvconnListenerDeleter;
-using ::coro::util::ServerConfig;
-
 struct RequestContext {
   Promise<void> semaphore;
   stdx::stop_source stop_source;
@@ -145,83 +140,6 @@ BaseRequestDataProvider GetRequestContent(struct bufferevent* bev,
   };
 }
 
-Task<> ListenerCallback(BaseServer* server_context, struct evconnlistener*,
-                        evutil_socket_t fd, struct sockaddr*,
-                        int socklen) noexcept {
-  RequestContext context{};
-  try {
-    if (server_context->quitting()) {
-      co_return;
-    }
-    server_context->IncreaseCurrentConnections();
-    auto scope_guard = AtScopeExit([&] {
-      server_context->DecreaseCurrentConnections();
-      if (server_context->quitting() &&
-          server_context->current_connections() == 0) {
-        server_context->OnQuit();
-      }
-    });
-    stdx::stop_callback stop_callback1(server_context->stop_token(), [&] {
-      context.stop_source.request_stop();
-    });
-    stdx::stop_callback stop_callback2(context.stop_source.get_token(), [&] {
-      context.semaphore.SetException(InterruptedException());
-    });
-    auto bev = CreateBufferEvent(reinterpret_cast<event_base*>(GetEventLoop(
-                                     *server_context->event_loop())),
-                                 fd, &context);
-    bool terminate_connection = false;
-    while (!terminate_connection) {
-      auto response = server_context->request_handler()(
-          GetRequestContent(bev.get(), &context),
-          context.stop_source.get_token());
-      FOR_CO_AWAIT(BaseResponseChunk ctl, response) {
-        if (!ctl.chunk().empty()) {
-          co_await Write(&context, bev.get(), ctl.chunk());
-        }
-      }
-    }
-  } catch (const Exception& e) {
-    std::cerr << "EXCEPTION " << e.what() << '\n';
-    context.stop_source.request_stop();
-  }
-}
-
-void EvListenerCallback(struct evconnlistener* listener, evutil_socket_t socket,
-                        struct sockaddr* addr, int socklen, void* d) {
-  auto* context = reinterpret_cast<BaseServer*>(d);
-  RunTask(ListenerCallback(context, listener, socket, addr, socklen));
-}
-
-std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
-    event_base* event_loop, evconnlistener_cb cb, void* userdata,
-    const ServerConfig& config) {
-  union {
-    struct sockaddr_in sin;
-    struct sockaddr sockaddr;
-  } d;
-  memset(&d.sin, 0, sizeof(sockaddr_in));
-  inet_pton(AF_INET, config.address.c_str(), &d.sin.sin_addr);
-  d.sin.sin_family = AF_INET;
-  d.sin.sin_port = htons(config.port);
-  auto* listener = evconnlistener_new_bind(
-      event_loop, cb, userdata, LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE,
-      /*backlog=*/-1, &d.sockaddr, sizeof(sockaddr_in));
-  if (listener == nullptr) {
-    throw RuntimeError("evconnlistener_new_bind error");
-  }
-  return std::unique_ptr<EvconnListener, EvconnListenerDeleter>(
-      reinterpret_cast<EvconnListener*>(listener));
-}
-
-std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
-    BaseServer* rpc_server, const EventLoop* event_loop,
-    const ServerConfig& config) {
-  return CreateListener(
-      reinterpret_cast<event_base*>(GetEventLoop(*event_loop)),
-      EvListenerCallback, rpc_server, config);
-}
-
 }  // namespace
 
 Task<> DrainDataProvider(BaseRequestDataProvider data_provider) {
@@ -229,7 +147,16 @@ Task<> DrainDataProvider(BaseRequestDataProvider data_provider) {
   }
 }
 
-void EvconnListenerDeleter::operator()(
+std::span<const uint8_t> BaseResponseChunk::chunk() const {
+  if (auto* chunk = std::get_if<std::string>(&chunk_)) {
+    return std::span<const uint8_t>(
+        reinterpret_cast<const uint8_t*>(chunk->data()), chunk->size());
+  } else {
+    return std::get<std::vector<uint8_t>>(chunk_);
+  }
+}
+
+void BaseServer::EvconnListenerDeleter::operator()(
     EvconnListener* listener) const noexcept {
   evconnlistener_free(reinterpret_cast<evconnlistener*>(listener));
 }
@@ -238,7 +165,7 @@ BaseServer::BaseServer(BaseRequestHandler request_handler,
                        const EventLoop* event_loop, const ServerConfig& config)
     : request_handler_(std::move(request_handler)),
       event_loop_(event_loop),
-      listener_(CreateListener(this, event_loop, config)) {}
+      listener_(CreateListener(config)) {}
 
 void BaseServer::OnQuit() {
   event_loop_->RunOnEventLoop([this] {
@@ -259,13 +186,79 @@ Task<> BaseServer::Quit() {
   co_await quit_semaphore_;
 }
 
-uint16_t BaseServer::port() const {
+uint16_t BaseServer::GetPort() const {
   sockaddr_in addr;
   socklen_t length = sizeof(addr);
   Check(getsockname(
       evconnlistener_get_fd(reinterpret_cast<evconnlistener*>(listener_.get())),
       reinterpret_cast<sockaddr*>(&addr), &length));
   return ntohs(addr.sin_port);
+}
+
+auto BaseServer::CreateListener(const ServerConfig& config)
+    -> std::unique_ptr<EvconnListener, EvconnListenerDeleter> {
+  union {
+    struct sockaddr_in sin;
+    struct sockaddr sockaddr;
+  } d;
+  memset(&d.sin, 0, sizeof(sockaddr_in));
+  inet_pton(AF_INET, config.address.c_str(), &d.sin.sin_addr);
+  d.sin.sin_family = AF_INET;
+  d.sin.sin_port = htons(config.port);
+  auto* listener = evconnlistener_new_bind(
+      reinterpret_cast<event_base*>(GetEventLoop(*event_loop_)),
+      [](struct evconnlistener* listener, evutil_socket_t socket,
+         struct sockaddr* addr, int socklen, void* d) {
+        auto* context = reinterpret_cast<BaseServer*>(d);
+        RunTask(context->ListenerCallback(
+            reinterpret_cast<EvconnListener*>(listener), socket,
+            static_cast<void*>(addr), socklen));
+      },
+      this, LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE,
+      /*backlog=*/-1, &d.sockaddr, sizeof(sockaddr_in));
+  if (listener == nullptr) {
+    throw RuntimeError("evconnlistener_new_bind error");
+  }
+  return std::unique_ptr<EvconnListener, EvconnListenerDeleter>(
+      reinterpret_cast<EvconnListener*>(listener));
+}
+
+Task<> BaseServer::ListenerCallback(struct EvconnListener*, evutil_socket_t fd,
+                                    void*, int socklen) noexcept {
+  RequestContext context{};
+  try {
+    if (quitting_) {
+      co_return;
+    }
+    current_connections_++;
+    auto scope_guard = AtScopeExit([&] {
+      current_connections_--;
+      if (quitting_ && current_connections_ == 0) {
+        OnQuit();
+      }
+    });
+    stdx::stop_callback stop_callback1(
+        stop_source_.get_token(), [&] { context.stop_source.request_stop(); });
+    stdx::stop_callback stop_callback2(context.stop_source.get_token(), [&] {
+      context.semaphore.SetException(InterruptedException());
+    });
+    auto bev = CreateBufferEvent(
+        reinterpret_cast<event_base*>(GetEventLoop(*event_loop_)), fd,
+        &context);
+    bool terminate_connection = false;
+    while (!terminate_connection) {
+      auto response = request_handler_(GetRequestContent(bev.get(), &context),
+                                       context.stop_source.get_token());
+      FOR_CO_AWAIT(BaseResponseChunk ctl, response) {
+        if (!ctl.chunk().empty()) {
+          co_await Write(&context, bev.get(), ctl.chunk());
+        }
+      }
+    }
+  } catch (const Exception& e) {
+    std::cerr << "EXCEPTION " << e.what() << '\n';
+    context.stop_source.request_stop();
+  }
 }
 
 }  // namespace coro::util

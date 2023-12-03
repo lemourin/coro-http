@@ -16,8 +16,6 @@ namespace {
 using ::coro::util::AtScopeExit;
 using ::coro::util::BaseRequestDataProvider;
 using ::coro::util::BaseResponseChunk;
-using ::coro::util::EvconnListener;
-using ::coro::util::EvconnListenerDeleter;
 using ::coro::util::ServerConfig;
 
 constexpr int kMaxCredLength = 400;

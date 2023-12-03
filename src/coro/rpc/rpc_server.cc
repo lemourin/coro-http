@@ -104,8 +104,10 @@ struct RpcHandlerT {
         co_await GetVariableLengthOpaque(provider, kMaxCredLength);
     rpc_request.body.data = GetDecodedChunks(
         last_fragment,
-        length - (4 * 10 + RoundUpPower2(rpc_request.body.cred.body.size(), 2) +
-                  RoundUpPower2(rpc_request.body.verf.body.size(), 2)),
+        static_cast<uint32_t>(
+            length -
+            (4 * 10 + RoundUpPower2(rpc_request.body.cred.body.size(), 2) +
+             RoundUpPower2(rpc_request.body.verf.body.size(), 2))),
         std::move(provider));
     uint32_t xid = rpc_request.xid;
     auto response =

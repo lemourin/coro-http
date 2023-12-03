@@ -15,7 +15,6 @@ target_sources(coro-http PRIVATE
     coro/stdx/stacktrace.cc
     coro/http/http.cc
     coro/http/http_server.cc
-    coro/http/http_server_context.cc
     coro/http/curl_http.cc
     coro/http/http_parse.cc
     coro/http/cache_http.cc
@@ -50,7 +49,6 @@ target_sources(coro-http
         coro/http/http_exception.h
         coro/http/http.h
         coro/http/cache_http.h
-        coro/http/http_server_context.h
         coro/rpc/rpc_server.h
         coro/rpc/rpc_exception.h
         coro/stdx/coroutine.h

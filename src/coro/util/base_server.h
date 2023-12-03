@@ -53,14 +53,15 @@ class BaseServer {
   void OnQuit();
   Task<> Quit();
 
-  void IncreaseCurrentConnections() { current_connections_++; }
-  void DecreaseCurrentConnections() { current_connections_--; }
-
   BaseRequestHandler& request_handler() { return request_handler_; }
   const coro::util::EventLoop* event_loop() const { return event_loop_; }
   bool quitting() const { return quitting_; }
   int current_connections() const { return current_connections_; }
   stdx::stop_token stop_token() const { return stop_source_.get_token(); }
+  uint16_t port() const;
+
+  void IncreaseCurrentConnections() { current_connections_++; }
+  void DecreaseCurrentConnections() { current_connections_--; }
 
  private:
   BaseRequestHandler request_handler_;

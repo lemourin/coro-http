@@ -1,6 +1,5 @@
 #include "coro/http/http_server.h"
 
-#include <iostream>
 #include <sstream>
 #include <string_view>
 #include <vector>
@@ -32,8 +31,10 @@ std::vector<uint8_t> ToByteArray(std::string_view bytes) {
   return std::vector<uint8_t>(data, data + bytes.size());
 }
 
-Generator<std::string> WrapGenerator(Generator<std::string>& wrapped) {
-  FOR_CO_AWAIT(std::string chunk, wrapped) { co_yield std::move(chunk); }
+Generator<std::string> WrapGenerator(
+    std::optional<Generator<std::string>>& wrapped) {
+  FOR_CO_AWAIT(std::string chunk, *wrapped) { co_yield std::move(chunk); }
+  wrapped = std::nullopt;
 }
 
 bool HasBody(int response_status, std::optional<uint64_t> content_length) {
@@ -58,7 +59,8 @@ Task<std::string> GetHttpHeader(BaseRequestDataProvider& provider) {
     if (buffer.size() >= kMaxHeaderSize) {
       throw HttpException(HttpException::kBadRequest, "HTTP header too large");
     }
-    buffer.push_back(static_cast<char>((co_await provider(1))[0]));
+    std::vector<uint8_t> chunk = co_await provider(1);
+    buffer.push_back(static_cast<char>(chunk[0]));
   }
   co_return buffer;
 }
@@ -79,8 +81,10 @@ std::string GetHttpResponseHeader(
 Generator<std::string> GetRequestBody(BaseRequestDataProvider& provider,
                                       uint64_t content_length) {
   while (content_length > 0) {
-    co_yield ToString(co_await provider(std::max(
-        content_length, static_cast<uint64_t>(coro::util::kMaxBufferSize))));
+    auto chunk_length = static_cast<uint32_t>(std::min(
+        content_length, static_cast<uint64_t>(coro::util::kMaxBufferSize)));
+    co_yield ToString(co_await provider(chunk_length));
+    content_length -= chunk_length;
   }
 }
 
@@ -98,8 +102,8 @@ Generator<std::string> GetChunkedRequestBody(
         std::stoull(buffer.data(), /*pos=*/nullptr, /*base=*/16);
     bool last_chunk = chunk_length == 0;
     while (chunk_length > 0) {
-      auto piece_length = std::max(
-          chunk_length, static_cast<uint64_t>(coro::util::kMaxBufferSize));
+      auto piece_length = static_cast<uint32_t>(std::min(
+          chunk_length, static_cast<uint64_t>(coro::util::kMaxBufferSize)));
       co_yield ToString(co_await provider(piece_length));
       chunk_length -= piece_length;
     }
@@ -113,30 +117,21 @@ Generator<std::string> GetChunkedRequestBody(
   }
 }
 
-std::optional<uint64_t> GetRequestContentLength(
+std::optional<Generator<std::string>> GetHttpRequestBody(
+    BaseRequestDataProvider& provider,
     std::span<const std::pair<std::string, std::string>> headers) {
   auto transfer_encoding = GetHeader(headers, "Transfer-Encoding");
   if (transfer_encoding &&
       transfer_encoding->find("chunked") != std::string::npos) {
-    return std::nullopt;
-  } else if (auto content_length = GetHeader(headers, "Content-Length")) {
-    return std::stoull(*content_length);
-  } else {
-    return 0LL;
-  }
-}
-
-Generator<std::string> GetHttpRequestBody(
-    BaseRequestDataProvider& provider, std::optional<uint64_t> content_length) {
-  if (content_length) {
-    return GetRequestBody(provider, *content_length);
-  } else {
     return GetChunkedRequestBody(provider);
+  } else if (auto content_length = GetHeader(headers, "Content-Length")) {
+    return GetRequestBody(provider, std::stoull(*content_length));
+  } else {
+    return std::nullopt;
   }
 }
 
-Request<> GetHttpRequest(BaseRequestDataProvider& provider,
-                         std::string_view http_header) {
+Request<> GetHttpRequest(std::string_view http_header) {
   Request<> request{};
   size_t idx = 0;
   while (idx < http_header.size()) {
@@ -169,8 +164,11 @@ Request<> GetHttpRequest(BaseRequestDataProvider& provider,
   return request;
 }
 
-Task<> DrainRequestBody(Generator<std::string>& body) {
-  FOR_CO_AWAIT(std::string_view chunk, body) {}
+Task<> DrainRequestBody(std::optional<Generator<std::string>>& body) {
+  if (body) {
+    FOR_CO_AWAIT(std::string_view chunk, *body) {}
+    body = std::nullopt;
+  }
 }
 
 Generator<std::string> GetResponseChunk(bool is_chunked, std::string chunk) {
@@ -191,14 +189,15 @@ Generator<std::string> GetResponseChunk(bool is_chunked, std::string chunk) {
 struct HttpHandlerT {
   Generator<BaseResponseFlowControl> operator()(
       BaseRequestDataProvider provider, stdx::stop_token stop_token) {
-    auto request = GetHttpRequest(provider, co_await GetHttpHeader(provider));
-    auto request_content_length = GetRequestContentLength(request.headers);
-    auto request_body = GetHttpRequestBody(provider, request_content_length);
-    request.body = WrapGenerator(request_body);
-    if (HasHeader(request.headers, "Expect", "100-continue")) {
-      co_yield FlowCtl("HTTP/1.1 100 Continue\r\n");
+    auto request = GetHttpRequest(co_await GetHttpHeader(provider));
+    std::optional<Generator<std::string>> request_body =
+        GetHttpRequestBody(provider, request.headers);
+    if (request_body) {
+      request.body = WrapGenerator(request_body);
     }
-
+    if (HasHeader(request.headers, "Expect", "100-continue")) {
+      co_yield FlowCtl("HTTP/1.1 100 Continue\r\n\r\n");
+    }
     auto method = request.method;
     auto response =
         co_await http_handler(std::move(request), std::move(stop_token));

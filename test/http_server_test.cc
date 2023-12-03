@@ -61,10 +61,10 @@ class HttpServerTest : public ::testing::Test {
     std::exception_ptr exception;
     RunTask([&]() -> Task<> {
       try {
-        HttpServer<HttpHandlerT> http_server{
-            &event_loop_, HttpServerConfig{.address = "127.0.0.1", .port = 0},
-            std::move(handler)};
-        address_ = "http://127.0.0.1:" + std::to_string(http_server.GetPort());
+        auto http_server = coro::http::CreateHttpServer(
+            std::move(handler), &event_loop_,
+            coro::util::ServerConfig{.address = "127.0.0.1", .port = 12345});
+        address_ = "http://127.0.0.1:" + std::to_string(http_server.port());
         quit_ = [&] { return http_server.Quit(); };
         try {
           co_await std::move(func)();

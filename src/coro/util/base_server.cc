@@ -20,8 +20,7 @@ using ::coro::util::EvconnListenerDeleter;
 using ::coro::util::ServerConfig;
 
 struct RequestContext {
-  Promise<void> read_semaphore;
-  Promise<void> write_semaphore;
+  Promise<void> semaphore;
   stdx::stop_source stop_source;
   std::vector<uint8_t> request;
 };
@@ -44,8 +43,8 @@ Task<> WaitRead(RequestContext* context) {
   if (context->stop_source.get_token().stop_requested()) {
     throw InterruptedException();
   } else {
-    co_await context->read_semaphore;
-    context->read_semaphore = Promise<void>();
+    co_await context->semaphore;
+    context->semaphore = Promise<void>();
   }
 }
 
@@ -53,8 +52,8 @@ Task<> WaitWrite(RequestContext* context) {
   if (context->stop_source.get_token().stop_requested()) {
     throw InterruptedException();
   } else {
-    co_await context->write_semaphore;
-    context->write_semaphore = Promise<void>();
+    co_await context->semaphore;
+    context->semaphore = Promise<void>();
   }
 }
 
@@ -66,7 +65,7 @@ Task<> Write(RequestContext* context, bufferevent* bev,
              std::span<const uint8_t> chunk) {
   Check(bufferevent_enable(bev, EV_WRITE));
   auto at_exit =
-      AtScopeExit([&] { Check(bufferevent_disable(bev, EV_WRITE)); });
+      AtScopeExit([bev] { Check(bufferevent_disable(bev, EV_WRITE)); });
   std::unique_ptr<evbuffer, EvBufferDeleter> buffer{evbuffer_new()};
   if (!buffer) {
     throw RuntimeError("evbuffer_new error");
@@ -78,14 +77,14 @@ Task<> Write(RequestContext* context, bufferevent* bev,
   co_await WaitWrite(context);
 }
 
-void ReadCallback(struct bufferevent* bev, void* user_data) {
+void ReadCallback(struct bufferevent*, void* user_data) {
   auto* context = reinterpret_cast<RequestContext*>(user_data);
-  context->read_semaphore.SetValue();
+  context->semaphore.SetValue();
 }
 
 void WriteCallback(struct bufferevent*, void* user_data) {
   auto* context = reinterpret_cast<RequestContext*>(user_data);
-  context->write_semaphore.SetValue();
+  context->semaphore.SetValue();
 }
 
 void EventCallback(struct bufferevent*, short events, void* user_data) {
@@ -138,7 +137,8 @@ BaseRequestDataProvider GetRequestContent(struct bufferevent* bev,
       size = evbuffer_get_length(input);
     }
     std::vector<uint8_t> data(byte_cnt, 0);
-    if (evbuffer_remove(input, data.data(), byte_cnt) != byte_cnt) {
+    if (evbuffer_remove(input, data.data(), byte_cnt) !=
+        static_cast<int>(byte_cnt)) {
       throw RuntimeError("evbuffer_remove error");
     }
     co_return data;
@@ -165,8 +165,7 @@ Task<> ListenerCallback(BaseServer* server_context, struct evconnlistener*,
       context.stop_source.request_stop();
     });
     stdx::stop_callback stop_callback2(context.stop_source.get_token(), [&] {
-      context.read_semaphore.SetException(InterruptedException());
-      context.write_semaphore.SetException(InterruptedException());
+      context.semaphore.SetException(InterruptedException());
     });
     auto bev = CreateBufferEvent(reinterpret_cast<event_base*>(GetEventLoop(
                                      *server_context->event_loop())),
@@ -261,6 +260,15 @@ Task<> BaseServer::Quit() {
     OnQuit();
   }
   co_await quit_semaphore_;
+}
+
+uint16_t BaseServer::port() const {
+  sockaddr_in addr;
+  socklen_t length = sizeof(addr);
+  Check(getsockname(
+      evconnlistener_get_fd(reinterpret_cast<evconnlistener*>(listener_.get())),
+      reinterpret_cast<sockaddr*>(&addr), &length));
+  return ntohs(addr.sin_port);
 }
 
 }  // namespace coro::util

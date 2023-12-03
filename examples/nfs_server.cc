@@ -18,7 +18,7 @@ using ::coro::rpc::RpcRequest;
 using ::coro::rpc::RpcResponse;
 using ::coro::rpc::RpcResponseAcceptedBody;
 using ::coro::rpc::XdrSerializer;
-using ::coro::util::BaseResponseFlowControl;
+using ::coro::util::BaseResponseChunk;
 using ::coro::util::DrainDataProvider;
 
 constexpr uint32_t kPortMapperServicePort = 111;
@@ -261,15 +261,13 @@ std::string ToArray(std::span<const uint8_t> bytes) {
   return std::move(stream).str();
 }
 
-Generator<BaseResponseFlowControl> ToFlowControl(std::vector<uint8_t> data) {
-  co_yield BaseResponseFlowControl{
-      .type = BaseResponseFlowControl::Type::kSendChunk,
-      .chunk = std::move(data)};
+Generator<BaseResponseChunk> ToResponseChunk(std::vector<uint8_t> data) {
+  co_yield std::move(data);
 }
 
 RpcResponse ToResponse(std::vector<uint8_t> data) {
   return RpcResponse{.body = {.body = RpcResponseAcceptedBody{
-                                  .data = ToFlowControl(std::move(data))}}};
+                                  .data = ToResponseChunk(std::move(data))}}};
 }
 
 Task<RpcResponse> ToErrorResponse(RpcRequest request,

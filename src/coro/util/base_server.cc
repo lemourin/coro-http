@@ -175,12 +175,9 @@ Task<> ListenerCallback(BaseServer* server_context, struct evconnlistener*,
       auto response = server_context->request_handler()(
           GetRequestContent(bev.get(), &context),
           context.stop_source.get_token());
-      FOR_CO_AWAIT(BaseResponseFlowControl ctl, response) {
-        if (ctl.type == BaseResponseFlowControl::Type::kTerminateConnection) {
-          terminate_connection = true;
-        }
-        if (!ctl.chunk.empty()) {
-          co_await Write(&context, bev.get(), ctl.chunk);
+      FOR_CO_AWAIT(BaseResponseChunk ctl, response) {
+        if (!ctl.chunk().empty()) {
+          co_await Write(&context, bev.get(), ctl.chunk());
         }
       }
     }

@@ -1,6 +1,7 @@
 #ifndef CORO_UTIL_BASE_SERVER_H
 #define CORO_UTIL_BASE_SERVER_H
 
+#include <span>
 #include <variant>
 
 #include "coro/generator.h"
@@ -18,14 +19,26 @@ using BaseRequestDataProvider =
 
 Task<> DrainDataProvider(BaseRequestDataProvider);
 
-struct BaseResponseFlowControl {
-  enum class Type { kSendChunk, kTerminateConnection } type;
-  std::vector<uint8_t> chunk;
+class BaseResponseChunk {
+ public:
+  BaseResponseChunk(std::vector<uint8_t> chunk) : chunk_(std::move(chunk)) {}
+  BaseResponseChunk(std::string chunk) : chunk_(std::move(chunk)) {}
+
+  std::span<const uint8_t> chunk() const {
+    if (auto* chunk = std::get_if<std::string>(&chunk_)) {
+      return std::span<const uint8_t>(
+          reinterpret_cast<const uint8_t*>(chunk->data()), chunk->size());
+    } else {
+      return std::get<std::vector<uint8_t>>(chunk_);
+    }
+  }
+
+ private:
+  std::variant<std::vector<uint8_t>, std::string> chunk_;
 };
 
-using BaseRequestHandler =
-    stdx::any_invocable<Generator<BaseResponseFlowControl>(
-        BaseRequestDataProvider, stdx::stop_token)>;
+using BaseRequestHandler = stdx::any_invocable<Generator<BaseResponseChunk>(
+    BaseRequestDataProvider, stdx::stop_token)>;
 
 struct ServerConfig {
   std::string address;

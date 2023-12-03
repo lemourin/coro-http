@@ -15,7 +15,7 @@ namespace {
 
 using ::coro::util::AtScopeExit;
 using ::coro::util::BaseRequestDataProvider;
-using ::coro::util::BaseResponseFlowControl;
+using ::coro::util::BaseResponseChunk;
 using ::coro::util::EvconnListener;
 using ::coro::util::EvconnListenerDeleter;
 using ::coro::util::ServerConfig;
@@ -73,7 +73,7 @@ std::vector<uint8_t> GetChunkToSend(std::vector<uint8_t> data, bool last) {
 }
 
 struct RpcHandlerT {
-  Generator<BaseResponseFlowControl> operator()(
+  Generator<BaseResponseChunk> operator()(
       coro::util::BaseRequestDataProvider provider,
       stdx::stop_token stop_token) {
     RpcRequest rpc_request{};
@@ -127,35 +127,26 @@ struct RpcHandlerT {
 
       bool header_sent = false;
       std::vector<uint8_t> previous_chunk;
-      FOR_CO_AWAIT(BaseResponseFlowControl ctl, accepted->data) {
-        if (ctl.type == BaseResponseFlowControl::Type::kTerminateConnection) {
-          co_yield ctl;
-          co_return;
-        }
+      FOR_CO_AWAIT(BaseResponseChunk ctl, accepted->data) {
+        std::vector<uint8_t> chunk(ctl.chunk().begin(), ctl.chunk().end());
         if (!header_sent) {
           std::vector<uint8_t> tmp;
-          tmp.reserve(data.size() + ctl.chunk.size());
+          tmp.reserve(data.size() + chunk.size());
           std::copy(data.begin(), data.end(), std::back_inserter(tmp));
-          std::copy(ctl.chunk.begin(), ctl.chunk.end(),
-                    std::back_inserter(tmp));
-          ctl.chunk = std::move(tmp);
+          std::copy(chunk.begin(), chunk.end(), std::back_inserter(tmp));
+          chunk = std::move(tmp);
           header_sent = true;
         }
         if (!previous_chunk.empty()) {
-          co_yield BaseResponseFlowControl{
-              .type = BaseResponseFlowControl::Type::kSendChunk,
-              .chunk =
-                  GetChunkToSend(std::move(previous_chunk), /*last=*/false)};
+          co_yield GetChunkToSend(std::move(previous_chunk), /*last=*/false);
         }
-        previous_chunk = std::move(ctl.chunk);
+        previous_chunk = std::move(chunk);
       }
       if (!header_sent) {
         previous_chunk = std::move(data);
       }
       if (!previous_chunk.empty()) {
-        co_yield BaseResponseFlowControl{
-            .type = BaseResponseFlowControl::Type::kSendChunk,
-            .chunk = GetChunkToSend(std::move(previous_chunk), /*last=*/true)};
+        co_yield GetChunkToSend(std::move(previous_chunk), /*last=*/true);
       }
     } else {
       throw RpcException(RpcException::kAborted, "unimplemented");

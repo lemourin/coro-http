@@ -39,7 +39,7 @@ struct RpcResponseAcceptedBody {
     kGarbageArgs = 4,
     kSystemErr = 5,
   } stat;
-  Generator<coro::util::BaseResponseFlowControl> data;
+  Generator<coro::util::BaseResponseChunk> data;
 };
 
 struct RpcResponseDeniedBody {

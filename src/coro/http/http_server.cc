@@ -13,7 +13,7 @@ namespace coro::http {
 namespace {
 
 using ::coro::util::BaseRequestDataProvider;
-using ::coro::util::BaseResponseFlowControl;
+using ::coro::util::BaseResponseChunk;
 using ::coro::util::BaseServer;
 using ::coro::util::EventLoop;
 using ::coro::util::ServerConfig;
@@ -45,12 +45,6 @@ bool HasBody(int response_status, std::optional<uint64_t> content_length) {
 
 bool IsChunked(std::span<const std::pair<std::string, std::string>> headers) {
   return !GetHeader(headers, "Content-Length").has_value();
-}
-
-BaseResponseFlowControl FlowCtl(std::string_view bytes) {
-  return BaseResponseFlowControl{
-      .type = BaseResponseFlowControl::Type::kSendChunk,
-      .chunk = ToByteArray(bytes)};
 }
 
 Task<std::string> GetHttpHeader(BaseRequestDataProvider& provider) {
@@ -187,8 +181,8 @@ Generator<std::string> GetResponseChunk(bool is_chunked, std::string chunk) {
 }
 
 struct HttpHandlerT {
-  Generator<BaseResponseFlowControl> operator()(
-      BaseRequestDataProvider provider, stdx::stop_token stop_token) {
+  Generator<BaseResponseChunk> operator()(BaseRequestDataProvider provider,
+                                          stdx::stop_token stop_token) {
     auto request = GetHttpRequest(co_await GetHttpHeader(provider));
     std::optional<Generator<std::string>> request_body =
         GetHttpRequestBody(provider, request.headers);
@@ -196,7 +190,7 @@ struct HttpHandlerT {
       request.body = WrapGenerator(request_body);
     }
     if (HasHeader(request.headers, "Expect", "100-continue")) {
-      co_yield FlowCtl("HTTP/1.1 100 Continue\r\n\r\n");
+      co_yield std::string("HTTP/1.1 100 Continue\r\n\r\n");
     }
     auto method = request.method;
     auto response =
@@ -217,7 +211,7 @@ struct HttpHandlerT {
       co_await DrainRequestBody(request_body);
     }
     response.headers.emplace_back("Connection", "keep-alive");
-    co_yield FlowCtl(GetHttpResponseHeader(response.status, response.headers));
+    co_yield GetHttpResponseHeader(response.status, response.headers);
 
     if (method == Method::kHead || !has_body) {
       co_return;
@@ -232,13 +226,13 @@ struct HttpHandlerT {
       }
       FOR_CO_AWAIT(std::string piece,
                    GetResponseChunk(is_chunked, std::move(chunk))) {
-        co_yield FlowCtl(std::move(piece));
+        co_yield std::move(piece);
       }
     }
 
     if (is_chunked) {
       co_await DrainRequestBody(request_body);
-      co_yield FlowCtl("0\r\n\r\n");
+      co_yield std::string("0\r\n\r\n");
     }
   }
 

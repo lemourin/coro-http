@@ -14,9 +14,8 @@ namespace coro::rpc {
 namespace {
 
 using ::coro::util::AtScopeExit;
-using ::coro::util::BaseRequestDataProvider;
-using ::coro::util::BaseResponseChunk;
-using ::coro::util::ServerConfig;
+using ::coro::util::TcpRequestDataProvider;
+using ::coro::util::TcpResponseChunk;
 
 constexpr int kMaxCredLength = 400;
 
@@ -28,8 +27,8 @@ U RoundUpPower2(U num, size_t bits) {
   return ((num + (static_cast<U>(1) << bits) - 1) >> bits) << bits;
 }
 
-BaseRequestDataProvider GetDecodedChunks(bool last_fragment, uint32_t length,
-                                         BaseRequestDataProvider provider) {
+TcpRequestDataProvider GetDecodedChunks(bool last_fragment, uint32_t length,
+                                        TcpRequestDataProvider provider) {
   return [last_fragment, length, provider = std::move(provider)](
              uint32_t byte_cnt) mutable -> Task<std::vector<uint8_t>> {
     if (last_fragment && length == 0 && byte_cnt == UINT32_MAX) {
@@ -71,8 +70,8 @@ std::vector<uint8_t> GetChunkToSend(std::vector<uint8_t> data, bool last) {
 }
 
 struct RpcHandlerT {
-  Generator<BaseResponseChunk> operator()(
-      coro::util::BaseRequestDataProvider provider,
+  Generator<TcpResponseChunk> operator()(
+      coro::util::TcpRequestDataProvider provider,
       stdx::stop_token stop_token) {
     RpcRequest rpc_request{};
     uint32_t encoded_length = ParseUInt32(co_await provider(4));
@@ -125,7 +124,7 @@ struct RpcHandlerT {
 
       bool header_sent = false;
       std::vector<uint8_t> previous_chunk;
-      FOR_CO_AWAIT(BaseResponseChunk ctl, accepted->data) {
+      FOR_CO_AWAIT(TcpResponseChunk ctl, accepted->data) {
         std::vector<uint8_t> chunk(ctl.chunk().begin(), ctl.chunk().end());
         if (!header_sent) {
           std::vector<uint8_t> tmp;
@@ -199,7 +198,7 @@ XdrSerializer& XdrSerializer::Put(std::string_view bytes) {
 }
 
 Task<std::vector<uint8_t>> GetVariableLengthOpaque(
-    coro::util::BaseRequestDataProvider& provider, uint32_t max_length) {
+    coro::util::TcpRequestDataProvider& provider, uint32_t max_length) {
   uint32_t length = ParseUInt32(co_await provider(4));
   if (length > max_length) {
     throw RpcException(RpcException::kMalformedRequest,
@@ -210,11 +209,11 @@ Task<std::vector<uint8_t>> GetVariableLengthOpaque(
   co_return result;
 }
 
-coro::util::BaseServer CreateRpcServer(RpcHandler rpc_handler,
-                                       const coro::util::EventLoop* event_loop,
-                                       const coro::util::ServerConfig& config) {
-  return coro::util::BaseServer(RpcHandlerT(std::move(rpc_handler)), event_loop,
-                                config);
+coro::util::TcpServer CreateRpcServer(
+    RpcHandler rpc_handler, const coro::util::EventLoop* event_loop,
+    const coro::util::TcpServer::Config& config) {
+  return coro::util::TcpServer(RpcHandlerT(std::move(rpc_handler)), event_loop,
+                               config);
 }
 
 }  // namespace coro::rpc

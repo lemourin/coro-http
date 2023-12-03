@@ -18,8 +18,8 @@ using ::coro::rpc::RpcRequest;
 using ::coro::rpc::RpcResponse;
 using ::coro::rpc::RpcResponseAcceptedBody;
 using ::coro::rpc::XdrSerializer;
-using ::coro::util::BaseResponseChunk;
-using ::coro::util::DrainDataProvider;
+using ::coro::util::DrainTcpDataProvider;
+using ::coro::util::TcpResponseChunk;
 
 constexpr uint32_t kPortMapperServicePort = 111;
 constexpr uint32_t kNfsServicePort = 2049;
@@ -261,7 +261,7 @@ std::string ToArray(std::span<const uint8_t> bytes) {
   return std::move(stream).str();
 }
 
-Generator<BaseResponseChunk> ToResponseChunk(std::vector<uint8_t> data) {
+Generator<TcpResponseChunk> ToResponseChunk(std::vector<uint8_t> data) {
   co_yield std::move(data);
 }
 
@@ -272,12 +272,12 @@ RpcResponse ToResponse(std::vector<uint8_t> data) {
 
 Task<RpcResponse> ToErrorResponse(RpcRequest request,
                                   RpcResponseAcceptedBody::Stat stat) {
-  co_await DrainDataProvider(std::move(request.body.data));
+  co_await DrainTcpDataProvider(std::move(request.body.data));
   co_return RpcResponse{
       .body = {.body = RpcResponseAcceptedBody{.stat = stat}}};
 }
 
-Task<NfsHandle3> GetNfsHandle(coro::util::BaseRequestDataProvider& provider) {
+Task<NfsHandle3> GetNfsHandle(coro::util::TcpRequestDataProvider& provider) {
   auto nfs_handle = co_await GetVariableLengthOpaque(provider, kNfsHandleSize);
   if (nfs_handle.size() != 8) {
     throw RpcException(RpcException::kMalformedRequest,

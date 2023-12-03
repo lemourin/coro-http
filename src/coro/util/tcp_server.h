@@ -14,13 +14,13 @@ namespace coro::util {
 
 inline constexpr uint32_t kMaxBufferSize = 1024;
 
-using BaseRequestDataProvider =
+using TcpRequestDataProvider =
     stdx::any_invocable<Task<std::vector<uint8_t>>(uint32_t byte_cnt)>;
 
-class BaseResponseChunk {
+class TcpResponseChunk {
  public:
-  BaseResponseChunk(std::vector<uint8_t> chunk) : chunk_(std::move(chunk)) {}
-  BaseResponseChunk(std::string chunk) : chunk_(std::move(chunk)) {}
+  TcpResponseChunk(std::vector<uint8_t> chunk) : chunk_(std::move(chunk)) {}
+  TcpResponseChunk(std::string chunk) : chunk_(std::move(chunk)) {}
 
   std::span<const uint8_t> chunk() const;
 
@@ -28,25 +28,24 @@ class BaseResponseChunk {
   std::variant<std::vector<uint8_t>, std::string> chunk_;
 };
 
-using BaseRequestHandler = stdx::any_invocable<Generator<BaseResponseChunk>(
-    BaseRequestDataProvider, stdx::stop_token)>;
+using TcpRequestHandler = stdx::any_invocable<Generator<TcpResponseChunk>(
+    TcpRequestDataProvider, stdx::stop_token)>;
 
-struct ServerConfig {
-  std::string address;
-  uint16_t port;
-};
-
-class BaseServer {
+class TcpServer {
  public:
-  BaseServer(BaseRequestHandler request_handler,
-             const coro::util::EventLoop* event_loop,
-             const coro::util::ServerConfig& config);
+  struct Config {
+    std::string address;
+    uint16_t port;
+  };
 
-  BaseServer(const BaseServer&) = delete;
-  BaseServer(BaseServer&&) = delete;
+  TcpServer(TcpRequestHandler request_handler, const EventLoop* event_loop,
+            const Config& config);
 
-  BaseServer& operator=(const BaseServer&) = delete;
-  BaseServer& operator=(BaseServer&&) = delete;
+  TcpServer(const TcpServer&) = delete;
+  TcpServer(TcpServer&&) = delete;
+
+  TcpServer& operator=(const TcpServer&) = delete;
+  TcpServer& operator=(TcpServer&&) = delete;
 
   uint16_t GetPort() const;
   Task<> Quit();
@@ -65,12 +64,12 @@ class BaseServer {
 #endif
 
   std::unique_ptr<EvconnListener, EvconnListenerDeleter> CreateListener(
-      const ServerConfig& config);
+      const Config& config);
   Task<> ListenerCallback(EvconnListener*, socket_t fd, void* sockaddr,
                           int socklen) noexcept;
   void OnQuit();
 
-  BaseRequestHandler request_handler_;
+  TcpRequestHandler request_handler_;
   const coro::util::EventLoop* event_loop_;
   bool quitting_ = false;
   int current_connections_ = 0;
@@ -79,7 +78,7 @@ class BaseServer {
   std::unique_ptr<EvconnListener, EvconnListenerDeleter> listener_;
 };
 
-Task<> DrainDataProvider(BaseRequestDataProvider);
+Task<> DrainTcpDataProvider(TcpRequestDataProvider);
 
 }  // namespace coro::util
 

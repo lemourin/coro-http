@@ -5,18 +5,17 @@
 #include <vector>
 
 #include "coro/http/http_parse.h"
-#include "coro/util/base_server.h"
 #include "coro/util/regex.h"
+#include "coro/util/tcp_server.h"
 
 namespace coro::http {
 
 namespace {
 
-using ::coro::util::BaseRequestDataProvider;
-using ::coro::util::BaseResponseChunk;
-using ::coro::util::BaseServer;
 using ::coro::util::EventLoop;
-using ::coro::util::ServerConfig;
+using ::coro::util::TcpRequestDataProvider;
+using ::coro::util::TcpResponseChunk;
+using ::coro::util::TcpServer;
 
 constexpr int kMaxHeaderSize = 16384;
 
@@ -47,7 +46,7 @@ bool IsChunked(std::span<const std::pair<std::string, std::string>> headers) {
   return !GetHeader(headers, "Content-Length").has_value();
 }
 
-Task<std::string> GetHttpHeader(BaseRequestDataProvider& provider) {
+Task<std::string> GetHttpHeader(TcpRequestDataProvider& provider) {
   std::string buffer;
   while (!buffer.ends_with("\r\n\r\n")) {
     if (buffer.size() >= kMaxHeaderSize) {
@@ -72,7 +71,7 @@ std::string GetHttpResponseHeader(
   return std::move(header).str();
 }
 
-Generator<std::string> GetRequestBody(BaseRequestDataProvider& provider,
+Generator<std::string> GetRequestBody(TcpRequestDataProvider& provider,
                                       uint64_t content_length) {
   while (content_length > 0) {
     auto chunk_length = static_cast<uint32_t>(std::min(
@@ -82,8 +81,7 @@ Generator<std::string> GetRequestBody(BaseRequestDataProvider& provider,
   }
 }
 
-Generator<std::string> GetChunkedRequestBody(
-    BaseRequestDataProvider& provider) {
+Generator<std::string> GetChunkedRequestBody(TcpRequestDataProvider& provider) {
   while (true) {
     std::string buffer;
     while (!buffer.ends_with("\r\n")) {
@@ -112,7 +110,7 @@ Generator<std::string> GetChunkedRequestBody(
 }
 
 std::optional<Generator<std::string>> GetHttpRequestBody(
-    BaseRequestDataProvider& provider,
+    TcpRequestDataProvider& provider,
     std::span<const std::pair<std::string, std::string>> headers) {
   auto transfer_encoding = GetHeader(headers, "Transfer-Encoding");
   if (transfer_encoding &&
@@ -181,8 +179,8 @@ Generator<std::string> GetResponseChunk(bool is_chunked, std::string chunk) {
 }
 
 struct HttpHandlerT {
-  Generator<BaseResponseChunk> operator()(BaseRequestDataProvider provider,
-                                          stdx::stop_token stop_token) {
+  Generator<TcpResponseChunk> operator()(TcpRequestDataProvider provider,
+                                         stdx::stop_token stop_token) {
     auto request = GetHttpRequest(co_await GetHttpHeader(provider));
     std::optional<Generator<std::string>> request_body =
         GetHttpRequestBody(provider, request.headers);
@@ -241,11 +239,11 @@ struct HttpHandlerT {
 
 }  // namespace
 
-BaseServer CreateHttpServer(HttpHandler http_handler,
-                            const EventLoop* event_loop,
-                            const ServerConfig& config) {
-  return BaseServer(HttpHandlerT{.http_handler = std::move(http_handler)},
-                    event_loop, config);
+TcpServer CreateHttpServer(HttpHandler http_handler,
+                           const EventLoop* event_loop,
+                           const TcpServer::Config& config) {
+  return TcpServer(HttpHandlerT{.http_handler = std::move(http_handler)},
+                   event_loop, config);
 }
 
 }  // namespace coro::http

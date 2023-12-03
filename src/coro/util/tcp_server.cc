@@ -1,4 +1,4 @@
-#include "coro/util/base_server.h"
+#include "coro/util/tcp_server.h"
 
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
@@ -105,8 +105,8 @@ std::unique_ptr<bufferevent, BufferEventDeleter> CreateBufferEvent(
   return bev;
 }
 
-BaseRequestDataProvider GetRequestContent(struct bufferevent* bev,
-                                          RequestContext* context) {
+TcpRequestDataProvider GetRequestContent(struct bufferevent* bev,
+                                         RequestContext* context) {
   return [bev, context](uint32_t byte_cnt) -> Task<std::vector<uint8_t>> {
     if (byte_cnt != UINT32_MAX && byte_cnt > kMaxBufferSize) {
       throw InvalidArgument("requested too big request chunk");
@@ -142,12 +142,12 @@ BaseRequestDataProvider GetRequestContent(struct bufferevent* bev,
 
 }  // namespace
 
-Task<> DrainDataProvider(BaseRequestDataProvider data_provider) {
+Task<> DrainTcpDataProvider(TcpRequestDataProvider data_provider) {
   while (!(co_await data_provider(UINT32_MAX)).empty()) {
   }
 }
 
-std::span<const uint8_t> BaseResponseChunk::chunk() const {
+std::span<const uint8_t> TcpResponseChunk::chunk() const {
   if (auto* chunk = std::get_if<std::string>(&chunk_)) {
     return std::span<const uint8_t>(
         reinterpret_cast<const uint8_t*>(chunk->data()), chunk->size());
@@ -156,25 +156,25 @@ std::span<const uint8_t> BaseResponseChunk::chunk() const {
   }
 }
 
-void BaseServer::EvconnListenerDeleter::operator()(
+void TcpServer::EvconnListenerDeleter::operator()(
     EvconnListener* listener) const noexcept {
   evconnlistener_free(reinterpret_cast<evconnlistener*>(listener));
 }
 
-BaseServer::BaseServer(BaseRequestHandler request_handler,
-                       const EventLoop* event_loop, const ServerConfig& config)
+TcpServer::TcpServer(TcpRequestHandler request_handler,
+                     const EventLoop* event_loop, const Config& config)
     : request_handler_(std::move(request_handler)),
       event_loop_(event_loop),
       listener_(CreateListener(config)) {}
 
-void BaseServer::OnQuit() {
+void TcpServer::OnQuit() {
   event_loop_->RunOnEventLoop([this] {
     listener_.reset();
     quit_semaphore_.SetValue();
   });
 }
 
-Task<> BaseServer::Quit() {
+Task<> TcpServer::Quit() {
   if (quitting_) {
     co_return;
   }
@@ -186,7 +186,7 @@ Task<> BaseServer::Quit() {
   co_await quit_semaphore_;
 }
 
-uint16_t BaseServer::GetPort() const {
+uint16_t TcpServer::GetPort() const {
   sockaddr_in addr;
   socklen_t length = sizeof(addr);
   Check(getsockname(
@@ -195,7 +195,7 @@ uint16_t BaseServer::GetPort() const {
   return ntohs(addr.sin_port);
 }
 
-auto BaseServer::CreateListener(const ServerConfig& config)
+auto TcpServer::CreateListener(const Config& config)
     -> std::unique_ptr<EvconnListener, EvconnListenerDeleter> {
   union {
     struct sockaddr_in sin;
@@ -209,7 +209,7 @@ auto BaseServer::CreateListener(const ServerConfig& config)
       reinterpret_cast<event_base*>(GetEventLoop(*event_loop_)),
       [](struct evconnlistener* listener, evutil_socket_t socket,
          struct sockaddr* addr, int socklen, void* d) {
-        auto* context = reinterpret_cast<BaseServer*>(d);
+        auto* context = reinterpret_cast<TcpServer*>(d);
         RunTask(context->ListenerCallback(
             reinterpret_cast<EvconnListener*>(listener), socket,
             static_cast<void*>(addr), socklen));
@@ -223,8 +223,8 @@ auto BaseServer::CreateListener(const ServerConfig& config)
       reinterpret_cast<EvconnListener*>(listener));
 }
 
-Task<> BaseServer::ListenerCallback(struct EvconnListener*, evutil_socket_t fd,
-                                    void*, int socklen) noexcept {
+Task<> TcpServer::ListenerCallback(struct EvconnListener*, evutil_socket_t fd,
+                                   void*, int socklen) noexcept {
   RequestContext context{};
   try {
     if (quitting_) {
@@ -249,7 +249,7 @@ Task<> BaseServer::ListenerCallback(struct EvconnListener*, evutil_socket_t fd,
     while (!terminate_connection) {
       auto response = request_handler_(GetRequestContent(bev.get(), &context),
                                        context.stop_source.get_token());
-      FOR_CO_AWAIT(BaseResponseChunk ctl, response) {
+      FOR_CO_AWAIT(TcpResponseChunk ctl, response) {
         if (!ctl.chunk().empty()) {
           co_await Write(&context, bev.get(), ctl.chunk());
         }

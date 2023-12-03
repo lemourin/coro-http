@@ -63,7 +63,7 @@ class HttpServerTest : public ::testing::Test {
       try {
         auto http_server = coro::http::CreateHttpServer(
             std::move(handler), &event_loop_,
-            coro::util::ServerConfig{.address = "127.0.0.1", .port = 12345});
+            coro::util::TcpServer::Config{.address = "127.0.0.1", .port = 0});
         address_ = "http://127.0.0.1:" + std::to_string(http_server.GetPort());
         quit_ = [&] { return http_server.Quit(); };
         try {

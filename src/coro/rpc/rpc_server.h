@@ -9,8 +9,8 @@
 #include "coro/stdx/any_invocable.h"
 #include "coro/stdx/stop_token.h"
 #include "coro/task.h"
-#include "coro/util/base_server.h"
 #include "coro/util/event_loop.h"
+#include "coro/util/tcp_server.h"
 
 namespace coro::rpc {
 
@@ -26,7 +26,7 @@ struct RpcRequestBody {
   uint32_t proc;
   RpcOpaqueAuth cred;
   RpcOpaqueAuth verf;
-  coro::util::BaseRequestDataProvider data;
+  coro::util::TcpRequestDataProvider data;
 };
 
 struct RpcResponseAcceptedBody {
@@ -39,7 +39,7 @@ struct RpcResponseAcceptedBody {
     kGarbageArgs = 4,
     kSystemErr = 5,
   } stat;
-  Generator<coro::util::BaseResponseChunk> data;
+  Generator<coro::util::TcpResponseChunk> data;
 };
 
 struct RpcResponseDeniedBody {
@@ -109,11 +109,11 @@ inline uint64_t ParseUInt64(std::span<const uint8_t> message) {
 }
 
 Task<std::vector<uint8_t>> GetVariableLengthOpaque(
-    coro::util::BaseRequestDataProvider& data, uint32_t max_length);
+    coro::util::TcpRequestDataProvider& data, uint32_t max_length);
 
-coro::util::BaseServer CreateRpcServer(RpcHandler rpc_handler,
-                                       const coro::util::EventLoop* event_loop,
-                                       const coro::util::ServerConfig& config);
+coro::util::TcpServer CreateRpcServer(
+    RpcHandler rpc_handler, const coro::util::EventLoop* event_loop,
+    const coro::util::TcpServer::Config& config);
 
 }  // namespace coro::rpc
 

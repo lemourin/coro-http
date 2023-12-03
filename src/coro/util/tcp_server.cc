@@ -1,5 +1,9 @@
 #include "coro/util/tcp_server.h"
 
+#ifndef _WIN32
+#include <arpa/inet.h>
+#endif
+
 #include <event2/buffer.h>
 #include <event2/bufferevent.h>
 #include <event2/listener.h>

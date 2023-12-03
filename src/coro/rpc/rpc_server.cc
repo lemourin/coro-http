@@ -212,8 +212,8 @@ Task<std::vector<uint8_t>> GetVariableLengthOpaque(
 coro::util::TcpServer CreateRpcServer(
     RpcHandler rpc_handler, const coro::util::EventLoop* event_loop,
     const coro::util::TcpServer::Config& config) {
-  return coro::util::TcpServer(RpcHandlerT(std::move(rpc_handler)), event_loop,
-                               config);
+  return coro::util::TcpServer(
+      RpcHandlerT{.rpc_handler = std::move(rpc_handler)}, event_loop, config);
 }
 
 }  // namespace coro::rpc

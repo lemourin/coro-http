@@ -258,17 +258,34 @@ struct TaskT<T> {
   using type = Task<T>;
 };
 
+template <typename T>
+concept HasCoAwaitOp = requires(T d) { d.operator co_await(); };
+
+template <typename T, typename = void>
+struct AwaitableType {
+  using type = T;
+};
+
+template <typename T>
+struct AwaitableType<T, std::enable_if_t<HasCoAwaitOp<T>>> {
+  using type = decltype(std::declval<T>().operator co_await());
+};
+
+template <typename T>
+using AwaitableTypeT = typename AwaitableType<T>::type;
+
 }  // namespace detail
 
 template <typename... Ts>
 using Task = typename detail::TaskT<Ts...>::type;
 
 template <typename T, typename Result>
-concept Awaitable = requires(T v, stdx::coroutine_handle<void> handle) {
-  { v.operator co_await().await_resume() } -> stdx::convertible_to<Result>;
-  v.operator co_await().await_suspend(handle);
-  { v.operator co_await().await_ready() } -> stdx::same_as<bool>;
-};
+concept Awaitable =
+    requires(detail::AwaitableTypeT<T> v, stdx::coroutine_handle<void> handle) {
+      { v.await_resume() } -> stdx::convertible_to<Result>;
+      v.await_suspend(handle);
+      { v.await_ready() } -> stdx::same_as<bool>;
+    };
 
 struct RunTaskT {
   struct promise_type {

@@ -330,12 +330,14 @@ Generator<T> async_generator_promise<T>::get_return_object() noexcept {
 }  // namespace detail
 
 template <typename T, typename R>
-concept GeneratorLike = requires(T v, stdx::coroutine_handle<void> handle) {
-  v.begin().await_suspend(handle);
-  { v.begin().await_ready() } -> stdx::same_as<bool>;
-  { *v.begin().await_resume() } -> stdx::convertible_to<R>;
-  v.end();
-};
+concept GeneratorLike =
+    requires(T v, detail::AwaitableTypeT<decltype(v.begin())> awaitable,
+             stdx::coroutine_handle<void> handle) {
+      awaitable.await_suspend(handle);
+      { awaitable.await_ready() } -> stdx::same_as<bool>;
+      { *awaitable.await_resume() } -> stdx::convertible_to<R>;
+      v.end();
+    };
 
 }  // namespace coro
 

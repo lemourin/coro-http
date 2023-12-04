@@ -35,20 +35,11 @@ struct EvBufferDeleter {
 
 void Check(int code) {
   if (code != 0) {
-    throw RuntimeError("base server error: " + std::to_string(code));
+    throw RuntimeError("TcpServer error: " + std::to_string(code));
   }
 }
 
-Task<> WaitRead(RequestContext* context) {
-  if (context->stop_source.get_token().stop_requested()) {
-    throw InterruptedException();
-  } else {
-    co_await context->semaphore;
-    context->semaphore = Promise<void>();
-  }
-}
-
-Task<> WaitWrite(RequestContext* context) {
+Task<> Wait(RequestContext* context) {
   if (context->stop_source.get_token().stop_requested()) {
     throw InterruptedException();
   } else {
@@ -74,7 +65,7 @@ Task<> Write(RequestContext* context, bufferevent* bev,
                                /*cleanupfn=*/nullptr,
                                /*cleanupfnarg=*/nullptr));
   Check(bufferevent_write_buffer(bev, buffer.get()));
-  co_await WaitWrite(context);
+  co_await Wait(context);
 }
 
 void ReadCallback(struct bufferevent*, void* user_data) {
@@ -122,7 +113,7 @@ TcpRequestDataProvider GetRequestContent(struct bufferevent* bev,
     struct evbuffer* input = bufferevent_get_input(bev);
     size_t size = evbuffer_get_length(input);
     if (size == 0) {
-      co_await WaitRead(context);
+      co_await Wait(context);
       size = evbuffer_get_length(input);
     }
     if (byte_cnt == UINT32_MAX) {
@@ -133,7 +124,7 @@ TcpRequestDataProvider GetRequestContent(struct bufferevent* bev,
       co_return data;
     }
     while (size < byte_cnt) {
-      co_await WaitRead(context);
+      co_await Wait(context);
       size = evbuffer_get_length(input);
     }
     std::vector<uint8_t> data(byte_cnt, 0);
@@ -250,8 +241,7 @@ Task<> TcpServer::ListenerCallback(struct EvconnListener*, evutil_socket_t fd,
     auto bev = CreateBufferEvent(
         reinterpret_cast<event_base*>(GetEventLoop(*event_loop_)), fd,
         &context);
-    bool terminate_connection = false;
-    while (!terminate_connection) {
+    while (true) {
       auto response = request_handler_(GetRequestContent(bev.get(), &context),
                                        context.stop_source.get_token());
       FOR_CO_AWAIT(TcpResponseChunk ctl, response) {
@@ -260,8 +250,10 @@ Task<> TcpServer::ListenerCallback(struct EvconnListener*, evutil_socket_t fd,
         }
       }
     }
+  } catch (const InterruptedException&) {
+    context.stop_source.request_stop();
   } catch (const Exception& e) {
-    std::cerr << "EXCEPTION " << e.what() << '\n';
+    std::cerr << "[TCP_SERVER]: " << e.what() << '\n';
     context.stop_source.request_stop();
   }
 }

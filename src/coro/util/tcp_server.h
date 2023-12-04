@@ -12,7 +12,7 @@
 
 namespace coro::util {
 
-inline constexpr uint32_t kMaxBufferSize = 1024;
+inline constexpr uint32_t kMaxBufferSize = 4 * 1024;
 
 using TcpRequestDataProvider =
     stdx::any_invocable<Task<std::vector<uint8_t>>(uint32_t byte_cnt)>;

@@ -4,6 +4,7 @@ project(coro-http)
 option(BUILD_SHARED_LIBS "build shared libs" OFF)
 option(BUILD_TESTING "build testing" OFF)
 option(BUILD_EXAMPLES "build examples" ON)
+option(WITH_BUNDLED_CACERT "use bundled ca cert" OFF)
 option(WITH_STACKTRACE "enable stacktraces in exceptions" OFF)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 

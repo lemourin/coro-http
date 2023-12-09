@@ -393,6 +393,8 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
         curl_easy_setopt(handle_.get(), CURLOPT_ALTSVC,
                          (*cache_path + PATH_SEPARATOR "alt-svc.txt").c_str()));
   }
+  Check(curl_easy_setopt(handle_.get(), CURLOPT_SSL_OPTIONS,
+                         CURLSSLOPT_NATIVE_CA));
 #ifdef USE_BUNDLED_CACERT
   curl_blob ca_cert{
       .data = const_cast<void*>(reinterpret_cast<const void*>(kCaCert.data())),

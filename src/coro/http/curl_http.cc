@@ -15,6 +15,10 @@
 
 #ifdef USE_BUNDLED_CACERT
 #include "coro/http/assets.h"
+#else
+#include <filesystem>
+#include <fstream>
+#include <string_view>
 #endif
 
 namespace coro::http {
@@ -115,7 +119,9 @@ class CurlHandle {
   using Owner = std::variant<CurlHttpOperation*, CurlHttpBodyGenerator*>;
 
   CurlHandle(CURLM* http, event_base* event_loop, Request<>,
-             const std::string* cache_path, stdx::stop_token, Owner);
+             std::optional<std::string_view> cache_path,
+             std::optional<std::string_view> cacert_blob, stdx::stop_token,
+             Owner);
 
  private:
   friend class CurlHttpImpl;
@@ -183,7 +189,9 @@ class CurlHttpBodyGenerator : public HttpBodyGenerator<CurlHttpBodyGenerator> {
 class CurlHttpOperation {
  public:
   CurlHttpOperation(CURLM* http, event_base* event_loop, Request<>,
-                    const std::string* cache_path, stdx::stop_token);
+                    std::optional<std::string_view> cache_path,
+                    std::optional<std::string_view> cacert_bundle,
+                    stdx::stop_token);
 
   bool await_ready();
   void await_suspend(stdx::coroutine_handle<void> awaiting_coroutine);
@@ -220,6 +228,9 @@ class CurlHttpImpl {
   static void SocketEvent(evutil_socket_t fd, short event, void* multi_handle);
   static void TimeoutEvent(evutil_socket_t fd, short event, void* handle);
   static void ProcessEvents(CURLM* handle);
+#ifndef USE_BUNDLED_CACERT
+  static std::string GetCaCertBlob();
+#endif
 
   friend class CurlHttpOperation;
   friend class CurlHttpBodyGenerator;
@@ -233,6 +244,9 @@ class CurlHttpImpl {
   std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle_;
   event_base* event_loop_;
   EventData timeout_event_;
+#ifndef USE_BUNDLED_CACERT
+  std::string ca_cert_blob_;
+#endif
   std::optional<std::string> cache_path_;
 };
 
@@ -354,7 +368,8 @@ void CurlHandle::OnCancel::operator()() const {
 }
 
 CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
-                       const std::string* cache_path,
+                       std::optional<std::string_view> cache_path,
+                       std::optional<std::string_view> cacert_blob,
                        stdx::stop_token stop_token, Owner owner)
     : http_(http),
       event_loop_(event_loop),
@@ -389,18 +404,21 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
     Check(curl_easy_setopt(handle_.get(), CURLOPT_NOBODY, 1L));
   }
   if (cache_path) {
-    Check(
-        curl_easy_setopt(handle_.get(), CURLOPT_ALTSVC,
-                         (*cache_path + PATH_SEPARATOR "alt-svc.txt").c_str()));
+    Check(curl_easy_setopt(
+        handle_.get(), CURLOPT_ALTSVC,
+        (std::string(cache_path->begin(), cache_path->end()) + PATH_SEPARATOR
+         "alt-svc.txt")
+            .c_str()));
   }
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_SSL_OPTIONS,
-                         CURLSSLOPT_NATIVE_CA));
-#ifdef USE_BUNDLED_CACERT
-  curl_blob ca_cert{
-      .data = const_cast<void*>(reinterpret_cast<const void*>(kCaCert.data())),
-      .len = kCaCert.size()};
-  Check(curl_easy_setopt(handle_.get(), CURLOPT_CAINFO_BLOB, &ca_cert));
-#endif
+  if (cacert_blob) {
+    curl_blob ca_cert{.data = const_cast<void*>(
+                          reinterpret_cast<const void*>(cacert_blob->data())),
+                      .len = cacert_blob->size()};
+    Check(curl_easy_setopt(handle_.get(), CURLOPT_CAINFO_BLOB, &ca_cert));
+  } else {
+    Check(curl_easy_setopt(handle_.get(), CURLOPT_SSL_OPTIONS,
+                           CURLSSLOPT_NATIVE_CA));
+  }
   std::optional<curl_off_t> content_length;
   for (const auto& [header_name, header_value] : request.headers) {
     std::string header_line = header_name;
@@ -481,13 +499,13 @@ void CurlHttpBodyGenerator::Resume() {
   }
 }
 
-CurlHttpOperation::CurlHttpOperation(CURLM* http, event_base* event_loop,
-                                     Request<> request,
-                                     const std::string* cache_directory,
-                                     stdx::stop_token stop_token)
+CurlHttpOperation::CurlHttpOperation(
+    CURLM* http, event_base* event_loop, Request<> request,
+    std::optional<std::string_view> cache_directory,
+    std::optional<std::string_view> cacert_bundle, stdx::stop_token stop_token)
     : headers_ready_(event_loop, -1, 0, OnHeadersReady, this),
       handle_(std::make_unique<CurlHandle>(http, event_loop, std::move(request),
-                                           cache_directory,
+                                           cache_directory, cacert_bundle,
                                            std::move(stop_token), this)) {}
 
 void CurlHttpOperation::OnHeadersReady(evutil_socket_t, short, void* handle) {
@@ -527,6 +545,9 @@ CurlHttpImpl::CurlHttpImpl(event_base* event_loop,
     : curl_handle_(CheckNotNull(curl_multi_init())),
       event_loop_(event_loop),
       timeout_event_(event_loop, -1, 0, TimeoutEvent, curl_handle_.get()),
+#ifndef USE_BUNDLED_CACERT
+      ca_cert_blob_(GetCaCertBlob()),
+#endif
       cache_path_(std::move(cache_path)) {
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETFUNCTION,
                           SocketCallback));
@@ -592,6 +613,46 @@ void CurlHttpImpl::ProcessEvents(CURLM* multi_handle) {
   } while (message != nullptr);
 }
 
+#ifndef USE_BUNDLED_CACERT
+std::string CurlHttpImpl::GetCaCertBlob() {
+  constexpr int kMaxCaCertBlobSize = 1024 * 1024 * 10;
+  constexpr int kBufferSize = 4 * 1024;
+  std::string blob;
+  for (std::string_view cert_directory :
+       std::initializer_list<std::string_view> {
+#if defined(__ANDROID__)
+         "/system/etc/security/cacerts",
+#elif !defined(_WIN32)
+         "/etc/ssl/certs", 
+         "/etc/pki/ca-trust/source/anchors", 
+         "/etc/pki/tls/certs"
+#endif
+       }) {
+    std::string buffer(kBufferSize, 0);
+    std::filesystem::path cert_directory_path(cert_directory);
+    if (!std::filesystem::is_directory(cert_directory_path)) {
+      continue;
+    }
+    for (const auto& e :
+         std::filesystem::directory_iterator(cert_directory_path)) {
+      if (!std::filesystem::is_regular_file(e)) {
+        continue;
+      }
+      std::ifstream stream(e.path().string(), std::ifstream::binary);
+      while (stream) {
+        stream.read(buffer.data(), buffer.size());
+        blob += std::string(buffer.data(), stream.gcount());
+        if (blob.size() > kMaxCaCertBlobSize) {
+          throw RuntimeError("Native CA bundle too large.");
+        }
+      }
+    }
+  }
+
+  return blob;
+}
+#endif
+
 void CurlHttpImpl::SocketEvent(evutil_socket_t fd, short event, void* handle) {
   int running_handles;
   Check(
@@ -641,8 +702,19 @@ int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
 
 CurlHttpOperation CurlHttpImpl::Fetch(Request<> request,
                                       stdx::stop_token token) const {
-  return {curl_handle_.get(), event_loop_, std::move(request),
-          cache_path_ ? &*cache_path_ : nullptr, std::move(token)};
+  return {curl_handle_.get(),
+          event_loop_,
+          std::move(request),
+          cache_path_ ? std::make_optional(std::string_view(*cache_path_))
+                      : std::nullopt,
+#ifdef USE_BUNDLED_CACERT
+          kCaCert,
+#else
+          ca_cert_blob_.empty()
+              ? std::nullopt
+              : std::make_optional(std::string_view(ca_cert_blob_)),
+#endif
+          std::move(token)};
 }
 
 void CurlHttpImpl::CurlMultiDeleter::operator()(CURLM* handle) const {

@@ -81,7 +81,7 @@ if(TARGET Boost::stacktrace)
     target_compile_definitions(coro-http PRIVATE $<$<CONFIG:Debug>:HAVE_BOOST_STACKTRACE>)
 endif()
 
-if(ANDROID OR APPLE)
+if(APPLE)
     add_resource_library(
         coro-http-resource
         NAMESPACE coro::http

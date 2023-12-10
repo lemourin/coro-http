@@ -151,7 +151,6 @@ class CurlHandle {
 
   CURLM* http_;
   event_base* event_loop_;
-  std::unique_ptr<CURL, CurlHandleDeleter> handle_;
   std::unique_ptr<curl_slist, CurlListDeleter> header_list_;
   std::optional<Generator<std::string>> request_body_;
   std::optional<Generator<std::string>::iterator> request_body_it_;
@@ -159,6 +158,7 @@ class CurlHandle {
   stdx::stop_token stop_token_;
   Owner owner_;
   EventData next_request_body_chunk_;
+  std::unique_ptr<CURL, CurlHandleDeleter> handle_;
   stdx::stop_callback<OnCancel> stop_callback_;
 };
 
@@ -373,14 +373,14 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
                        stdx::stop_token stop_token, Owner owner)
     : http_(http),
       event_loop_(event_loop),
-      handle_(CheckNotNull(curl_easy_init()),
-              CurlHandleDeleter{.multi_handle = http}),
       header_list_(),
       request_body_(std::move(request.body)),
       stop_token_(std::move(stop_token)),
       owner_(owner),
       next_request_body_chunk_(event_loop, -1, 0,
                                OnNextRequestBodyChunkRequested, this),
+      handle_(CheckNotNull(curl_easy_init()),
+              CurlHandleDeleter{.multi_handle = http}),
       stop_callback_(stop_token_, OnCancel{this}) {
   Check(curl_easy_setopt(handle_.get(), CURLOPT_URL, request.url.data()));
   Check(curl_easy_setopt(handle_.get(), CURLOPT_PRIVATE, this));

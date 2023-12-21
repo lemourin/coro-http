@@ -6,10 +6,16 @@
 
 namespace coro::http {
 
+std::string GetNativeCaCertBlob();
+
+struct CurlHttpConfig {
+  std::optional<std::string> cache_path;
+  std::optional<std::string> ca_cert_blob = GetNativeCaCertBlob();
+};
+
 class CurlHttpBase {
  public:
-  CurlHttpBase(const coro::util::EventLoop* event_loop,
-               std::optional<std::string> cache_path);
+  CurlHttpBase(const coro::util::EventLoop* event_loop, CurlHttpConfig = {});
   ~CurlHttpBase();
 
   Task<Response<>> Fetch(Request<> request, stdx::stop_token stop_token) const;

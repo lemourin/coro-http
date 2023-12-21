@@ -5,12 +5,12 @@
 #include <coroutine>
 namespace coro {
 namespace std_ns = std;
-}
+}  // namespace coro
 #elif defined(CORO_HTTP_EXPERIMENTAL_COROUTINE_SUPPORTED)
 #include <experimental/coroutine>
 namespace coro {
 namespace std_ns = std::experimental;
-}
+}  // namespace coro
 #else
 #error "Coroutines unsupported."
 #endif

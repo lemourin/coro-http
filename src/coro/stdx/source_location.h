@@ -11,7 +11,7 @@ namespace coro::stdx {
 
 using ::std::source_location;
 
-}
+}  // namespace coro::stdx
 
 #else
 

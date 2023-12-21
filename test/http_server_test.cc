@@ -106,7 +106,7 @@ class HttpServerTest : public ::testing::Test {
   };
   std::optional<std::string> address_;
   std::function<Task<>()> quit_;
-  CurlHttp http_{&event_loop_, std::nullopt};
+  CurlHttp http_{&event_loop_};
 };
 
 TEST_F(HttpServerTest, SendsExpectedResponse) {

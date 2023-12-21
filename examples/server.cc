@@ -44,7 +44,7 @@ int main() {
 
   coro::util::EventLoop event_loop;
   coro::RunTask([&]() -> coro::Task<> {
-    coro::http::HttpImpl<coro::http::CurlHttp> http(&event_loop, std::nullopt);
+    coro::http::HttpImpl<coro::http::CurlHttp> http(&event_loop);
     coro::Promise<void> semaphore;
     auto http_server = coro::http::CreateHttpServer(
         HttpHandler{&http, &semaphore}, &event_loop,

@@ -1,4 +1,3 @@
-include(EmbedResource)
 include(CheckCXXCompilerFlag)
 include(CheckCXXSourceCompiles)
 
@@ -79,19 +78,6 @@ target_compile_features(coro-http PUBLIC cxx_std_20)
 if(TARGET Boost::stacktrace)
     target_link_libraries(coro-http PRIVATE $<$<CONFIG:Debug>:Boost::stacktrace>)
     target_compile_definitions(coro-http PRIVATE $<$<CONFIG:Debug>:HAVE_BOOST_STACKTRACE>)
-endif()
-
-if(WITH_BUNDLED_CACERT)
-    add_resource_library(
-        coro-http-resource
-        NAMESPACE coro::http
-        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/coro/http/assets.h
-        INPUT
-            kCaCert ../assets/cacert.pem
-    )
-    target_link_libraries(coro-http PRIVATE coro-http-resource)
-    target_compile_definitions(coro-http PRIVATE USE_BUNDLED_CACERT)
-    install(TARGETS coro-http-resource EXPORT coro-http)
 endif()
 
 if(MSVC)

@@ -9,7 +9,7 @@ namespace coro::http {
 std::string GetNativeCaCertBlob();
 
 struct CurlHttpConfig {
-  std::optional<std::string> cache_path;
+  std::optional<std::string> alt_svc_path;
   std::optional<std::string> ca_cert_blob = GetNativeCaCertBlob();
 };
 

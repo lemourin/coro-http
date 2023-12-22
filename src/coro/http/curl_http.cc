@@ -20,12 +20,6 @@ namespace coro::http {
 
 namespace {
 
-#ifdef _WIN32
-#define PATH_SEPARATOR "\\"
-#else
-#define PATH_SEPARATOR "/"
-#endif
-
 class CurlHttpImpl;
 class CurlHttpOperation;
 class CurlHttpBodyGenerator;
@@ -390,12 +384,9 @@ CurlHandle::CurlHandle(CURLM* http, event_base* event_loop, Request<> request,
   if (request.method == Method::kHead) {
     Check(curl_easy_setopt(handle_.get(), CURLOPT_NOBODY, 1L));
   }
-  if (config.cache_path) {
-    Check(curl_easy_setopt(
-        handle_.get(), CURLOPT_ALTSVC,
-        (std::string(config.cache_path->begin(), config.cache_path->end()) +
-         PATH_SEPARATOR "alt-svc.txt")
-            .c_str()));
+  if (config.alt_svc_path) {
+    Check(curl_easy_setopt(handle_.get(), CURLOPT_ALTSVC,
+                           config.alt_svc_path->c_str()));
   }
   if (config.ca_cert_blob && !config.ca_cert_blob->empty()) {
     curl_blob ca_cert{.data = const_cast<void*>(reinterpret_cast<const void*>(

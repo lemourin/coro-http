@@ -16,6 +16,8 @@ std::string HttpException::ToString(int status) {
       return "Bad request.";
     case kRangeNotSatisfiable:
       return "Range not satisfiable.";
+    case kRequestHeaderFieldsTooLarge:
+      return "Request Header Fields Too Large.";
     default:
       return "Unknown.";
   }

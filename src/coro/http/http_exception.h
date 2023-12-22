@@ -18,6 +18,7 @@ class HttpException : public Exception {
   static constexpr int kBadRequest = 400;
   static constexpr int kNotFound = 404;
   static constexpr int kRangeNotSatisfiable = 416;
+  static constexpr int kRequestHeaderFieldsTooLarge = 431;
 
   HttpException(
       int status,

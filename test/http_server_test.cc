@@ -14,7 +14,10 @@ namespace {
 using Request = Request<>;
 using Response = Response<>;
 
+using ::testing::AllOf;
 using ::testing::Contains;
+using ::testing::HasSubstr;
+using ::testing::StartsWith;
 
 struct ResponseContent {
   int status;
@@ -444,6 +447,202 @@ TEST_F(HttpServerTest, HandlesServerSideInterrupt) {
         co_await WhenAll(http::GetBody(std::move(response.body)), Quit()),
         HttpException);
   });
+}
+
+TEST_F(HttpServerTest, HandlesStreamingErrorGracefully) {
+  class HttpHandler {
+   public:
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      co_return Response{.status = 200, .body = CreateBody()};
+    }
+
+   private:
+    static Generator<std::string> CreateBody() {
+      co_yield "wtf1";
+      co_yield "wtf2";
+      throw http::HttpException(500, "streaming error");
+    }
+  };
+  Run(HttpHandler{}, [&]() -> Task<> {
+    ResponseContent content =
+        co_await ToResponseContent(co_await http().Fetch(address()));
+    EXPECT_EQ(content.status, 200);
+    EXPECT_THAT(content.body,
+                AllOf(StartsWith("wtf1"), HasSubstr("streaming error")));
+  });
+}
+
+TEST_F(HttpServerTest, HandlesErrorGracefully) {
+  class HttpHandler {
+   public:
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      throw http::HttpException(418, "unexpected error");
+    }
+  };
+  Run(HttpHandler{}, [&]() -> Task<> {
+    ResponseContent content =
+        co_await ToResponseContent(co_await http().Fetch(address()));
+    EXPECT_EQ(content.status, 418);
+    EXPECT_THAT(content.body, HasSubstr("unexpected error"));
+  });
+}
+
+TEST_F(HttpServerTest, IgnoresRequestBody) {
+  class HttpHandler {
+   public:
+    explicit HttpHandler(std::string* last_body) : last_body_(last_body) {}
+
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      if (index_ == 0) {
+        index_++;
+        co_return Response{.status = 200};
+      } else {
+        if (request.body) {
+          *last_body_ = co_await coro::http::GetBody(std::move(*request.body));
+        }
+        co_return Response{.status = 200};
+      }
+    }
+
+   private:
+    int index_ = 0;
+    std::string* last_body_;
+  };
+
+  std::string last_body;
+  Run(HttpHandler{&last_body}, [&]() -> Task<> {
+    co_await http().Fetch(Request{.url = address(),
+                                  .method = http::Method::kPost,
+                                  .headers = {{"Content-Length", "6"}},
+                                  .body = CreateBody("input1"),
+                                  .invalidates_cache = true});
+    co_await http().Fetch(Request{.url = address(),
+                                  .method = http::Method::kPost,
+                                  .headers = {{"Content-Length", "7"}},
+                                  .body = CreateBody("input42"),
+                                  .invalidates_cache = true});
+  });
+
+  EXPECT_EQ(last_body, "input42");
+}
+
+TEST_F(HttpServerTest, IgnoresRequestBodyWithChunkedEncoding) {
+  class HttpHandler {
+   public:
+    explicit HttpHandler(std::string* last_body) : last_body_(last_body) {}
+
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      if (index_ == 0) {
+        index_++;
+        co_return Response{.status = 200};
+      } else {
+        if (request.body) {
+          *last_body_ = co_await coro::http::GetBody(std::move(*request.body));
+        }
+        co_return Response{.status = 200};
+      }
+    }
+
+   private:
+    int index_ = 0;
+    std::string* last_body_;
+  };
+
+  std::string last_body;
+  Run(HttpHandler{&last_body}, [&]() -> Task<> {
+    co_await http().Fetch(Request{.url = address(),
+                                  .method = http::Method::kPost,
+                                  .body = CreateBody("input1"),
+                                  .invalidates_cache = true});
+    co_await http().Fetch(Request{.url = address(),
+                                  .method = http::Method::kPost,
+                                  .body = CreateBody("input42"),
+                                  .invalidates_cache = true});
+  });
+
+  EXPECT_EQ(last_body, "input42");
+}
+
+TEST_F(HttpServerTest, IgnoresPartOfChunkedRequestBody) {
+  class HttpHandler {
+   public:
+    explicit HttpHandler(std::string* last_body) : last_body_(last_body) {}
+
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      if (index_ == 0) {
+        index_++;
+        if (request.body) {
+          co_await request.body->begin();
+        }
+        co_return Response{.status = 200};
+      } else {
+        if (request.body) {
+          *last_body_ = co_await coro::http::GetBody(std::move(*request.body));
+        }
+        co_return Response{.status = 200};
+      }
+    }
+
+   private:
+    int index_ = 0;
+    std::string* last_body_;
+  };
+
+  std::string last_body;
+  Run(HttpHandler{&last_body}, [&]() -> Task<> {
+    co_await http().Fetch(Request{.url = address(),
+                                  .method = http::Method::kPost,
+                                  .body = CreateBody(std::string(10000, 'x')),
+                                  .invalidates_cache = true});
+    co_await http().Fetch(Request{.url = address(),
+                                  .method = http::Method::kPost,
+                                  .body = CreateBody("input42"),
+                                  .invalidates_cache = true});
+  });
+
+  EXPECT_EQ(last_body, "input42");
+}
+
+TEST_F(HttpServerTest, IgnoresPartOfRequestBody) {
+  class HttpHandler {
+   public:
+    explicit HttpHandler(std::string* last_body) : last_body_(last_body) {}
+
+    Task<Response> operator()(Request request, stdx::stop_token) {
+      if (index_ == 0) {
+        index_++;
+        if (request.body) {
+          co_await request.body->begin();
+        }
+        co_return Response{.status = 200};
+      } else {
+        if (request.body) {
+          *last_body_ = co_await coro::http::GetBody(std::move(*request.body));
+        }
+        co_return Response{.status = 200};
+      }
+    }
+
+   private:
+    int index_ = 0;
+    std::string* last_body_;
+  };
+
+  std::string last_body;
+  Run(HttpHandler{&last_body}, [&]() -> Task<> {
+    co_await http().Fetch(Request{.url = address(),
+                                  .method = http::Method::kPost,
+                                  .headers = {{"Content-Length", "10000"}},
+                                  .body = CreateBody(std::string(10000, 'x')),
+                                  .invalidates_cache = true});
+    co_await http().Fetch(Request{.url = address(),
+                                  .method = http::Method::kPost,
+                                  .headers = {{"Content-Length", "7"}},
+                                  .body = CreateBody("input42"),
+                                  .invalidates_cache = true});
+  });
+
+  EXPECT_EQ(last_body, "input42");
 }
 
 }  // namespace

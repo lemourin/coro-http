@@ -49,7 +49,7 @@ std::string ToString(std::span<const uint8_t> bytes) {
 }
 
 std::vector<uint8_t> ToByteArray(std::string_view bytes) {
-  auto* data = reinterpret_cast<const uint8_t*>(bytes.data());
+  const auto* data = reinterpret_cast<const uint8_t*>(bytes.data());
   return std::vector<uint8_t>(data, data + bytes.size());
 }
 
@@ -298,10 +298,10 @@ struct HttpHandlerT {
     }
     ErrorMetadata error_metadata = GetErrorMetadata(exception);
     std::string formatted_message = GetErrorMessage(error_metadata);
-    if (is_response_chunked && *is_response_chunked == true) {
+    if (is_response_chunked && *is_response_chunked) {
       FOR_CO_AWAIT(
           std::string piece,
-          GetResponseChunk(/*chunked=*/true, std::move(formatted_message))) {
+          GetResponseChunk(/*is_chunked=*/true, std::move(formatted_message))) {
         co_yield std::move(piece);
       }
       co_yield std::string("0\r\n\r\n");

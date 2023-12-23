@@ -618,7 +618,9 @@ TEST_F(HttpServerTest, IgnoresPartOfRequestBody) {
         if (request.body) {
           co_await request.body->begin();
         }
-        co_return Response{.status = 200};
+        co_return Response{.status = 200,
+                           .headers = {{"Content-Length", "4"}},
+                           .body = CreateBody("dupa")};
       } else {
         if (request.body) {
           *last_body_ = co_await coro::http::GetBody(std::move(*request.body));

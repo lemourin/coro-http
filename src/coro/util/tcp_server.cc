@@ -48,15 +48,14 @@ Task<> Wait(RequestContext* context) {
   }
 }
 
-std::vector<uint8_t> ToVector(std::span<const uint8_t> span) {
-  return std::vector<uint8_t>(span.begin(), span.end());
-}
-
 Task<> Write(RequestContext* context, bufferevent* bev,
              std::span<const uint8_t> chunk) {
+  Check(bufferevent_disable(bev, EV_READ));
   Check(bufferevent_enable(bev, EV_WRITE));
-  auto at_exit =
-      AtScopeExit([bev] { Check(bufferevent_disable(bev, EV_WRITE)); });
+  auto at_exit = AtScopeExit([bev] {
+    Check(bufferevent_enable(bev, EV_READ));
+    Check(bufferevent_disable(bev, EV_WRITE));
+  });
   std::unique_ptr<evbuffer, EvBufferDeleter> buffer{evbuffer_new()};
   if (!buffer) {
     throw RuntimeError("evbuffer_new error");

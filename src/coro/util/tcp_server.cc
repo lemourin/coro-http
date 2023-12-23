@@ -20,7 +20,8 @@ namespace coro::util {
 namespace {
 
 struct RequestContext {
-  Promise<void> semaphore;
+  Promise<void> read_semaphore;
+  Promise<void> write_semaphore;
   stdx::stop_source stop_source;
   std::vector<uint8_t> request;
 };
@@ -39,42 +40,51 @@ void Check(int code) {
   }
 }
 
-Task<> Wait(RequestContext* context) {
+Task<> WaitRead(RequestContext* context) {
   if (context->stop_source.get_token().stop_requested()) {
     throw InterruptedException();
   } else {
-    co_await context->semaphore;
-    context->semaphore = Promise<void>();
+    co_await context->read_semaphore;
+    context->read_semaphore = Promise<void>();
   }
 }
 
-Task<> Write(RequestContext* context, bufferevent* bev,
-             std::span<const uint8_t> chunk) {
-  Check(bufferevent_disable(bev, EV_READ));
-  Check(bufferevent_enable(bev, EV_WRITE));
-  auto at_exit = AtScopeExit([bev] {
-    Check(bufferevent_enable(bev, EV_READ));
-    Check(bufferevent_disable(bev, EV_WRITE));
-  });
+Task<> WaitWrite(RequestContext* context) {
+  if (context->stop_source.get_token().stop_requested()) {
+    throw InterruptedException();
+  } else {
+    co_await context->write_semaphore;
+    context->write_semaphore = Promise<void>();
+  }
+}
+
+Task<> Write(RequestContext* context, bufferevent* bev, TcpResponseChunk data) {
   std::unique_ptr<evbuffer, EvBufferDeleter> buffer{evbuffer_new()};
   if (!buffer) {
     throw RuntimeError("evbuffer_new error");
   }
-  Check(evbuffer_add_reference(buffer.get(), chunk.data(), chunk.size(),
-                               /*cleanupfn=*/nullptr,
-                               /*cleanupfnarg=*/nullptr));
+  auto chunk = std::make_unique<TcpResponseChunk>(std::move(data));
+  const void* d = chunk->chunk().data();
+  const auto size = chunk->chunk().size();
+  Check(evbuffer_add_reference(
+      buffer.get(), d, size,
+      /*cleanupfn=*/
+      [](const void* /*data*/, size_t /*datalen*/, void* extra) {
+        delete reinterpret_cast<TcpResponseChunk*>(extra);
+      },
+      /*cleanupfnarg=*/chunk.release()));
   Check(bufferevent_write_buffer(bev, buffer.get()));
-  co_await Wait(context);
+  co_await WaitWrite(context);
 }
 
 void ReadCallback(struct bufferevent*, void* user_data) {
   auto* context = reinterpret_cast<RequestContext*>(user_data);
-  context->semaphore.SetValue();
+  context->read_semaphore.SetValue();
 }
 
 void WriteCallback(struct bufferevent*, void* user_data) {
   auto* context = reinterpret_cast<RequestContext*>(user_data);
-  context->semaphore.SetValue();
+  context->write_semaphore.SetValue();
 }
 
 void EventCallback(struct bufferevent*, short events, void* user_data) {
@@ -95,8 +105,7 @@ std::unique_ptr<bufferevent, BufferEventDeleter> CreateBufferEvent(
                            /*highmark=*/kMaxBufferSize);
   bufferevent_setcb(bev.get(), ReadCallback, WriteCallback, EventCallback,
                     context);
-  Check(bufferevent_enable(bev.get(), EV_READ));
-  Check(bufferevent_disable(bev.get(), EV_WRITE));
+  Check(bufferevent_enable(bev.get(), EV_READ | EV_WRITE));
   return bev;
 }
 
@@ -112,7 +121,7 @@ TcpRequestDataProvider GetRequestContent(struct bufferevent* bev,
     struct evbuffer* input = bufferevent_get_input(bev);
     size_t size = evbuffer_get_length(input);
     if (size == 0) {
-      co_await Wait(context);
+      co_await WaitRead(context);
       size = evbuffer_get_length(input);
     }
     if (byte_cnt == UINT32_MAX) {
@@ -123,7 +132,7 @@ TcpRequestDataProvider GetRequestContent(struct bufferevent* bev,
       co_return data;
     }
     while (size < byte_cnt) {
-      co_await Wait(context);
+      co_await WaitRead(context);
       size = evbuffer_get_length(input);
     }
     std::vector<uint8_t> data(byte_cnt, 0);
@@ -143,7 +152,7 @@ Task<> DrainTcpDataProvider(TcpRequestDataProvider data_provider) {
 }
 
 std::span<const uint8_t> TcpResponseChunk::chunk() const {
-  if (auto* chunk = std::get_if<std::string>(&chunk_)) {
+  if (const auto* chunk = std::get_if<std::string>(&chunk_)) {
     return std::span<const uint8_t>(
         reinterpret_cast<const uint8_t*>(chunk->data()), chunk->size());
   } else {
@@ -235,7 +244,10 @@ Task<> TcpServer::ListenerCallback(struct EvconnListener*, evutil_socket_t fd,
     stdx::stop_callback stop_callback1(
         stop_source_.get_token(), [&] { context.stop_source.request_stop(); });
     stdx::stop_callback stop_callback2(context.stop_source.get_token(), [&] {
-      context.semaphore.SetException(InterruptedException());
+      context.read_semaphore.SetException(InterruptedException());
+    });
+    stdx::stop_callback stop_callback3(context.stop_source.get_token(), [&] {
+      context.write_semaphore.SetException(InterruptedException());
     });
     auto bev = CreateBufferEvent(
         reinterpret_cast<event_base*>(GetEventLoop(*event_loop_)), fd,
@@ -245,7 +257,7 @@ Task<> TcpServer::ListenerCallback(struct EvconnListener*, evutil_socket_t fd,
                                        context.stop_source.get_token());
       FOR_CO_AWAIT(TcpResponseChunk ctl, response) {
         if (!ctl.chunk().empty()) {
-          co_await Write(&context, bev.get(), ctl.chunk());
+          co_await Write(&context, bev.get(), std::move(ctl));
         }
       }
     }

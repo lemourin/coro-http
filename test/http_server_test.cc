@@ -511,16 +511,20 @@ TEST_F(HttpServerTest, IgnoresRequestBody) {
 
   std::string last_body;
   Run(HttpHandler{&last_body}, [&]() -> Task<> {
-    co_await http().Fetch(Request{.url = address(),
-                                  .method = http::Method::kPost,
-                                  .headers = {{"Content-Length", "6"}},
-                                  .body = CreateBody("input1"),
-                                  .invalidates_cache = true});
-    co_await http().Fetch(Request{.url = address(),
-                                  .method = http::Method::kPost,
-                                  .headers = {{"Content-Length", "7"}},
-                                  .body = CreateBody("input42"),
-                                  .invalidates_cache = true});
+    {
+      Request request{.url = address(),
+                      .method = http::Method::kPost,
+                      .headers = {{"Content-Length", "6"}},
+                      .body = CreateBody("input1")};
+      co_await http().Fetch(std::move(request));
+    }
+    {
+      Request request{.url = address(),
+                      .method = http::Method::kPost,
+                      .headers = {{"Content-Length", "7"}},
+                      .body = CreateBody("input42")};
+      co_await http().Fetch(std::move(request));
+    }
   });
 
   EXPECT_EQ(last_body, "input42");
@@ -630,16 +634,20 @@ TEST_F(HttpServerTest, IgnoresPartOfRequestBody) {
 
   std::string last_body;
   Run(HttpHandler{&last_body}, [&]() -> Task<> {
-    co_await http().Fetch(Request{.url = address(),
-                                  .method = http::Method::kPost,
-                                  .headers = {{"Content-Length", "10000"}},
-                                  .body = CreateBody(std::string(10000, 'x')),
-                                  .invalidates_cache = true});
-    co_await http().Fetch(Request{.url = address(),
-                                  .method = http::Method::kPost,
-                                  .headers = {{"Content-Length", "7"}},
-                                  .body = CreateBody("input42"),
-                                  .invalidates_cache = true});
+    {
+      Request request{.url = address(),
+                      .method = http::Method::kPost,
+                      .headers = {{"Content-Length", "10000"}},
+                      .body = CreateBody(std::string(10000, 'x'))};
+      co_await http().Fetch(std::move(request));
+    }
+    {
+      Request request{.url = address(),
+                      .method = http::Method::kPost,
+                      .headers = {{"Content-Length", "7"}},
+                      .body = CreateBody("input42")};
+      co_await http().Fetch(std::move(request));
+    }
   });
 
   EXPECT_EQ(last_body, "input42");

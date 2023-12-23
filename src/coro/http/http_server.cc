@@ -307,11 +307,10 @@ struct HttpHandlerT {
       co_yield std::string("0\r\n\r\n");
       co_return;
     }
-    co_yield GetHttpResponseHeader(
-        error_metadata.status,
-        std::vector<std::pair<std::string, std::string>>{
-            {"Content-Length", std::to_string(formatted_message.size())},
-            {"Connection", "keep-alive"}});
+    std::vector<std::pair<std::string, std::string>> headers{
+        {"Content-Length", std::to_string(formatted_message.size())},
+        {"Connection", "keep-alive"}};
+    co_yield GetHttpResponseHeader(error_metadata.status, headers);
     if (request_method != Method::kHead) {
       co_yield formatted_message;
     }

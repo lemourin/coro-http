@@ -648,7 +648,7 @@ Generator<std::string> ToBody(
 
 }  // namespace
 
-struct CurlHttpBase::Impl {
+struct CurlHttp::Impl {
   CurlHttpImpl impl;
 };
 
@@ -657,13 +657,12 @@ std::string GetNativeCaCertBlob() {
   constexpr int kBufferSize = 4 * 1024;
   std::string blob;
   for (std::string_view cert_directory :
-       std::initializer_list<std::string_view> {
+       std::initializer_list<std::string_view>{
 #if defined(__ANDROID__)
-         "/system/etc/security/cacerts",
+           "/system/etc/security/cacerts",
 #elif !defined(_WIN32)
-         "/etc/ssl/certs",
-         "/etc/pki/ca-trust/source/anchors",
-         "/etc/pki/tls/certs"
+           "/etc/ssl/certs", "/etc/pki/ca-trust/source/anchors",
+           "/etc/pki/tls/certs"
 #endif
        }) {
     std::string buffer(kBufferSize, 0);
@@ -690,16 +689,20 @@ std::string GetNativeCaCertBlob() {
   return blob;
 }
 
-CurlHttpBase::CurlHttpBase(const coro::util::EventLoop* event_loop,
-                           CurlHttpConfig config)
+CurlHttp::CurlHttp(const coro::util::EventLoop* event_loop,
+                   CurlHttpConfig config)
     : d_(new Impl{
           {reinterpret_cast<struct event_base*>(GetEventLoop(*event_loop)),
            std::move(config)}}) {}
 
-CurlHttpBase::~CurlHttpBase() = default;
+CurlHttp::~CurlHttp() = default;
 
-Task<Response<>> CurlHttpBase::Fetch(Request<> request,
-                                     stdx::stop_token stop_token) const {
+CurlHttp::CurlHttp(CurlHttp&&) noexcept = default;
+
+CurlHttp& CurlHttp::operator=(CurlHttp&&) noexcept = default;
+
+Task<Response<>> CurlHttp::Fetch(Request<> request,
+                                 stdx::stop_token stop_token) const {
   auto response =
       co_await d_->impl.Fetch(std::move(request), std::move(stop_token));
   auto status = response->status;

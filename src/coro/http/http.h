@@ -11,6 +11,7 @@
 #include "coro/generator.h"
 #include "coro/http/http_exception.h"
 #include "coro/http/http_parse.h"
+#include "coro/stdx/any_invocable.h"
 #include "coro/stdx/coroutine.h"
 #include "coro/stdx/stop_token.h"
 
@@ -75,57 +76,17 @@ struct Response {
 
 class Http {
  public:
-  virtual ~Http() = default;
+  template <typename HttpClientT>
+  explicit Http(HttpClientT client)
+      : impl_([d = std::move(client)](Request<> request,
+                                      stdx::stop_token stop_token) {
+          return d.Fetch(std::move(request), std::move(stop_token));
+        }) {}
 
-  virtual Task<Response<>> Fetch(Request<>, stdx::stop_token) const = 0;
-  virtual Task<Response<>> Fetch(Request<std::string>,
-                                 stdx::stop_token) const = 0;
-  virtual Task<Response<>> Fetch(std::string url, stdx::stop_token) const = 0;
-
-  virtual Task<Response<>> FetchOk(Request<> url, stdx::stop_token) const = 0;
-  virtual Task<Response<>> FetchOk(Request<std::string> url,
-                                   stdx::stop_token) const = 0;
-};
-
-template <typename Impl>
-class HttpImpl : public Http {
- public:
-  template <typename... Args>
-  explicit HttpImpl(Args&&... args) : impl_(std::forward<Args>(args)...) {}
-
-  Task<Response<>> Fetch(Request<> request,
-                         stdx::stop_token stop_token) const override {
-    return impl_.Fetch(std::move(request), std::move(stop_token));
+  auto Fetch(Request<> request,
+             stdx::stop_token stop_token = stdx::stop_token()) const {
+    return impl_(std::move(request), std::move(stop_token));
   }
-
-  Task<Response<>> Fetch(Request<std::string> request,
-                         stdx::stop_token stop_token) const override {
-    return impl_.Fetch(std::move(request), std::move(stop_token));
-  }
-
-  Task<Response<>> Fetch(std::string url,
-                         stdx::stop_token stop_token) const override {
-    return impl_.Fetch(std::move(url), std::move(stop_token));
-  }
-
-  Task<Response<>> FetchOk(Request<> request,
-                           stdx::stop_token stop_token) const override {
-    return impl_.FetchOk(std::move(request), std::move(stop_token));
-  }
-
-  Task<Response<>> FetchOk(Request<std::string> request,
-                           stdx::stop_token stop_token) const override {
-    return impl_.FetchOk(std::move(request), std::move(stop_token));
-  }
-
- private:
-  Impl impl_;
-};
-
-template <typename Impl>
-class ToHttpClient : public Impl {
- public:
-  using Impl::Impl;
 
   auto Fetch(Request<std::string> request,
              stdx::stop_token stop_token = stdx::stop_token()) const {
@@ -144,11 +105,6 @@ class ToHttpClient : public Impl {
                  std::move(stop_token));
   }
 
-  auto Fetch(Request<> request,
-             stdx::stop_token stop_token = stdx::stop_token()) const {
-    return Impl::Fetch(std::move(request), std::move(stop_token));
-  }
-
   auto Fetch(std::string url,
              stdx::stop_token stop_token = stdx::stop_token()) const {
     return Fetch(Request<>{.url = std::move(url)}, std::move(stop_token));
@@ -164,6 +120,10 @@ class ToHttpClient : public Impl {
     }
     co_return response;
   }
+
+ private:
+  stdx::any_invocable<Task<Response<>>(Request<>, stdx::stop_token) const>
+      impl_;
 };
 
 }  // namespace coro::http

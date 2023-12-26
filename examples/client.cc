@@ -32,7 +32,7 @@ class CancelRequest {
 
 coro::Task<> CoMain(const coro::util::EventLoop *event_loop) noexcept {
   try {
-    coro::http::CurlHttp http(event_loop);
+    coro::http::Http http{coro::http::CurlHttp(event_loop)};
     coro::stdx::stop_source stop_source;
     CancelRequest cancel_request(*event_loop, stop_source);
 

@@ -13,10 +13,14 @@ struct CurlHttpConfig {
   std::optional<std::string> ca_cert_blob = GetNativeCaCertBlob();
 };
 
-class CurlHttpBase {
+class CurlHttp {
  public:
-  CurlHttpBase(const coro::util::EventLoop* event_loop, CurlHttpConfig = {});
-  ~CurlHttpBase();
+  explicit CurlHttp(const coro::util::EventLoop* event_loop, CurlHttpConfig = {});
+  CurlHttp(const CurlHttp&) = delete;
+  CurlHttp(CurlHttp&&) noexcept;
+  CurlHttp& operator=(const CurlHttp&) = delete;
+  CurlHttp& operator=(CurlHttp&&) noexcept;
+  ~CurlHttp();
 
   Task<Response<>> Fetch(Request<> request, stdx::stop_token stop_token) const;
 
@@ -25,8 +29,6 @@ class CurlHttpBase {
 
   std::unique_ptr<Impl> d_;
 };
-
-using CurlHttp = ToHttpClient<CurlHttpBase>;
 
 }  // namespace coro::http
 

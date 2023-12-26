@@ -611,7 +611,7 @@ class NfsRpcHandler {
 
 coro::Task<void> RunMain(const coro::util::EventLoop* event_loop) {
   coro::Promise<void> semaphore;
-  coro::http::HttpImpl<coro::http::CurlHttp> http(event_loop);
+  coro::http::Http http{coro::http::CurlHttp(event_loop)};
   auto portmapper = coro::rpc::CreateRpcServer(
       NfsRpcHandler(&http), event_loop,
       {.address = "0.0.0.0", .port = kPortMapperServicePort});

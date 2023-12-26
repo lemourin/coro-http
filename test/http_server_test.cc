@@ -109,7 +109,7 @@ class HttpServerTest : public ::testing::Test {
   };
   std::optional<std::string> address_;
   std::function<Task<>()> quit_;
-  CurlHttp http_{&event_loop_};
+  coro::http::Http http_{CurlHttp{&event_loop_}};
 };
 
 TEST_F(HttpServerTest, SendsExpectedResponse) {
@@ -362,7 +362,7 @@ TEST_F(HttpServerTest, CancelsHttpRequestWhenReadingBody) {
         co_return co_await GetBody(std::move(response.body));
       };
 
-      CurlHttp& http;
+      coro::http::Http& http;
       Promise<void>& semaphore;
       Promise<void>& request_received;
       Promise<void> received_headers;

@@ -14,9 +14,9 @@ struct CacheHttpConfig {
   int max_staleness_ms = 1000;
 };
 
-class CacheHttpImpl {
+class CacheHttp {
  public:
-  CacheHttpImpl(const CacheHttpConfig& config, const Http* http)
+  CacheHttp(const CacheHttpConfig& config, const Http* http)
       : http_(http),
         cache_(config.cache_size, Factory{http_}),
         max_staleness_ms_(config.max_staleness_ms) {}
@@ -46,8 +46,6 @@ class CacheHttpImpl {
   int max_staleness_ms_;
   mutable int64_t last_invalidate_ms_ = 0;
 };
-
-using CacheHttp = ToHttpClient<CacheHttpImpl>;
 
 }  // namespace coro::http
 

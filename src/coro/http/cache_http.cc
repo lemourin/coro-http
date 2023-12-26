@@ -37,8 +37,8 @@ int64_t GetTime() {
 
 }  // namespace
 
-Task<Response<>> CacheHttpImpl::Fetch(Request<> request,
-                                      stdx::stop_token stop_token) const {
+Task<Response<>> CacheHttp::Fetch(Request<> request,
+                                  stdx::stop_token stop_token) const {
   bool should_invalidate_cache = request.invalidates_cache;
   if (!IsCacheable(request)) {
     auto response =
@@ -63,13 +63,13 @@ Task<Response<>> CacheHttpImpl::Fetch(Request<> request,
   co_return ConvertResponse(response);
 }
 
-Response<> CacheHttpImpl::ConvertResponse(CacheableResponse response) {
+Response<> CacheHttp::ConvertResponse(CacheableResponse response) {
   return {.status = response.status,
           .headers = std::move(response.headers),
           .body = ToGenerator(std::move(response.body))};
 }
 
-bool CacheHttpImpl::IsStale(const CacheableResponse& response) const {
+bool CacheHttp::IsStale(const CacheableResponse& response) const {
   if (response.status >= 400) {
     return true;
   }
@@ -79,10 +79,10 @@ bool CacheHttpImpl::IsStale(const CacheableResponse& response) const {
   return GetTime() - response.timestamp >= max_staleness_ms_;
 }
 
-void CacheHttpImpl::InvalidateCache() const { last_invalidate_ms_ = GetTime(); }
+void CacheHttp::InvalidateCache() const { last_invalidate_ms_ = GetTime(); }
 
-auto CacheHttpImpl::Factory::operator()(Request<std::string> request,
-                                        stdx::stop_token stop_token) const
+auto CacheHttp::Factory::operator()(Request<std::string> request,
+                                    stdx::stop_token stop_token) const
     -> Task<CacheableResponse> {
   auto response =
       co_await http->Fetch(std::move(request), std::move(stop_token));

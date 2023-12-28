@@ -2,14 +2,19 @@
   "name": "coro-http",
   "version-string": "0.1.0",
   "dependencies": [
+    "boost-regex",
     {
       "name": "curl",
       "default-features": false,
-      "features": ["ssl", "http2", "http3", "c-ares"]
+      "features": [
+        "c-ares",
+        "http2",
+        "http3",
+        "ssl"
+      ]
     },
-    "libevent",
-    "boost-regex",
-    "gtest"
+    "gtest",
+    "libevent"
   ],
   "features": {
     "stacktrace": {

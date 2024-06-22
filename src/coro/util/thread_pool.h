@@ -1,6 +1,7 @@
 #ifndef CORO_UTIL_THREAD_POOL_H
 #define CORO_UTIL_THREAD_POOL_H
 
+#include <algorithm>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -76,8 +77,8 @@ class ThreadPool {
   Task<> SwitchToEventLoop();
 
   struct ThreadLoopAwaiter {
-    bool await_ready() const { return false; }
-    void await_resume() {
+    static bool await_ready() { return false; }
+    void await_resume() const {
       if (interrupted) {
         throw InterruptedException();
       }

@@ -1,19 +1,7 @@
 {
   "default-registry": {
     "kind": "git",
-    "baseline": "943c5ef1c8f6b5e6ced092b242c8299caae2ff01",
+    "baseline": "c82f74667287d3dc386bce81e44964370c91a289",
     "repository": "https://github.com/microsoft/vcpkg"
-  },
-  "registries": [
-    {
-      "kind": "git",
-      "baseline": "17c163ccc87297339f16ef02164c8b0e50278669",
-      "repository": "https://github.com/lemourin/vcpkg-registry",
-      "packages": [
-        "curl",
-        "quictls",
-        "ngtcp2"
-      ]
-    }
-  ]
+  }
 }

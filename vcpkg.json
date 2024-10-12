@@ -9,7 +9,6 @@
       "features": [
         "c-ares",
         "http2",
-        "http3",
         "ssl"
       ]
     },

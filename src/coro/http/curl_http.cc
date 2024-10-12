@@ -70,7 +70,7 @@ void Check(int code) {
 
 struct CurlHandleDeleter {
   void operator()(CURL* handle) const noexcept {
-    Check(curl_multi_remove_handle(multi_handle, handle));
+    curl_multi_remove_handle(multi_handle, handle);
     curl_easy_cleanup(handle);
   }
   CURLM* multi_handle;
@@ -657,9 +657,9 @@ std::string GetNativeCaCertBlob() {
   constexpr int kBufferSize = 4 * 1024;
   std::string blob;
   for (std::string_view cert_directory :
-       std::initializer_list<std::string_view>{
+       std::initializer_list<std::string_view> {
 #if defined(__ANDROID__)
-           "/system/etc/security/cacerts",
+         "/system/etc/security/cacerts",
 #elif !defined(_WIN32)
            "/etc/ssl/certs", "/etc/pki/ca-trust/source/anchors",
            "/etc/pki/tls/certs"

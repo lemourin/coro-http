@@ -23,7 +23,10 @@ class HttpHandler {
       pipe_request.headers.emplace_back("Range", std::move(*range_header));
     }
     if (request.url == "/quit") {
-      semaphore_->SetValue();
+      co_return coro::http::Response<>{
+          .status = 200,
+          .body = GetQuitResponse(
+              std::unique_ptr<const HttpHandler, QuitDeleter>(this))};
     }
     auto pipe =
         co_await http_->Fetch(std::move(pipe_request), std::move(stop_token));
@@ -33,6 +36,17 @@ class HttpHandler {
   }
 
  private:
+  struct QuitDeleter {
+    void operator()(const HttpHandler *handler) {
+      handler->semaphore_->SetValue();
+    }
+  };
+
+  coro::Generator<std::string> GetQuitResponse(
+      std::unique_ptr<const HttpHandler, QuitDeleter>) const {
+    co_yield "QUITTING...\n";
+  }
+
   const coro::http::Http *http_;
   coro::Promise<void> *semaphore_;
 };

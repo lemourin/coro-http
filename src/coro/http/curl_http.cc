@@ -39,7 +39,7 @@ class EventData {
   const struct event* event() const { return &event_; }
 
  private:
-  struct event event_ {};
+  struct event event_{};
 };
 
 template <typename T>
@@ -203,6 +203,13 @@ class CurlHttpImpl {
  public:
   CurlHttpImpl(event_base* event_loop, CurlHttpConfig);
 
+  CurlHttpImpl(const CurlHttpImpl&) = delete;
+  CurlHttpImpl(CurlHttpImpl&&) = delete;
+  CurlHttpImpl& operator=(const CurlHttpImpl&) = delete;
+  CurlHttpImpl& operator=(CurlHttpImpl&&) = delete;
+
+  ~CurlHttpImpl() { context_.handle = nullptr; }
+
   CurlHttpOperation Fetch(Request<> request,
                           stdx::stop_token = stdx::stop_token()) const;
 
@@ -223,9 +230,14 @@ class CurlHttpImpl {
     void operator()(CURLM* handle) const;
   };
 
+  struct CurlContext {
+    event_base* event_loop;
+    CURLM* handle;
+  };
+
   CurlGlobalInitializer initializer_;
+  CurlContext context_;
   std::unique_ptr<CURLM, CurlMultiDeleter> curl_handle_;
-  event_base* event_loop_;
   EventData timeout_event_;
   CurlHttpConfig config_;
 };
@@ -516,16 +528,21 @@ CurlHttpOperation::await_resume() {
 }
 
 CurlHttpImpl::CurlHttpImpl(event_base* event_loop, CurlHttpConfig config)
-    : curl_handle_(CheckNotNull(curl_multi_init())),
-      event_loop_(event_loop),
+    : context_({.event_loop = event_loop}),
+      curl_handle_([&] {
+        auto* handle = CheckNotNull(curl_multi_init());
+        context_.handle = handle;
+        return handle;
+      }()),
       timeout_event_(event_loop, -1, 0, TimeoutEvent, curl_handle_.get()),
       config_(std::move(config)) {
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETFUNCTION,
                           SocketCallback));
   Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERFUNCTION,
                           TimerCallback));
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, this));
-  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA, this));
+  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_SOCKETDATA, &context_));
+  Check(curl_multi_setopt(curl_handle_.get(), CURLMOPT_TIMERDATA,
+                          &timeout_event_));
 }
 
 void CurlHttpImpl::TimeoutEvent(evutil_socket_t, short, void* handle) {
@@ -596,22 +613,22 @@ void CurlHttpImpl::SocketEvent(evutil_socket_t fd, short event, void* handle) {
 
 int CurlHttpImpl::SocketCallback(CURL*, curl_socket_t socket, int what,
                                  void* userp, void* socketp) {
-  auto* http = reinterpret_cast<CurlHttpImpl*>(userp);
+  auto* context = reinterpret_cast<CurlContext*>(userp);
   if (what == CURL_POLL_REMOVE) {
     delete reinterpret_cast<EventData*>(socketp);
-  } else {
+  } else if (context->handle) {
     auto* data = reinterpret_cast<EventData*>(socketp);
     auto events = static_cast<short>(((what & CURL_POLL_IN) ? EV_READ : 0) |
                                      ((what & CURL_POLL_OUT) ? EV_WRITE : 0) |
                                      EV_PERSIST);
     if (!data) {
-      data = new EventData(http->event_loop_, socket, events, SocketEvent,
-                           http->curl_handle_.get());
-      Check(curl_multi_assign(http->curl_handle_.get(), socket, data));
+      data = new EventData(context->event_loop, socket, events, SocketEvent,
+                           context->handle);
+      Check(curl_multi_assign(context->handle, socket, data));
     } else {
       Check(event_del(data->event()));
-      Check(event_assign(data->event(), http->event_loop_, socket, events,
-                         SocketEvent, http->curl_handle_.get()));
+      Check(event_assign(data->event(), context->event_loop, socket, events,
+                         SocketEvent, context->handle));
     }
     Check(event_add(data->event(), /*timeout=*/nullptr));
   }
@@ -619,21 +636,21 @@ int CurlHttpImpl::SocketCallback(CURL*, curl_socket_t socket, int what,
 }
 
 int CurlHttpImpl::TimerCallback(CURLM*, long timeout_ms, void* userp) {
-  auto* http = reinterpret_cast<CurlHttpImpl*>(userp);
+  auto* timeout_event = reinterpret_cast<EventData*>(userp);
   if (timeout_ms == -1) {
-    Check(event_del(http->timeout_event_.event()));
+    Check(event_del(timeout_event->event()));
   } else {
     timeval tv = {
         .tv_sec = static_cast<decltype(tv.tv_sec)>(timeout_ms / 1000),
         .tv_usec = static_cast<decltype(tv.tv_usec)>(timeout_ms % 1000 * 1000)};
-    Check(event_add(http->timeout_event_.event(), &tv));
+    Check(event_add(timeout_event->event(), &tv));
   }
   return 0;
 }
 
 CurlHttpOperation CurlHttpImpl::Fetch(Request<> request,
                                       stdx::stop_token token) const {
-  return {curl_handle_.get(), event_loop_, std::move(request), config_,
+  return {curl_handle_.get(), context_.event_loop, std::move(request), config_,
           std::move(token)};
 }
 
@@ -657,9 +674,9 @@ std::string GetNativeCaCertBlob() {
   constexpr int kBufferSize = 4 * 1024;
   std::string blob;
   for (std::string_view cert_directory :
-       std::initializer_list<std::string_view> {
+       std::initializer_list<std::string_view>{
 #if defined(__ANDROID__)
-         "/system/etc/security/cacerts",
+           "/system/etc/security/cacerts",
 #elif !defined(_WIN32)
            "/etc/ssl/certs", "/etc/pki/ca-trust/source/anchors",
            "/etc/pki/tls/certs"
